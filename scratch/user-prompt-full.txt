@@ -1,0 +1,167 @@
+<USER_REQUEST>
+# GEO SAFE — MINIMAL TEXT REDESIGN FOR RESIDENT UI
+
+Redesign the Resident Portal's three pages: **Evacuation Routes, Report / Rescue, and Family Safety Tracker.**
+
+Follow the existing GeoSafe visual identity and homepage design:
+- Warm cream background.
+- Yellow accent color.
+- White rounded cards.
+- Clean modern typography.
+- Minimal icons.
+- Compact information containers.
+- Responsive mobile-first layout.
+
+## MAIN DESIGN RULE
+
+**LESS TEXT, MORE INFORMATION.**
+
+The current interface must not feel like a document, instruction manual, or administrative dashboard.
+
+Reduce unnecessary descriptions, lengthy explanations, repeated labels, and oversized headings.
+
+Use:
+- Recognizable icons.
+- Short labels.
+- Compact cards.
+- Status indicators.
+- Visual map elements.
+- Clear action buttons.
+- Concise information.
+- Expandable details when additional explanations are necessary.
+
+Do not remove important information, safety instructions, privacy notices, or required form fields. Present them more efficiently.
+
+## 1. EVACUATION ROUTES
+
+Make the map the main focus of the page.
+
+- Maximize the available map area.
+- Use compact floating map controls.
+- Show evacuation centers as map markers.
+- Use a compact destination selector.
+- Display selected destination information in a bottom sheet or compact card.
+- Show distance and estimated travel time only when actual routing data is available.
+- Use small icons for location, directions, and route information.
+- Avoid lengthy descriptions above or below the map.
+
+Do not use large informational cards that unnecessarily cover the map.
+
+When no evacuation centers are available, show a small empty-state message instead of a large explanatory section.
+
+## 2. REPORT / RESCUE
+
+Keep both submission workflows inside the same Report / Rescue page.
+
+At the top, display two compact selection cards:
+
+- Incident Report
+- Rescue Request
+
+Use an icon, short title, and minimal supporting text.
+
+After selection, show only the relevant form.
+
+Form design:
+- Compact input fields.
+- Short field labels.
+- Appropriate input icons where helpful.
+- Dropdowns for predefined options.
+- Map-based location selection.
+- Compact attachment preview.
+- Clear validation messages.
+- One prominent submit button.
+
+Avoid unnecessary introductory paragraphs and repeated instructions.
+
+Do not remove required information or validation.
+
+Keep incident reporting and rescue requests as separate backend workflows.
+
+## 3. FAMILY SAFETY TRACKER
+
+Make the family map and member status the main visual elements.
+
+Use:
+- Compact family member cards.
+- Profile initials or actual profile images.
+- Short names and relationship labels.
+- Small location-sharing status indicators.
+- Last updated timestamps.
+- Simple location-sharing controls.
+- A map showing authorized shared family locations.
+
+Avoid long descriptions and repeated privacy explanations.
+
+Use compact controls for:
+- Add member
+- Share location
+- Stop sharing
+- View location
+
+Show additional information only when a member or card is selected.
+
+Preserve explicit consent, authorization, and location-sharing revocation.
+
+Never display fake family members or coordinates.
+
+If no family members are connected, use a simple empty state with one clear action to add or invite a member.
+
+## 4. RESPONSIVE DESIGN
+
+Mobile:
+- Keep the four-item bottom navigation unchanged.
+- Use compact vertical spacing.
+- Prioritize maps and actionable information.
+- Use bottom sheets for additional details.
+- Avoid oversized headings and unnecessary paragraphs.
+- Prevent content overflow.
+
+Desktop and tablet:
+- Use available screen space efficiently.
+- Keep cards aligned and organized.
+- Avoid stretching short information across the entire screen.
+
+## 5. FUNCTIONALITY AND DATA
+
+This is a UI redesign, not a feature removal.
+
+- Preserve existing API integrations.
+- Preserve existing backend workflows.
+- Preserve authentication and authorization.
+- Preserve validation and error handling.
+- Preserve location permissions and privacy controls.
+- Keep all operational data connected to the real backend.
+- Do not introduce hardcoded or mock data.
+- Do not simulate successful submissions.
+
+Maintain proper loading, empty, error, and success states.
+
+## 6. FINAL UI REVIEW
+
+Inspect all three pages after implementation.
+
+Remove:
+- Redundant paragraphs.
+- Repeated information.
+- Oversized section headings.
+- Unnecessary descriptions.
+- Excessive empty spacing.
+- Large cards containing only text.
+- Repeated buttons for the same action.
+
+**FINAL OBJECTIVE:** Make the Resident Portal feel like a modern mobile emergency application, not a text-heavy website. Prioritize maps, compact information cards, icons, status indicators, and clear actions while preserving all existing functionality.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-07T13:09:13+08:00.
+
+The user's current state is as follows:
+Active Document: c:\VSCODE-PROJECTS\Geosafee\.gitignore (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 1
+Other open documents:
+- c:\VSCODE-PROJECTS\Geosafee\evacuation-centers.html (LANGUAGE_UNSPECIFIED)
+- c:\VSCODE-PROJECTS\Geosafee\package.json (LANGUAGE_UNSPECIFIED)
+- c:\VSCODE-PROJECTS\Geosafee\scratch\verify-weather.js (LANGUAGE_UNSPECIFIED)
+- c:\VSCODE-PROJECTS\Geosafee\family.html (LANGUAGE_UNSPECIFIED)
+- c:\VSCODE-PROJECTS\Geosafee\assets\js\home.js (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

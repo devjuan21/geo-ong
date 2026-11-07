@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-4xl mx-auto w-full space-y-6">
+
+        <!-- Page Intro Header -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 mb-1.5">
+                Preferences & Security
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Portal Settings</h2>
+              <p class="text-xs sm:text-sm text-slate-500 mt-0.5 max-w-xl leading-relaxed">
+                Configure your emergency broadcast channels, account password, and privacy settings.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6">
+
+          <!-- Card 1: Notification Preferences -->
+          <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-4">
+            <div class="pb-3 border-b border-slate-100">
+              <h3 class="text-base font-bold text-slate-900">Notification Preferences</h3>
+              <p class="text-xs text-slate-500">Select which delivery mechanisms receive early warning broadcasts</p>
+            </div>
+
+            <form id="preferences-form" class="space-y-4 text-xs">
+              <div class="space-y-3">
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input type="checkbox" id="pref-sms" checked class="mt-0.5 rounded text-brand-600 focus:ring-brand-500">
+                  <div>
+                    <strong class="font-bold text-slate-800 text-xs sm:text-sm block">SMS Emergency Broadcasts</strong>
+                    <p class="text-slate-500 text-[11px] mt-0.5">Receive immediate SMS texts on your registered phone for Critical & High severity weather bulletins.</p>
+                  </div>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input type="checkbox" id="pref-email" checked class="mt-0.5 rounded text-brand-600 focus:ring-brand-500">
+                  <div>
+                    <strong class="font-bold text-slate-800 text-xs sm:text-sm block">Email Disaster Advisories</strong>
+                    <p class="text-slate-500 text-[11px] mt-0.5">Receive daily summaries and official announcements from Muntinlupa CDRRMO and Barangay Bayanan.</p>
+                  </div>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input type="checkbox" id="pref-sound" checked class="mt-0.5 rounded text-brand-600 focus:ring-brand-500">
+                  <div>
+                    <strong class="font-bold text-slate-800 text-xs sm:text-sm block">Audible High-Priority Alert Chimes</strong>
+                    <p class="text-slate-500 text-[11px] mt-0.5">Play urgent audio sirens inside the portal when a flash flood or mandatory evacuation is declared.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div class="pt-3 border-t border-slate-100">
+                <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Privacy & Responder Sharing</h4>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input type="checkbox" id="pref-visibility" checked class="mt-0.5 rounded text-brand-600 focus:ring-brand-500">
+                  <div>
+                    <strong class="font-bold text-slate-800 text-xs sm:text-sm block">Share Special Needs Notes with Assigned Responders</strong>
+                    <p class="text-slate-500 text-[11px] mt-0.5">Allow dispatched Barangay Bayanan Tanods and rescue boats to see your household mobility/medical notes during a rescue event.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div class="pt-3 flex justify-end">
+                <button type="submit" class="px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold text-xs shadow-sm transition-colors">
+                  Save Preferences
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Card 2: Password Management -->
+          <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-4">
+            <div class="pb-3 border-b border-slate-100">
+              <h3 class="text-base font-bold text-slate-900">Password Management</h3>
+              <p class="text-xs text-slate-500">Update your Resident Portal authentication credentials</p>
+            </div>
+
+            <form id="password-change-form" class="space-y-4 text-xs max-w-lg">
+              <div>
+                <label for="curr-pwd" class="block font-bold text-slate-700 mb-1">Current Password</label>
+                <input type="password" id="curr-pwd" required placeholder="••••••••" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label for="new-pwd" class="block font-bold text-slate-700 mb-1">New Password</label>
+                  <input type="password" id="new-pwd" required placeholder="At least 8 characters" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+                <div>
+                  <label for="confirm-pwd" class="block font-bold text-slate-700 mb-1">Confirm New Password</label>
+                  <input type="password" id="confirm-pwd" required placeholder="Re-enter new password" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                </div>
+              </div>
+
+              <div class="pt-2 flex justify-end">
+                <button type="submit" class="px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold text-xs shadow-sm transition-colors">
+                  Update Password
+                </button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/settings.js"></script>
+</body>
+</html>
+

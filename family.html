@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS for Family Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Navigation Bar (Desktop & Tablet, plus Mobile Header) -->
+  <div id="geosafe-nav-container"></div>
+
+  <!-- Main Content Wrapper -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-5xl mx-auto w-full space-y-4 pb-28 md:pb-12">
+
+    <!-- Compact Page Header -->
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white text-[#8A6800] border border-[#FFE872] mb-1">
+          Household Safety Circle
+        </div>
+        <h1 class="text-lg sm:text-xl font-black text-[#202020] tracking-tight">Family Safety Tracker</h1>
+      </div>
+
+      <!-- Compact Add Member Button -->
+      <button onclick="openAddMemberModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex-shrink-0 active:scale-95">
+        <svg class="w-3.5 h-3.5 text-[#202020]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+        <span>Add Member</span>
+      </button>
+    </div>
+
+    <!-- Minimal 1-Line Privacy Notice -->
+    <div class="flex items-center gap-2 px-3.5 py-2 bg-white/90 rounded-2xl border border-[#FFE872] text-[11px] text-[#8A6800] shadow-subtle">
+      <svg class="w-4 h-4 text-[#F5B900] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+      <span class="truncate">Private household circle. Location sharing requires explicit mutual consent from each member.</span>
+    </div>
+
+    <!-- Compact 4-Metric Overview Strip -->
+    <div class="bg-white rounded-3xl p-3 sm:p-4 border border-[#EEEEEE] shadow-card">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center divide-y sm:divide-y-0 sm:divide-x divide-[#EEEEEE]">
+        <div class="p-2">
+          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Total Members</span>
+          <p id="stat-total-members" class="text-xl sm:text-2xl font-black text-[#202020] mt-0.5">0</p>
+        </div>
+        <div class="p-2">
+          <span class="text-[10px] font-bold text-[#278653] uppercase tracking-wider block">Sharing</span>
+          <p id="stat-sharing-location" class="text-xl sm:text-2xl font-black text-[#278653] mt-0.5">0</p>
+        </div>
+        <div class="p-2 pt-3 sm:pt-2">
+          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Not Sharing</span>
+          <p id="stat-not-sharing" class="text-xl sm:text-2xl font-black text-[#777777] mt-0.5">0</p>
+        </div>
+        <div class="p-2 pt-3 sm:pt-2">
+          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Last Update</span>
+          <p id="stat-last-update" class="text-xs sm:text-sm font-bold text-[#202020] mt-1.5 truncate">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Family Location Map (Primary Visual Focus) -->
+    <div class="bg-white rounded-3xl border border-[#EEEEEE] shadow-card p-3 sm:p-4 space-y-2.5">
+      <div class="flex items-center justify-between flex-wrap gap-2 px-1">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-bold text-[#202020]">Family Map</h2>
+          <!-- Empty State Status Indicator outside map -->
+          <span id="family-map-empty" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#F5B900] flex-shrink-0 animate-pulse"></span>
+            <span>No shared family locations available.</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Interactive Leaflet Map Container -->
+      <div class="relative w-full h-64 sm:h-80 lg:h-96 rounded-2xl border border-[#EEEEEE] overflow-hidden shadow-inner">
+        <div id="family-map" class="w-full h-full z-10"></div>
+      </div>
+    </div>
+
+    <!-- Household Members Directory -->
+    <div class="space-y-3">
+      <div class="flex items-center justify-between px-1">
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-bold text-[#202020]">Household Members</h2>
+          <span id="members-count-badge" class="text-xs font-bold text-[#8A6800] bg-white border border-[#FFE872] px-2 py-0.5 rounded-full">
+            0 members
+          </span>
+        </div>
+      </div>
+
+      <!-- Small Empty State -->
+      <div id="family-empty" class="p-6 bg-white rounded-3xl border border-[#EEEEEE] text-center shadow-card max-w-sm mx-auto">
+        <div class="w-10 h-10 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#F5B900] flex items-center justify-center mx-auto mb-2 shadow-subtle">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        </div>
+        <h4 class="text-xs sm:text-sm font-bold text-[#202020] mb-0.5">No family members added yet.</h4>
+        <p class="text-[11px] text-[#777777] mb-3">Add household members to monitor safety and coordinate during emergencies.</p>
+        <button onclick="openAddMemberModal()" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-colors">
+          Add Member
+        </button>
+      </div>
+
+      <!-- Cards Grid for Members -->
+      <div id="family-cards-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3 hidden">
+        <!-- Dynamically injected via family.js -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Add Family Member Modal -->
+  <div id="add-member-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE]">
+      <div class="flex items-center justify-between pb-2.5 border-b border-[#EEEEEE]">
+        <h3 class="text-sm font-bold text-[#202020]">Add Family Member</h3>
+        <button onclick="closeAddMemberModal()" class="p-1 rounded-lg text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="add-family-member-form" class="mt-3.5 space-y-3 text-xs">
+        <div>
+          <label for="new-member-name" class="block font-bold text-[#202020] mb-1">
+            Full Name <span class="text-[#D93636]">*</span>
+          </label>
+          <input type="text" id="new-member-name" required placeholder="Member name" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+        </div>
+
+        <div>
+          <label for="new-member-rel" class="block font-bold text-[#202020] mb-1">
+            Relationship <span class="text-[#D93636]">*</span>
+          </label>
+          <select id="new-member-rel" required class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] bg-white">
+            <option value="" disabled selected>Select relationship...</option>
+            <option value="Spouse">Spouse</option>
+            <option value="Child / Dependent">Child / Dependent</option>
+            <option value="Parent (Senior)">Parent (Senior Citizen)</option>
+            <option value="Sibling">Sibling</option>
+            <option value="Other Relative">Other Relative</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="new-member-email" class="block font-bold text-[#202020] mb-1">
+            Email or Mobile <span class="text-[#D93636]">*</span>
+          </label>
+          <input type="text" id="new-member-email" required placeholder="email@domain.com or 09XX-XXX-XXXX" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+        </div>
+
+        <div class="p-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-xl text-[10px] text-[#777777]">
+          Location sharing requires explicit consent from the member.
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+          <button type="button" onclick="closeAddMemberModal()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-invitation" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle">
+            Send Invite
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Member Details Modal -->
+  <div id="member-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE] max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-start justify-between pb-3 border-b border-[#EEEEEE] gap-2">
+        <div class="flex items-center gap-2.5">
+          <div id="modal-member-avatar" class="w-10 h-10 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] font-black flex items-center justify-center text-xs shadow-subtle flex-shrink-0">
+            FM
+          </div>
+          <div>
+            <h3 id="modal-member-name" class="text-sm font-bold text-[#202020]">Member Name</h3>
+            <p id="modal-member-rel" class="text-[11px] text-[#777777]">Relationship</p>
+          </div>
+        </div>
+        <button onclick="closeMemberDetailModal()" class="p-1 rounded-lg text-[#777777] hover:text-[#202020]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="mt-3.5 space-y-2.5 text-xs">
+        <div class="flex items-center justify-between p-2.5 rounded-xl bg-[#FFFDF7] border border-[#EEEEEE]">
+          <span class="font-bold text-[#202020]">Status:</span>
+          <span id="modal-member-status-badge"></span>
+        </div>
+
+        <div class="p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] space-y-1">
+          <span class="text-[10px] font-bold text-[#777777] uppercase block">Location</span>
+          <p id="modal-member-location" class="font-bold text-[#202020] text-xs">Not Available</p>
+          <div class="flex items-center justify-between text-[10px] text-[#777777] pt-1 border-t border-[#EEEEEE]">
+            <span>Updated:</span>
+            <span id="modal-member-updated" class="font-semibold text-[#202020]">—</span>
+          </div>
+        </div>
+
+        <!-- Mini map preview if location authorized -->
+        <div id="modal-member-map-section" class="hidden space-y-1">
+          <span class="text-[10px] font-bold text-[#777777] uppercase block">Position</span>
+          <div id="member-detail-map" class="w-full h-36 rounded-xl border border-[#EEEEEE] overflow-hidden"></div>
+        </div>
+
+        <!-- Location history -->
+        <div>
+          <span class="text-[10px] font-bold text-[#777777] uppercase block mb-1">History</span>
+          <div id="modal-member-history-container" class="p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] text-[#777777] text-[10px]">
+            No location history available.
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between pt-3 border-t border-[#EEEEEE]">
+        <button id="modal-toggle-sharing-btn" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-colors">
+          Toggle Location
+        </button>
+        <button onclick="closeMemberDetailModal()" class="px-3 py-1.5 rounded-xl bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#202020] text-xs font-bold border border-[#FFE872] transition-colors">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Consent Confirmation Modal -->
+  <div id="family-consent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE]">
+      <h3 id="consent-modal-title" class="text-sm font-bold text-[#202020] mb-1">Location Sharing</h3>
+      <p id="consent-modal-desc" class="text-xs text-[#777777] leading-relaxed mb-4"></p>
+
+      <div class="flex items-center justify-end gap-2">
+        <button onclick="closeConsentModal()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+          Cancel
+        </button>
+        <button onclick="confirmToggleSharing()" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Mapping Service, Store, Components & Family Page Logic -->
+  <script src="./assets/js/mapping-service.js"></script>
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/family.js"></script>
+</body>
+</html>

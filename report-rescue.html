@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report / Rescue - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS for Map Pickers -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Navigation Bar (Desktop & Tablet, plus Mobile Header) -->
+  <div id="geosafe-nav-container"></div>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-3xl mx-auto w-full space-y-4 pb-28 md:pb-12">
+
+    <!-- Compact Page Header & Workflow Selector -->
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white text-[#8A6800] border border-[#FFE872] mb-1">
+            Barangay Bayanan Emergency
+          </div>
+          <h1 class="text-lg sm:text-xl font-black text-[#202020] tracking-tight">Report / Rescue</h1>
+        </div>
+      </div>
+
+      <!-- Two Selection Cards (Responsive: Stacked on Mobile, Side-by-Side on Tablet/Desktop) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Card 1: Incident Report -->
+        <button id="tab-btn-report" type="button" onclick="switchActionTab('report')" class="w-full p-3.5 sm:p-4 rounded-3xl bg-white border-2 border-[#F5B900] shadow-card text-left transition-all flex items-center justify-between gap-3 focus:outline-none">
+          <div class="flex items-center gap-3.5 min-w-0">
+            <div class="w-11 h-11 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center flex-shrink-0 shadow-subtle">
+              <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <div class="min-w-0">
+              <span class="text-sm sm:text-base font-bold text-[#202020] block leading-tight whitespace-normal">Incident Report</span>
+              <span class="text-[11px] text-[#777777] block mt-0.5 leading-tight">Hazard & Flooding</span>
+            </div>
+          </div>
+        </button>
+
+        <!-- Card 2: Rescue Request -->
+        <button id="tab-btn-rescue" type="button" onclick="switchActionTab('rescue')" class="w-full p-3.5 sm:p-4 rounded-3xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none">
+          <div class="flex items-center gap-3.5 min-w-0">
+            <div class="w-11 h-11 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center flex-shrink-0 shadow-subtle">
+              <svg class="w-5 h-5 text-[#D93636]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24"></path></svg>
+            </div>
+            <div class="min-w-0">
+              <span class="text-sm sm:text-base font-bold text-[#202020] block leading-tight whitespace-normal">Rescue Request</span>
+              <span class="text-[11px] text-[#777777] block mt-0.5 leading-tight">Emergency Dispatch</span>
+            </div>
+          </div>
+          <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase flex-shrink-0">Urgent</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- WORKFLOW 1: REPORT AN INCIDENT -->
+    <div id="section-report" class="space-y-4">
+      <div class="bg-white rounded-3xl border border-[#EEEEEE] shadow-card p-4 sm:p-6">
+        <form id="form-report-incident" class="space-y-4 text-xs sm:text-sm">
+          
+          <!-- Category & Title -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label for="rep-type" class="block font-bold text-[#202020] mb-1">
+                Category <span class="text-[#D93636]">*</span>
+              </label>
+              <select id="rep-type" required class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] bg-white focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+                <option value="" disabled selected>Select category...</option>
+                <option value="Flooding / Rising Water">Flooding / Rising Water</option>
+                <option value="Fallen Tree / Blocked Road">Fallen Tree / Road Obstruction</option>
+                <option value="Downed Power Cable">Downed Electrical Power Cable</option>
+                <option value="Structural Damage">Structural / Wall Collapse</option>
+                <option value="Fire Outbreak">Fire Outbreak</option>
+                <option value="Drainage Clogged">Severe Drainage Overflow</option>
+                <option value="Other Danger">Other Disaster Hazard</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="rep-title" class="block font-bold text-[#202020] mb-1">
+                Title <span class="text-[#D93636]">*</span>
+              </label>
+              <input type="text" id="rep-title" required placeholder="Brief description of hazard" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label for="rep-desc" class="block font-bold text-[#202020] mb-1">
+              Details <span class="text-[#D93636]">*</span>
+            </label>
+            <textarea id="rep-desc" rows="2" required placeholder="Describe depth, blocked lanes, or specific danger..." class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"></textarea>
+          </div>
+
+          <!-- Location & Interactive Map Picker -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label for="rep-loc" class="block font-bold text-[#202020]">
+                Location <span class="text-[#D93636]">*</span>
+              </label>
+              <button type="button" onclick="acquireGpsForReport()" class="inline-flex items-center gap-1 text-[11px] font-bold text-[#8A6800] hover:text-[#5C4500]">
+                <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                <span>Use Current GPS</span>
+              </button>
+            </div>
+
+            <input type="text" id="rep-loc" required placeholder="Street name or landmark in Barangay Bayanan" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+
+            <div class="flex items-center justify-between text-[10px] text-[#777777] px-1">
+              <div>
+                <span>Lat: <strong id="rep-lat-display" class="text-[#202020]">14.4075</strong></span>
+                <span class="mx-1">•</span>
+                <span>Lng: <strong id="rep-lng-display" class="text-[#202020]">121.0475</strong></span>
+              </div>
+              <span>Tap map or drag pin to position</span>
+            </div>
+
+            <!-- Leaflet Map Picker -->
+            <div class="w-full h-44 sm:h-52 rounded-2xl border border-[#EEEEEE] overflow-hidden shadow-inner relative">
+              <div id="report-map-picker" class="w-full h-full z-10"></div>
+            </div>
+          </div>
+
+          <!-- Options: Date & Public Authorization -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="rep-community-auth" checked class="w-4 h-4 rounded text-[#F5B900] focus:ring-[#F5B900] border-[#EEEEEE]">
+              <span class="text-xs text-[#777777]">Share on community map (identity kept private)</span>
+            </label>
+            <input type="hidden" id="rep-datetime" value="">
+          </div>
+
+          <!-- Photo Attachment Pill -->
+          <div>
+            <div class="flex items-center gap-2">
+              <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFE872] bg-[#FFF9E8] hover:bg-[#FFF3D0] text-xs font-bold text-[#202020] transition-colors">
+                <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <span>Attach Photo</span>
+                <input type="file" id="rep-photo-input" accept="image/*" class="hidden" onchange="handlePhotoUpload(event, 'rep')">
+              </label>
+              <span id="rep-photo-filename" class="text-[11px] text-[#777777] truncate max-w-xs">No file chosen</span>
+            </div>
+            <div id="rep-photo-preview-container" class="mt-2 hidden">
+              <img id="rep-photo-preview" src="" alt="Incident Preview" class="h-20 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-3 border-t border-[#EEEEEE]">
+            <button type="button" onclick="openReportConfirmModal()" class="w-full py-3 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs sm:text-sm shadow-subtle transition-all active:scale-95 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+              <span>Submit Incident Report</span>
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+    <!-- WORKFLOW 2: REQUEST RESCUE -->
+    <div id="section-rescue" class="space-y-4 hidden">
+      <div class="bg-white rounded-3xl border border-[#EEEEEE] shadow-card p-4 sm:p-6">
+        <form id="form-request-rescue" class="space-y-4 text-xs sm:text-sm">
+
+          <!-- Condition & People Count -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label for="res-type" class="block font-bold text-[#202020] mb-1">
+                Emergency Condition <span class="text-[#D93636]">*</span>
+              </label>
+              <select id="res-type" required class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] bg-white focus:outline-none focus:ring-2 focus:ring-[#D93636]">
+                <option value="" disabled selected>Select condition...</option>
+                <option value="Trapped by Rising Floodwater">Trapped by Rising Floodwater (Roof / 2nd Floor)</option>
+                <option value="Critical Medical Evacuation">Critical Medical Evacuation Needed</option>
+                <option value="Collapsed / Compromised Structure">Collapsed House Structure</option>
+                <option value="Trapped by Fire / Dense Smoke">Trapped by Fire / Dense Smoke</option>
+                <option value="Special Vulnerability Emergency">Bedridden / Senior / Infant Assistance</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="res-count" class="block font-bold text-[#202020] mb-1">
+                People Trapped <span class="text-[#D93636]">*</span>
+              </label>
+              <input type="number" id="res-count" min="1" max="50" required value="1" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#D93636]">
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label for="res-desc" class="block font-bold text-[#202020] mb-1">
+              Details <span class="text-[#D93636]">*</span>
+            </label>
+            <textarea id="res-desc" rows="2" required placeholder="Describe immediate danger, water level, presence of infants/seniors..." class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#D93636]"></textarea>
+          </div>
+
+          <!-- Location & Interactive Rescue Map Picker -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label for="res-loc" class="block font-bold text-[#202020]">
+                Trapped Location <span class="text-[#D93636]">*</span>
+              </label>
+              <button type="button" onclick="acquireGpsForRescue()" class="inline-flex items-center gap-1 text-[11px] font-bold text-[#D93636] hover:text-[#B82828]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                <span>Use Current GPS</span>
+              </button>
+            </div>
+
+            <input type="text" id="res-loc" required placeholder="Exact house #, street name, and landmark in Barangay Bayanan" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#D93636]">
+
+            <div class="flex items-center justify-between text-[10px] text-[#777777] px-1">
+              <div>
+                <span>Lat: <strong id="res-lat-display" class="text-[#202020]">14.4075</strong></span>
+                <span class="mx-1">•</span>
+                <span>Lng: <strong id="res-lng-display" class="text-[#202020]">121.0475</strong></span>
+              </div>
+              <span>Drag pin or tap map to position rescue team</span>
+            </div>
+
+            <!-- Leaflet Rescue Map Picker -->
+            <div class="w-full h-44 sm:h-52 rounded-2xl border border-[#EEEEEE] overflow-hidden shadow-inner relative">
+              <div id="rescue-map-picker" class="w-full h-full z-10"></div>
+            </div>
+          </div>
+
+          <!-- Access Instructions -->
+          <div>
+            <label for="res-notes" class="block font-bold text-[#202020] mb-1">
+              Access Instructions (Optional)
+            </label>
+            <input type="text" id="res-notes" placeholder="e.g., Gate locked; access via alley behind chapel" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#D93636]">
+          </div>
+
+          <!-- Situation Photo -->
+          <div>
+            <div class="flex items-center gap-2">
+              <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFC2C2] bg-[#FFF1F1] hover:bg-[#FFE0E0] text-xs font-bold text-[#D93636] transition-colors">
+                <svg class="w-3.5 h-3.5 text-[#D93636]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <span>Attach Photo</span>
+                <input type="file" id="res-photo-input" accept="image/*" class="hidden" onchange="handlePhotoUpload(event, 'res')">
+              </label>
+              <span id="res-photo-filename" class="text-[11px] text-[#777777] truncate max-w-xs">No file chosen</span>
+            </div>
+            <div id="res-photo-preview-container" class="mt-2 hidden">
+              <img id="res-photo-preview" src="" alt="Rescue Preview" class="h-20 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+            </div>
+          </div>
+
+          <!-- Priority Triage Note -->
+          <div class="p-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-xl text-[10px] text-[#777777]">
+            Rescue priority is determined and assigned by BDRRMC triage commanders based on vulnerability and flood depth.
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-3 border-t border-[#EEEEEE]">
+            <button type="button" onclick="openRescueConfirmModal()" class="w-full py-3 rounded-2xl bg-[#D93636] hover:bg-[#B82828] text-white font-black text-xs sm:text-sm shadow-emergency-glow transition-all active:scale-95 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+              <span>Transmit Emergency Rescue Request</span>
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- CONFIRMATION MODAL: Incident Report -->
+  <div id="confirm-report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE]">
+      <h3 class="text-sm font-bold text-[#202020] mb-1">Confirm Incident Report</h3>
+      <p class="text-xs text-[#777777] mb-3">Review details before transmitting to BDRRMC operations.</p>
+
+      <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] text-xs space-y-1.5 mb-4">
+        <div><span class="text-[#777777]">Category:</span> <strong id="cfm-rep-type" class="text-[#202020]"></strong></div>
+        <div><span class="text-[#777777]">Title:</span> <strong id="cfm-rep-title" class="text-[#202020]"></strong></div>
+        <div><span class="text-[#777777]">Location:</span> <strong id="cfm-rep-loc" class="text-[#202020]"></strong></div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button onclick="closeReportConfirmModal()" class="px-3.5 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+          Cancel
+        </button>
+        <button id="btn-submit-report-final" onclick="submitReportFinal()" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle">
+          Confirm & Send
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRMATION MODAL: Rescue Request -->
+  <div id="confirm-rescue-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#FFC2C2]">
+      <h3 class="text-sm font-black text-[#D93636] mb-1 flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+        <span>Confirm Emergency Rescue</span>
+      </h3>
+      <p class="text-xs text-[#777777] mb-3">Transmits urgent call to BDRRMC Search and Rescue teams.</p>
+
+      <div class="p-3 bg-[#FFF1F1] rounded-2xl border border-[#FFC2C2] text-xs space-y-1.5 mb-4">
+        <div><span class="text-[#D93636] font-bold">Emergency:</span> <strong id="cfm-res-type" class="text-[#202020]"></strong></div>
+        <div><span class="text-[#D93636] font-bold">People:</span> <strong id="cfm-res-count" class="text-[#202020]"></strong></div>
+        <div><span class="text-[#D93636] font-bold">Location:</span> <strong id="cfm-res-loc" class="text-[#202020]"></strong></div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button onclick="closeRescueConfirmModal()" class="px-3.5 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+          Cancel
+        </button>
+        <button id="btn-submit-rescue-final" onclick="submitRescueFinal()" class="px-4 py-1.5 rounded-xl bg-[#D93636] hover:bg-[#B82828] text-white font-black text-xs shadow-emergency-glow">
+          Confirm Dispatch
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUCCESS RESULT MODAL -->
+  <div id="submission-success-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE] text-center">
+      <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-[#278653] border border-emerald-200 flex items-center justify-center mx-auto mb-3 shadow-subtle">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+      </div>
+      <h3 id="success-modal-title" class="text-base font-black text-[#202020]">Submission Successful</h3>
+      <p id="success-modal-desc" class="text-xs text-[#777777] mt-1 mb-3 leading-relaxed"></p>
+
+      <div class="p-3 bg-[#FFF9E8] rounded-2xl border border-[#FFE872] mb-4">
+        <span class="text-[9px] font-bold text-[#8A6800] uppercase tracking-wider block">Official Reference Number</span>
+        <p id="success-reference-num" class="text-lg font-black text-[#202020] mt-0.5 select-all"></p>
+      </div>
+
+      <div class="flex items-center justify-center">
+        <button onclick="closeSuccessModal()" class="px-5 py-2 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs transition-colors shadow-subtle">
+          Return to Portal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Mapping Service, Store, Components & Page Logic -->
+  <script src="./assets/js/mapping-service.js"></script>
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/report-rescue.js"></script>
+</body>
+</html>

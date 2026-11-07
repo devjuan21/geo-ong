@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responder Profile - GeoSafe Emergency Response | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Operational Header Bar -->
+  <div id="geosafe-responder-nav-container"></div>
+
+  <!-- Main Profile Content -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-3xl mx-auto w-full space-y-4 pb-28 md:pb-12">
+
+    <!-- Loading State -->
+    <div id="profile-loading" class="bg-white rounded-3xl border border-[#EEEEEE] p-8 text-center shadow-card">
+      <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      <p class="text-xs text-[#777777]">Loading authenticated responder credentials...</p>
+    </div>
+
+    <!-- Loaded Profile Content -->
+    <div id="profile-content" class="hidden space-y-4">
+
+      <!-- 1. Identity & Duty Status Card -->
+      <div class="bg-white rounded-3xl p-4 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EEEEEE]">
+          <div class="flex items-center gap-3.5">
+            <div id="prof-avatar-text" class="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-[#202020] border-2 border-[#F5B900] text-[#F5B900] font-black text-xl flex items-center justify-center flex-shrink-0 shadow-subtle ring-4 ring-[#FFF9E8]">
+              —
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <h1 id="prof-full-name" class="text-base sm:text-lg font-black text-[#202020] tracking-tight">—</h1>
+                <span id="prof-role-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]">Responder</span>
+              </div>
+              <p id="prof-unit-name" class="text-xs text-[#777777] font-medium mt-0.5">—</p>
+              <div class="flex items-center gap-2 mt-1 text-[11px] text-[#777777]">
+                <span>Badge: <strong id="prof-badge-number" class="text-[#202020]">—</strong></span>
+                <span>•</span>
+                <span>Callsign: <strong id="prof-callsign" class="text-[#202020]">—</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="self-start sm:self-auto">
+            <span id="prof-duty-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+              Not Set
+            </span>
+          </div>
+        </div>
+
+        <!-- 2. Availability Control (Section 7) -->
+        <div class="space-y-2">
+          <label class="block font-bold text-xs text-[#202020]">
+            Operational Availability State
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <!-- On Duty -->
+            <button id="opt-duty-on" type="button" onclick="selectAvailability('On Duty')" class="p-3 rounded-2xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+              <div>
+                <span class="text-xs font-black text-[#202020] block">On Duty</span>
+                <span class="text-[10px] text-[#777777]">Available for dispatch</span>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#278653]"></span>
+            </button>
+
+            <!-- Unavailable -->
+            <button id="opt-duty-unavail" type="button" onclick="selectAvailability('Unavailable')" class="p-3 rounded-2xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+              <div>
+                <span class="text-xs font-black text-[#202020] block">Unavailable</span>
+                <span class="text-[10px] text-[#777777]">Standby / on-task</span>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#E99524]"></span>
+            </button>
+
+            <!-- Off Duty -->
+            <button id="opt-duty-off" type="button" onclick="selectAvailability('Off Duty')" class="p-3 rounded-2xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+              <div>
+                <span class="text-xs font-black text-[#202020] block">Off Duty</span>
+                <span class="text-[10px] text-[#777777]">Shift concluded</span>
+              </div>
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 3. Certified Skills & Assigned Equipment -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card space-y-3">
+        <h3 class="font-bold text-xs sm:text-sm text-[#202020] uppercase tracking-wider">Certified Skills & Equipment</h3>
+        
+        <div>
+          <span class="text-[11px] font-bold text-[#777777] block mb-1.5">Operational Capabilities:</span>
+          <div id="prof-skills-list" class="flex items-center gap-1.5 flex-wrap">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-[#EEEEEE] grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div>
+            <span class="text-[10px] text-[#777777] block">Assigned Vehicle / Boat</span>
+            <strong id="prof-vehicle" class="text-[#202020] font-bold">—</strong>
+          </div>
+          <div>
+            <span class="text-[10px] text-[#777777] block">Base Station</span>
+            <strong id="prof-base-station" class="text-[#202020] font-bold">Barangay Bayanan EOC</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Contact Information -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card space-y-3">
+        <h3 class="font-bold text-xs sm:text-sm text-[#202020] uppercase tracking-wider">Contact & Radio Channel</h3>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE]">
+            <span class="text-[10px] text-[#777777] font-semibold block">Official Phone</span>
+            <strong id="prof-phone" class="text-xs font-bold text-[#202020] block mt-0.5">—</strong>
+          </div>
+          <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE]">
+            <span class="text-[10px] text-[#777777] font-semibold block">EOC Email</span>
+            <strong id="prof-email" class="text-xs font-bold text-[#202020] block mt-0.5 truncate">—</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Strict Role-Based Access Control Notice (Section 10) -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card space-y-2">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-[#8A6800]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <h4 class="font-bold text-xs text-[#202020] uppercase tracking-wider">Role Permissions & System Boundaries</h4>
+        </div>
+
+        <p class="text-[11px] text-[#555555] leading-relaxed">
+          Your account is authorized under the <strong>Emergency Responder Role</strong>. Responders receive real-time dispatch assignments, provide field status updates, and view operational disaster maps.
+        </p>
+
+        <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-[10px] text-slate-600 space-y-1">
+          <span class="font-bold text-slate-800 block">Restricted Administrative Functions:</span>
+          <p>• Responders cannot create, edit, or delete resident or staff user accounts.</p>
+          <p>• Responders cannot change official incident priority or delete submitted resident reports.</p>
+          <p>• Responders cannot modify system configurations or access administrative databases.</p>
+          <p class="italic text-slate-500 pt-0.5">Permissions are strictly enforced on backend API endpoints.</p>
+        </div>
+      </div>
+
+      <!-- 6. Portal Switching & Session Actions -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card space-y-3">
+        <h3 class="font-bold text-xs text-[#202020] uppercase tracking-wider">Account Actions</h3>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <!-- Switch to Resident Portal -->
+          <a href="index.html" class="p-3 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] hover:bg-[#FFF3D0] transition-colors text-xs font-bold flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            <span>Switch to Resident Portal</span>
+          </a>
+
+          <!-- Logout -->
+          <button type="button" onclick="handleResponderLogout()" class="p-3 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] hover:bg-[#FFE0E0] transition-colors text-xs font-bold flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+            <span>End Responder Shift</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Mobile Fixed Bottom Navigation Bar -->
+  <div id="geosafe-responder-bottom-nav"></div>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/responder-ui.js"></script>
+  <script src="./assets/js/responder-profile.js"></script>
+</body>
+</html>
+

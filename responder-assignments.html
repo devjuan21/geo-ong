@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignments - GeoSafe Emergency Response | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS for Scene Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Operational Header Bar -->
+  <div id="geosafe-responder-nav-container"></div>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-5xl mx-auto w-full space-y-4 pb-28 md:pb-12">
+
+    <!-- Header & Controls -->
+    <div class="space-y-3">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] mb-1">
+            Bayanan Emergency Operations
+          </div>
+          <h1 class="text-lg sm:text-xl font-black text-[#202020] tracking-tight">Assigned Incidents & Rescues</h1>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="relative w-full sm:w-64">
+          <input type="text" oninput="handleSearch(event)" placeholder="Search ref #, location, type..." class="w-full pl-9 pr-3 py-2 rounded-2xl border border-[#EEEEEE] text-xs text-[#202020] bg-white focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+          <svg class="w-4 h-4 text-[#777777] absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </div>
+      </div>
+
+      <!-- Filter Tabs (Section 4: All, Pending, Accepted, In Progress, Completed) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar text-xs">
+        <button id="tab-assign-all" type="button" onclick="filterAssignments('All')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0">
+          All
+        </button>
+        <button id="tab-assign-pending" type="button" onclick="filterAssignments('Pending')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] flex-shrink-0">
+          Pending
+        </button>
+        <button id="tab-assign-accepted" type="button" onclick="filterAssignments('Accepted')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] flex-shrink-0">
+          Accepted
+        </button>
+        <button id="tab-assign-in-progress" type="button" onclick="filterAssignments('In Progress')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] flex-shrink-0">
+          In Progress
+        </button>
+        <button id="tab-assign-completed" type="button" onclick="filterAssignments('Completed')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] flex-shrink-0">
+          Completed
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="assign-loading" class="bg-white rounded-3xl border border-[#EEEEEE] p-8 text-center shadow-card">
+      <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      <p class="text-xs text-[#777777]">Retrieving responder assignments...</p>
+    </div>
+
+    <!-- Assignments List Container -->
+    <div id="assign-list-container" class="space-y-3 hidden">
+      <!-- Injected via responder-assignments.js -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="assign-empty-state" class="hidden bg-white rounded-3xl p-8 border border-[#EEEEEE] shadow-card text-center space-y-2">
+      <div class="w-12 h-12 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto shadow-subtle">
+        <svg class="w-6 h-6 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+      </div>
+      <p id="assign-empty-text" class="font-bold text-sm text-[#202020]">No active assignments.</p>
+      <p class="text-xs text-[#777777] max-w-sm mx-auto leading-relaxed">
+        You are caught up. Dispatched incident reports and rescue missions will appear here automatically.
+      </p>
+    </div>
+
+  </main>
+
+  <!-- ASSIGNMENT DETAILS MODAL (Section 4) -->
+  <div id="assign-details-modal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-modal border border-[#EEEEEE] max-h-[90vh] flex flex-col">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-[#EEEEEE] flex-shrink-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span id="dtl-ref" class="font-mono text-sm sm:text-base font-black text-[#202020]">REF-000</span>
+          <span id="dtl-type-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">Incident</span>
+          <span id="dtl-prio-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-slate-100 text-slate-700 border border-slate-200">High</span>
+          <span id="dtl-status-badge" class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#3478C7] border border-blue-200">Pending</span>
+        </div>
+        <button onclick="closeAssignmentDetails()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8]">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <!-- Scrollable Modal Content -->
+      <div class="flex-1 overflow-y-auto py-3.5 space-y-4 custom-scrollbar pr-1">
+        
+        <!-- Title & Description -->
+        <div>
+          <h3 id="dtl-title" class="font-bold text-base sm:text-lg text-[#202020] leading-snug">Incident Title</h3>
+          <p id="dtl-desc" class="text-xs sm:text-sm text-[#555555] mt-1.5 leading-relaxed bg-[#FFFDF7] p-3 rounded-2xl border border-[#EEEEEE]">
+            Reported details...
+          </p>
+        </div>
+
+        <!-- Rescue Specifics (trapped count, vulnerable persons) -->
+        <div id="dtl-rescue-fields" class="p-3 bg-[#FFF1F1] rounded-2xl border border-[#FFC2C2] grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span class="text-[10px] font-bold text-[#D93636] block">People Trapped</span>
+            <strong id="dtl-people-count" class="text-sm font-black text-[#202020]">1 Person</strong>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-[#D93636] block">Special Vulnerabilities</span>
+            <span id="dtl-vulnerable" class="text-xs font-semibold text-[#202020]">None specified</span>
+          </div>
+        </div>
+
+        <!-- Location & Mini Map -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-[#202020] flex items-center gap-1">
+              <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
+              <span>Scene Location:</span>
+            </span>
+            <span id="dtl-location" class="text-xs text-[#777777] font-medium truncate max-w-xs">Barangay Bayanan</span>
+          </div>
+
+          <div class="w-full h-44 rounded-2xl border border-[#EEEEEE] overflow-hidden relative shadow-inner">
+            <div id="dtl-map" class="w-full h-full z-10"></div>
+          </div>
+        </div>
+
+        <!-- Dispatch Instructions from EOC -->
+        <div class="p-3 bg-amber-50/60 rounded-2xl border border-amber-200 text-xs">
+          <span class="font-bold text-amber-900 block mb-0.5">EOC Dispatch Directive:</span>
+          <p id="dtl-instructions" class="text-[11px] text-amber-800 leading-relaxed">Directive instructions...</p>
+        </div>
+
+        <!-- Photos / Attachments -->
+        <div id="dtl-photos-container" class="space-y-1.5 hidden">
+          <span class="text-xs font-bold text-[#202020]">Attached Photos</span>
+          <div id="dtl-photos-list" class="flex items-center gap-2 overflow-x-auto pb-1"></div>
+        </div>
+
+        <!-- Audit Timeline & Response History -->
+        <div class="space-y-2 pt-2 border-t border-[#EEEEEE]">
+          <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Response Audit Trail</h4>
+          <ul id="dtl-timeline-list" class="space-y-2 mt-2">
+            <!-- Timeline elements injected dynamically -->
+          </ul>
+        </div>
+
+      </div>
+
+      <!-- Action Buttons Footer -->
+      <div id="dtl-actions-container" class="pt-3 border-t border-[#EEEEEE] flex items-center gap-2 flex-shrink-0">
+        <!-- Rendered based on status -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- STATUS CONFIRMATION MODAL (Section 4) -->
+  <div id="status-confirm-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE] text-center space-y-3">
+      <div class="w-10 h-10 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto">
+        <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      </div>
+      <h3 class="font-bold text-sm text-[#202020]">Confirm Status Transition</h3>
+      <p id="confirm-status-message" class="text-xs text-[#777777] leading-relaxed">
+        Are you sure you want to update this assignment?
+      </p>
+      <input type="hidden" id="confirm-target-status" value="">
+
+      <div class="flex items-center gap-2 pt-2">
+        <button type="button" onclick="closeStatusConfirmModal()" class="flex-1 py-2 rounded-xl bg-slate-100 text-[#202020] font-bold text-xs hover:bg-slate-200">
+          Cancel
+        </button>
+        <button type="button" onclick="executeStatusChange()" class="flex-1 py-2 rounded-xl bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs shadow-subtle">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIELD PROGRESS UPDATE MODAL (Section 6) -->
+  <div id="progress-update-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE] space-y-3">
+      <div class="flex items-center justify-between pb-2 border-b border-[#EEEEEE]">
+        <h3 class="font-bold text-sm text-[#202020]">Submit Field Progress Update</h3>
+        <button onclick="closeProgressUpdateModal()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <!-- Field Observation Notes -->
+      <div>
+        <label for="progress-notes" class="block font-bold text-xs text-[#202020] mb-1">
+          Work Notes / Field Observations <span class="text-[#D93636]">*</span>
+        </label>
+        <textarea id="progress-notes" rows="3" placeholder="Describe on-scene status, water depth, barricades established, or victim condition..." class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"></textarea>
+      </div>
+
+      <!-- Visibility Option (Section 6: Internal vs Resident Visible) -->
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="progress-internal-only" class="w-4 h-4 rounded text-[#F5B900] border-[#EEEEEE] focus:ring-[#F5B900]">
+        <span class="text-xs text-[#777777]">Internal EOC note only (hide from public resident timeline)</span>
+      </label>
+
+      <!-- Optional Photo Attachment -->
+      <div>
+        <div class="flex items-center gap-2">
+          <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFE872] bg-[#FFF9E8] hover:bg-[#FFF3D0] text-xs font-bold text-[#202020]">
+            <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <span>Attach Field Photo</span>
+            <input type="file" id="progress-photo-input" accept="image/*" class="hidden" onchange="handleFieldPhotoUpload(event)">
+          </label>
+          <span id="progress-photo-filename" class="text-[11px] text-[#777777] truncate max-w-xs">No file chosen</span>
+        </div>
+        <div id="progress-photo-preview-container" class="mt-2 hidden">
+          <img id="progress-photo-preview" src="" alt="Preview" class="h-20 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center gap-2 pt-2 border-t border-[#EEEEEE]">
+        <button type="button" onclick="closeProgressUpdateModal()" class="flex-1 py-2 rounded-xl bg-slate-100 text-[#202020] font-bold text-xs hover:bg-slate-200">
+          Cancel
+        </button>
+        <button type="button" onclick="submitProgressUpdate()" class="flex-1 py-2 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle">
+          Submit Update
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Mobile Fixed Bottom Navigation Bar -->
+  <div id="geosafe-responder-bottom-nav"></div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="./assets/js/mapping-service.js"></script>
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/responder-ui.js"></script>
+  <script src="./assets/js/responder-assignments.js"></script>
+</body>
+</html>
+

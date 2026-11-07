@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report an Incident - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS for interactive location picker -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-4xl mx-auto w-full space-y-6">
+
+        <!-- Page Intro Header -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 mb-2">
+                Disaster & Hazard Reporting
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Report an Incident</h2>
+              <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                Provide accurate information regarding flooding, structural damage, fire hazards, or road obstructions in Barangay Bayanan. Your report is transmitted directly to the Barangay Emergency Operations Center for verification and responder dispatch.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Incident Reporting Form Card -->
+        <form id="incident-report-form" class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-card space-y-6">
+
+          <!-- Section 1: Classification -->
+          <div class="space-y-4">
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-xs flex items-center justify-center font-bold">1</span>
+              Incident Classification
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Incident Type -->
+              <div>
+                <label for="incident-type" class="block text-xs font-bold text-slate-700 mb-1">
+                  Incident Type <span class="text-rose-500">*</span>
+                </label>
+                <select id="incident-type" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white">
+                  <option value="" disabled selected>Select incident category...</option>
+                  <option value="Flooding">Flooding / High Water Level</option>
+                  <option value="Fallen Tree / Power Line">Fallen Tree / Power Line Obstruction</option>
+                  <option value="Structural Hazard">Structural Damage / Wall Collapse</option>
+                  <option value="Fire Hazard">Fire Hazard / Smoke Sighting</option>
+                  <option value="Landslide / Soil Erosion">Landslide / Soil Erosion</option>
+                  <option value="Road Blockage">Road Blockage / Debris</option>
+                  <option value="Medical Emergency">Medical Assistance Required</option>
+                  <option value="Other">Other Community Hazard</option>
+                </select>
+                <p id="err-incident-type" class="hidden text-[11px] text-rose-500 mt-1 font-medium">Please select an incident type.</p>
+              </div>
+
+              <!-- Severity Assessment (Self-assessment) -->
+              <div>
+                <label for="incident-severity" class="block text-xs font-bold text-slate-700 mb-1">
+                  Initial Hazard Severity
+                </label>
+                <select id="incident-severity" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white">
+                  <option value="Moderate" selected>Moderate (Passable with caution / property risk)</option>
+                  <option value="High">High (Impending danger / immediate attention)</option>
+                  <option value="Critical">Critical (Severe life safety hazard)</option>
+                  <option value="Low">Low (Informational / minor hazard)</option>
+                </select>
+                <p class="text-[10px] text-slate-400 mt-1">Official severity will be confirmed during verification.</p>
+              </div>
+            </div>
+
+            <!-- Title -->
+            <div>
+              <label for="incident-title" class="block text-xs font-bold text-slate-700 mb-1">
+                Incident Title <span class="text-rose-500">*</span>
+              </label>
+              <input type="text" id="incident-title" required placeholder="e.g., Deep waist-level flood along Purok 4 Lakeshore Alley" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+              <p id="err-incident-title" class="hidden text-[11px] text-rose-500 mt-1 font-medium">Please provide a descriptive title (at least 6 characters).</p>
+            </div>
+
+            <!-- Detailed Description -->
+            <div>
+              <label for="incident-description" class="block text-xs font-bold text-slate-700 mb-1">
+                Detailed Description <span class="text-rose-500">*</span>
+              </label>
+              <textarea id="incident-description" rows="3" required placeholder="Describe the hazard conditions, extent of water or damage, affected households, and any immediate risks..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 custom-scrollbar"></textarea>
+              <p id="err-incident-description" class="hidden text-[11px] text-rose-500 mt-1 font-medium">Please provide details regarding the incident (at least 15 characters).</p>
+            </div>
+          </div>
+
+          <!-- Section 2: Location & GPS Mapping -->
+          <div class="space-y-4 pt-2">
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-xs flex items-center justify-center font-bold">2</span>
+              Location & Geolocation
+            </h3>
+
+            <!-- Address Field -->
+            <div>
+              <label for="incident-location" class="block text-xs font-bold text-slate-700 mb-1">
+                Street, Purok, or Sitio Address <span class="text-rose-500">*</span>
+              </label>
+              <input type="text" id="incident-location" required placeholder="e.g., House 42, Purok 3 Interior near Bautista St., Barangay Bayanan" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+              <p id="err-incident-location" class="hidden text-[11px] text-rose-500 mt-1 font-medium">Please specify the location in Barangay Bayanan.</p>
+            </div>
+
+            <!-- GPS Controls & Map Preview -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span class="text-xs font-bold text-slate-800">Pinpoint GPS Location</span>
+                  <p class="text-[11px] text-slate-500">Acquire your device GPS or click/drag the pin on the map to mark the exact spot.</p>
+                </div>
+                <button type="button" id="btn-get-gps" onclick="getCurrentLocation()" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-900 hover:bg-brand-800 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors flex-shrink-0">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
+                  <span>Use My GPS</span>
+                </button>
+              </div>
+
+              <!-- Map Container -->
+              <div id="report-map" class="w-full h-56 sm:h-64 rounded-xl border border-slate-300 shadow-inner z-10"></div>
+
+              <!-- GPS Status & Coordinates readout -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs pt-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-slate-500 font-medium">Coordinates:</span>
+                  <span id="gps-coords-display" class="font-mono font-bold text-brand-900 bg-white px-2 py-0.5 rounded border border-slate-200">14.407500° N, 121.047500° E</span>
+                </div>
+                <span id="gps-status-indicator" class="text-[11px] text-slate-500 italic">Draggable map pin active</span>
+              </div>
+
+              <!-- Hidden inputs holding coords -->
+              <input type="hidden" id="incident-lat" value="14.4075">
+              <input type="hidden" id="incident-lng" value="121.0475">
+            </div>
+          </div>
+
+          <!-- Section 3: Time & Photo Upload -->
+          <div class="space-y-4 pt-2">
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-xs flex items-center justify-center font-bold">3</span>
+              Occurrence Time & Visual Evidence
+            </h3>
+
+            <!-- Date and Time -->
+            <div>
+              <label for="incident-datetime" class="block text-xs font-bold text-slate-700 mb-1">
+                Date & Time of Observation <span class="text-rose-500">*</span>
+              </label>
+              <input type="datetime-local" id="incident-datetime" required class="w-full sm:w-72 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white">
+              <p id="err-incident-datetime" class="hidden text-[11px] text-rose-500 mt-1 font-medium">Please enter a valid date and time.</p>
+            </div>
+
+            <!-- Photos Dropzone -->
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                Photo Attachments <span class="text-slate-400 font-normal">(Optional, max 5 images, up to 5MB each)</span>
+              </label>
+
+              <div id="image-dropzone" class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/50">
+                <svg class="w-8 h-8 text-slate-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <p class="text-xs font-semibold text-slate-700">Click to upload photos or drag and drop files here</p>
+                <p class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, or WEBP images</p>
+                <input type="file" id="incident-photos" accept="image/*" multiple class="hidden">
+              </div>
+
+              <!-- Live Photo Previews -->
+              <div id="photos-preview-container" class="flex flex-wrap gap-3 mt-3"></div>
+            </div>
+          </div>
+
+          <!-- Legal & Verification Notice -->
+          <div class="p-3.5 bg-brand-50/60 rounded-xl border border-brand-100 text-xs text-slate-600 flex items-start gap-2.5">
+            <svg class="w-5 h-5 text-brand-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <p>
+              By submitting this incident report, you confirm that the information provided reflects true observations. False or prank emergency reports are punishable under local and national disaster laws.
+            </p>
+          </div>
+
+          <!-- Form Actions -->
+          <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+            <a href="index.html" class="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-100 transition-colors">
+              Cancel
+            </a>
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-brand-900 hover:bg-brand-800 text-white text-xs sm:text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
+              <span>Review & Submit</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
+          </div>
+
+        </form>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Confirmation Step Modal (Req 5: Confirmation before submission) -->
+  <div id="report-review-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-modal border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Review Incident Report</h3>
+          <p class="text-xs text-slate-500">Verify details before transmitting to Barangay Bayanan EOC</p>
+        </div>
+        <button onclick="closeReviewModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3 text-xs">
+        <div>
+          <span class="text-slate-400 block font-medium">Incident Category:</span>
+          <span id="review-type" class="font-bold text-slate-900 text-sm"></span>
+        </div>
+        <div>
+          <span class="text-slate-400 block font-medium">Incident Title:</span>
+          <span id="review-title" class="font-semibold text-slate-800"></span>
+        </div>
+        <div>
+          <span class="text-slate-400 block font-medium">Description:</span>
+          <p id="review-description" class="text-slate-700 leading-relaxed mt-0.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200"></p>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <span class="text-slate-400 block font-medium">Location:</span>
+            <span id="review-location" class="font-medium text-slate-800"></span>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-medium">GPS Coordinates:</span>
+            <span id="review-gps" class="font-mono text-slate-800"></span>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <span class="text-slate-400 block font-medium">Observed Time:</span>
+            <span id="review-datetime" class="font-medium text-slate-800"></span>
+          </div>
+          <div>
+            <span class="text-slate-400 block font-medium">Visual Evidence:</span>
+            <span id="review-photos-count" class="font-medium text-slate-800"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error alert inside modal if offline -->
+      <div id="modal-submit-error" class="hidden mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl"></div>
+
+      <div class="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+        <button onclick="closeReviewModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100">
+          Back to Edit
+        </button>
+        <button id="btn-confirm-submit" onclick="confirmAndSubmitReport()" class="px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-800 text-white text-xs font-bold shadow-sm transition-colors">
+          Confirm & Transmit Report
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submission Success Modal (Req 5: Clear confirmation with reference number) -->
+  <div id="report-success-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-modal border border-slate-200 text-center">
+      <div class="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+      </div>
+
+      <h3 class="text-lg font-bold text-slate-900">Report Successfully Submitted</h3>
+      <p class="text-xs text-slate-500 mt-1">Your report has been logged with Barangay Bayanan Operations Center.</p>
+
+      <!-- Reference Number Callout Card -->
+      <div class="my-5 p-4 rounded-xl bg-slate-50 border border-slate-200">
+        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Generated Reference Number</span>
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <span id="success-report-id" class="font-mono text-xl font-bold text-brand-900">REP-2026-XXXX</span>
+          <button onclick="copyReportId()" title="Copy Reference" class="p-1 rounded text-slate-400 hover:text-brand-700 hover:bg-slate-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2">
+          <strong id="success-report-type"></strong> | <span id="success-report-location"></span>
+        </p>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 mt-2">
+          Status: Pending Verification
+        </span>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center gap-2">
+        <a href="my-reports.html" class="w-full sm:flex-1 px-4 py-2.5 rounded-xl bg-brand-900 hover:bg-brand-800 text-white text-xs font-bold transition-colors">
+          View in My Reports
+        </a>
+        <a href="index.html" class="w-full sm:flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors">
+          Return to Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS for Map -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/report-incident.js"></script>
+</body>
+</html>
+

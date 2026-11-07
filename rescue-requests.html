@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rescue Requests - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-5xl mx-auto w-full space-y-6">
+
+        <!-- Emergency Urgent Banner & Request Button -->
+        <div class="bg-gradient-to-r from-emergency-700 via-emergency-600 to-rose-800 rounded-2xl p-6 sm:p-8 text-white shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div class="space-y-1.5">
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 backdrop-blur-md text-white tracking-wide uppercase">
+              <span class="badge-pulse"><span class="badge-pulse-ping bg-white"></span><span class="badge-pulse-dot bg-white"></span></span>
+              Life Safety & Rescue Dispatch
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold">Emergency Rescue Assistance</h2>
+            <p class="text-xs sm:text-sm text-rose-100 max-w-xl leading-relaxed">
+              For residents trapped by floodwaters, individuals requiring medical evacuation, or persons in immediate danger in Barangay Bayanan.
+            </p>
+          </div>
+          <button onclick="openRescueModal()" class="px-6 py-3 rounded-xl bg-white hover:bg-rose-50 text-emergency-700 font-extrabold text-sm shadow-md transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 flex-shrink-0">
+            <svg class="w-5 h-5 text-emergency-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><circle cx="12" cy="12" r="4" stroke-width="2"></circle><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24"></path></svg>
+            <span>Request Emergency Rescue</span>
+          </button>
+        </div>
+
+        <!-- Section: Active & Past Rescue Requests -->
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Rescue Requests History</h3>
+              <p class="text-xs text-slate-500">Live status of rescue teams dispatched to your location</p>
+            </div>
+            <span class="text-xs text-slate-400 font-medium">BDRRMC Water & Land Search and Rescue (WASAR)</span>
+          </div>
+
+          <!-- Loading State -->
+          <div id="rescue-loading" class="py-16 text-center">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emergency-200 border-t-emergency-600 mb-3"></div>
+            <p class="text-sm font-medium text-slate-500">Connecting to Emergency Operations Center...</p>
+          </div>
+
+          <!-- Error State -->
+          <div id="rescue-error" class="hidden p-6 rounded-2xl bg-rose-50 border border-rose-200 text-center max-w-lg mx-auto">
+            <h3 class="text-base font-bold text-slate-900 mb-1">Connection Unavailable</h3>
+            <p id="rescue-error-text" class="text-xs text-slate-600 mb-4">Please verify network connectivity.</p>
+            <button onclick="loadRescueRequests()" class="px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-semibold">
+              Retry
+            </button>
+          </div>
+
+          <!-- Empty State (Section 20.B: "No active rescue requests.") -->
+          <div id="rescue-empty" class="hidden p-12 rounded-2xl bg-white border border-slate-200 text-center max-w-md mx-auto shadow-card">
+            <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 mb-1">No active rescue requests.</h3>
+            <p class="text-xs text-slate-500 mb-5">You currently do not have any active emergency rescue calls logged with operations.</p>
+            <button onclick="openRescueModal()" class="px-5 py-2.5 rounded-xl bg-emergency-600 hover:bg-emergency-700 text-white font-bold text-xs shadow-sm transition-colors">
+              Request Rescue Now
+            </button>
+          </div>
+
+          <!-- Rescue Cards List Container -->
+          <div id="rescue-list-container" class="hidden space-y-4">
+            <div id="rescue-cards-list" class="space-y-4">
+              <!-- Injected dynamically via rescue-requests.js -->
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Dedicated Request Rescue Modal Form -->
+  <div id="rescue-request-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-modal border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 rounded-xl bg-emergency-100 text-emergency-600 flex items-center justify-center flex-shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><circle cx="12" cy="12" r="4" stroke-width="2"></circle><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24"></path></svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Request Emergency Rescue</h3>
+            <p class="text-[11px] text-slate-500">Transmitted directly to Bayanan Search & Rescue (WASAR)</p>
+          </div>
+        </div>
+        <button onclick="closeRescueModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="rescue-request-form" class="mt-4 space-y-4 text-xs">
+
+        <!-- Emergency Type -->
+        <div>
+          <label for="rescue-type" class="block font-bold text-slate-700 mb-1">
+            Emergency Condition <span class="text-rose-500">*</span>
+          </label>
+          <select id="rescue-type" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500 bg-white">
+            <option value="" disabled selected>Select emergency type...</option>
+            <option value="Trapped by Rising Floodwater">Trapped by Rising Floodwater (Roof / 2nd Floor)</option>
+            <option value="Critical Medical Evacuation">Critical Medical Evacuation Needed</option>
+            <option value="Collapsed / Compromised Structure">Collapsed or Compromised House Structure</option>
+            <option value="Trapped by Fire / Thick Smoke">Trapped by Fire / Dense Smoke</option>
+            <option value="Special Vulnerability Emergency">Assistance for Bedridden / Senior / Infant</option>
+          </select>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label for="rescue-desc" class="block font-bold text-slate-700 mb-1">
+            Emergency Situation Details <span class="text-rose-500">*</span>
+          </label>
+          <textarea id="rescue-desc" rows="3" required placeholder="Describe current danger level, water depth, medical urgency, or obstruction..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500"></textarea>
+        </div>
+
+        <!-- Headcount & Vulnerable Breakdown -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="rescue-people" class="block font-bold text-slate-700 mb-1">
+              Number of People Trapped <span class="text-rose-500">*</span>
+            </label>
+            <input type="number" id="rescue-people" min="1" max="50" value="1" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500">
+          </div>
+
+          <div>
+            <label for="rescue-vulnerable" class="block font-bold text-slate-700 mb-1">
+              Vulnerable Individuals
+            </label>
+            <input type="text" id="rescue-vulnerable" placeholder="e.g., 1 infant, 1 senior citizen in wheelchair" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500">
+          </div>
+        </div>
+
+        <!-- Location & Landmark with GPS Autofill -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="rescue-location" class="font-bold text-slate-700">
+              Precise Street / Purok Location <span class="text-rose-500">*</span>
+            </label>
+            <button type="button" id="btn-rescue-gps" onclick="autofillRescueGps()" class="text-[11px] font-semibold text-brand-600 hover:text-brand-800">
+              Autofill GPS Coordinates
+            </button>
+          </div>
+          <input type="text" id="rescue-location" required placeholder="House number, Street, Purok, Barangay Bayanan" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500">
+        </div>
+
+        <!-- Landmark / Rescue Markers -->
+        <div>
+          <label for="rescue-landmark" class="block font-bold text-slate-700 mb-1">
+            Landmark & Visual Identifiers
+          </label>
+          <input type="text" id="rescue-landmark" placeholder="e.g., Yellow two-storey house across Holy Infant Chapel, white roof gate" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emergency-500">
+        </div>
+
+        <!-- Official Priority Notice (Req 7: Do not allow residents to modify priority assignments) -->
+        <div class="p-3 bg-slate-100 rounded-xl border border-slate-200 text-[11px] text-slate-600">
+          <strong class="text-slate-800">Triage Notice:</strong> Official priority level (High, Medium, Low) is systematically categorized by Barangay Bayanan Emergency Operations Center dispatchers according to vulnerability metrics and active hazards.
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeRescueModal()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-100">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-rescue" class="px-5 py-2.5 rounded-xl bg-emergency-600 hover:bg-emergency-700 text-white font-bold shadow-md transition-colors">
+            Confirm & Transmit Rescue Request
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/rescue-requests.js"></script>
+</body>
+</html>
+

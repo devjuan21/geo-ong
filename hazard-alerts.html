@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hazard Alerts - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-5xl mx-auto w-full space-y-6">
+
+        <!-- Page Intro Header -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 mb-1.5">
+                Official Early Warning System
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Hazard & Disaster Alerts</h2>
+              <p class="text-xs sm:text-sm text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
+                Verified public safety bulletins issued by Muntinlupa CDRRMO, PAGASA, and the Barangay Bayanan Disaster Risk Reduction and Management Council.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Severity Filter Buttons -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="severity-tab-btn px-4 py-2 rounded-xl text-xs font-semibold bg-brand-900 text-white shadow-sm transition-all" data-severity="All">
+            All Alerts
+          </button>
+          <button class="severity-tab-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5" data-severity="Critical">
+            <span class="w-2 h-2 rounded-full bg-emergency-600"></span>
+            Critical
+          </button>
+          <button class="severity-tab-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5" data-severity="High">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+            High
+          </button>
+          <button class="severity-tab-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5" data-severity="Moderate">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+            Moderate
+          </button>
+          <button class="severity-tab-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5" data-severity="Low">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            Low
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="alerts-loading" class="py-16 text-center">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-brand-200 border-t-brand-700 mb-3"></div>
+          <p class="text-sm font-medium text-slate-500">Retrieving official hazard advisories...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="alerts-error" class="hidden p-6 rounded-2xl bg-rose-50 border border-rose-200 text-center max-w-lg mx-auto">
+          <h3 class="text-base font-bold text-slate-900 mb-1">Alert Feed Unavailable</h3>
+          <p id="alerts-error-text" class="text-xs text-slate-600 mb-4">Please verify network connectivity.</p>
+          <button onclick="loadHazardAlerts()" class="px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-semibold">
+            Retry
+          </button>
+        </div>
+
+        <!-- Empty State (Req 8: "No alerts at the moment.") -->
+        <div id="alerts-empty" class="hidden p-12 rounded-2xl bg-white border border-slate-200 text-center max-w-md mx-auto shadow-card">
+          <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900 mb-1">No alerts at the moment.</h3>
+          <p class="text-xs text-slate-500">There are currently no active weather, flood, or safety advisories for Barangay Bayanan.</p>
+        </div>
+
+        <!-- Alerts Cards Container -->
+        <div id="alerts-list-container" class="hidden">
+          <div id="alerts-list" class="space-y-4">
+            <!-- Injected dynamically via hazard-alerts.js -->
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/hazard-alerts.js"></script>
+</body>
+</html>
+

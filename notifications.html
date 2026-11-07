@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-4xl mx-auto w-full space-y-6">
+
+        <!-- Page Intro & Bulk Actions Header -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 mb-1.5">
+              Live Broadcasts & Updates
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Notification Center</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Real-time alerts, rescue status movements, and official Barangay announcements.
+            </p>
+          </div>
+          <button onclick="markAllAsRead()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors flex-shrink-0">
+            Mark All as Read
+          </button>
+        </div>
+
+        <!-- Filter Tabs -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="notif-filter-tab px-4 py-2 rounded-xl text-xs font-semibold bg-brand-900 text-white shadow-sm transition-all" data-filter="All">
+            All
+          </button>
+          <button class="notif-filter-tab px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all" data-filter="Unread">
+            Unread
+          </button>
+          <button class="notif-filter-tab px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all" data-filter="report">
+            Reports
+          </button>
+          <button class="notif-filter-tab px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all" data-filter="rescue">
+            Rescue
+          </button>
+          <button class="notif-filter-tab px-4 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all" data-filter="alert">
+            Hazard Alerts
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div id="notifs-loading" class="py-16 text-center">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-brand-200 border-t-brand-700 mb-3"></div>
+          <p class="text-sm font-medium text-slate-500">Retrieving notification feed...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="notifs-error" class="hidden p-6 rounded-2xl bg-rose-50 border border-rose-200 text-center max-w-lg mx-auto">
+          <h3 class="text-base font-bold text-slate-900 mb-1">Failed to Load Notifications</h3>
+          <p id="notifs-error-text" class="text-xs text-slate-600 mb-4">Please verify network connectivity.</p>
+          <button onclick="loadNotifications()" class="px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-semibold">
+            Retry
+          </button>
+        </div>
+
+        <!-- Empty State (Section 20.B: "No notifications available.") -->
+        <div id="notifs-empty" class="hidden p-12 rounded-2xl bg-white border border-slate-200 text-center max-w-md mx-auto shadow-card">
+          <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900 mb-1">No notifications available.</h3>
+          <p class="text-xs text-slate-500">System broadcasts and emergency updates will appear here.</p>
+        </div>
+
+        <!-- Notifications List Container -->
+        <div id="notifs-container" class="hidden">
+          <div id="notifs-list" class="space-y-3">
+            <!-- Injected via notifications.js -->
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/notifications.js"></script>
+</body>
+</html>
+

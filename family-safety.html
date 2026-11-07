@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Safety - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS for Family Location Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+  <div class="flex min-h-screen">
+    <!-- Reusable Sidebar Container -->
+    <div id="geosafe-sidebar-container"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="geosafe-main-wrapper" class="flex-1 flex flex-col min-w-0">
+      <!-- Reusable Header Container -->
+      <div id="geosafe-header-container"></div>
+
+      <!-- Main Page Body -->
+      <main class="flex-1 p-4 sm:p-6 lg:p-8 pb-28 md:pb-8 max-w-6xl mx-auto w-full space-y-6">
+
+        <!-- Page Header (Section 21.A) -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 mb-1.5">
+              Household Emergency Safety Circle
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Family Safety</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-0.5 max-w-xl leading-relaxed">
+              Keep track of your family's safety and shared locations.
+            </p>
+          </div>
+          <button onclick="openAddMemberModal()" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-colors flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+            <span>Add Family Member</span>
+          </button>
+        </div>
+
+        <!-- Privacy & Consent Protection Notice (Section 21.E) -->
+        <div class="p-4 bg-brand-50/70 rounded-2xl border border-brand-200/80 text-xs text-slate-700 flex items-start gap-3">
+          <svg class="w-5 h-5 text-brand-700 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+          <div class="leading-relaxed">
+            <strong class="font-bold text-brand-950">Consent & Privacy Enforcement:</strong>
+            Location sharing requires explicit authorization from each family member. Adding someone to your family group does not automatically activate location sharing. Members may enable or revoke consent at any time.
+          </div>
+        </div>
+
+        <!-- Family Overview Metrics (Section 21.A: Total, Sharing, Disabled, Last Updated) -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Total Family Members -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-card">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Family Members</span>
+            <p id="stat-total-members" class="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">0</p>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">Authorized members</span>
+          </div>
+
+          <!-- Currently Sharing Location -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-card">
+            <span class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Currently Sharing Location</span>
+            <p id="stat-sharing-location" class="text-2xl sm:text-3xl font-bold text-emerald-600 mt-1">0</p>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">Active with consent</span>
+          </div>
+
+          <!-- Location Sharing Disabled -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-card">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Location Sharing Disabled</span>
+            <p id="stat-sharing-disabled" class="text-2xl sm:text-3xl font-bold text-slate-700 mt-1">0</p>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">Consent not granted</span>
+          </div>
+
+          <!-- Last Updated -->
+          <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-card">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Last Updated</span>
+            <p id="stat-last-updated" class="text-base sm:text-lg font-bold text-slate-900 mt-2 truncate">—</p>
+            <span class="text-[11px] text-slate-400 mt-0.5 block">Latest position sync</span>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="family-loading" class="py-16 text-center">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-brand-200 border-t-brand-700 mb-3"></div>
+          <p class="text-sm font-medium text-slate-500">Checking authorized family safety records...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="family-error" class="hidden p-6 rounded-2xl bg-rose-50 border border-rose-200 text-center max-w-lg mx-auto">
+          <h3 class="text-base font-bold text-slate-900 mb-1">Unable to Load Family Safety</h3>
+          <p id="family-error-text" class="text-xs text-slate-600 mb-4">Please verify network connectivity.</p>
+          <button onclick="loadFamilySafety()" class="px-4 py-2 bg-brand-900 text-white rounded-xl text-xs font-semibold">
+            Retry
+          </button>
+        </div>
+
+        <!-- Family Location Map Section (Section 21.D) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-card p-4 sm:p-5 space-y-3">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">Family Location Map</h3>
+                <p class="text-xs text-slate-500">Interactive live positions of family members sharing locations with consent</p>
+              </div>
+              <!-- Status indicator outside map: Map is never covered or blocked -->
+              <span id="family-map-empty" class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0 animate-pulse"></span>
+                <span>No shared family locations available.</span>
+              </span>
+            </div>
+            <span class="text-xs font-semibold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-lg hidden sm:inline-block">
+              Barangay Bayanan Circle
+            </span>
+          </div>
+
+          <!-- Map Container with Leaflet - 100% visible, zoomable, pannable, NEVER covered -->
+          <div class="relative w-full h-72 sm:h-96 rounded-xl border border-slate-300 overflow-hidden shadow-inner">
+            <div id="family-map" class="w-full h-full z-10"></div>
+          </div>
+        </div>
+
+        <!-- Family Members Section (Section 21.B) -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Authorized Family Members</h3>
+              <p class="text-xs text-slate-500">Manage location-sharing permissions and view safety details</p>
+            </div>
+            <span id="members-count-badge" class="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+              0 members
+            </span>
+          </div>
+
+          <!-- Empty State (Section 21.B: "No family members added yet.") -->
+          <div id="family-empty" class="hidden p-12 rounded-2xl bg-white border border-slate-200 text-center max-w-md mx-auto shadow-card">
+            <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 mb-1">No family members added yet.</h3>
+            <p class="text-xs text-slate-500 mb-5 leading-relaxed">
+              Send an authorization invitation to add your family members and coordinate during disaster evacuations.
+            </p>
+            <button onclick="openAddMemberModal()" class="px-5 py-2.5 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold text-xs shadow-sm transition-colors">
+              Add Family Member
+            </button>
+          </div>
+
+          <!-- Cards Grid for Members -->
+          <div id="family-cards-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Dynamically injected via family-safety.js -->
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Add Family Member / Invitation Modal (Section 21.C) -->
+  <div id="add-member-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-modal border border-slate-200">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Add Family Member</h3>
+          <p class="text-xs text-slate-500">Send an invitation to join your Family Safety Circle</p>
+        </div>
+        <button onclick="closeAddMemberModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="add-family-member-form" class="mt-4 space-y-4 text-xs">
+        <!-- Full Name -->
+        <div>
+          <label for="new-member-name" class="block font-bold text-slate-700 mb-1">
+            Full Name <span class="text-rose-500">*</span>
+          </label>
+          <input type="text" id="new-member-name" required placeholder="e.g., Maria Dela Cruz" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </div>
+
+        <!-- Relationship -->
+        <div>
+          <label for="new-member-rel" class="block font-bold text-slate-700 mb-1">
+            Relationship <span class="text-rose-500">*</span>
+          </label>
+          <select id="new-member-rel" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+            <option value="" disabled selected>Select relationship...</option>
+            <option value="Spouse">Spouse</option>
+            <option value="Child / Dependent">Child / Dependent</option>
+            <option value="Parent (Senior)">Parent (Senior Citizen)</option>
+            <option value="Sibling">Sibling</option>
+            <option value="Other Relative">Other Relative</option>
+          </select>
+        </div>
+
+        <!-- Email Address or Invitation Identifier -->
+        <div>
+          <label for="new-member-email" class="block font-bold text-slate-700 mb-1">
+            Email Address / Mobile Identifier <span class="text-rose-500">*</span>
+          </label>
+          <input type="text" id="new-member-email" required placeholder="family.member@email.com or 0917-XXX-XXXX" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <p class="text-[11px] text-slate-400 mt-1">An invitation link will be transmitted to this identifier.</p>
+        </div>
+
+        <!-- Invitation Notice -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+          <strong class="text-slate-800">Authorization Notice:</strong> Location sharing is disabled by default. The invited family member must accept the invitation and grant explicit consent on their device before any location can be shared.
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeAddMemberModal()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-100">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-invitation" class="px-5 py-2.5 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold transition-colors">
+            Send Invitation
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Family Member Details Modal (Section 21.F) -->
+  <div id="member-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-modal border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-start justify-between pb-3 border-b border-slate-100 gap-3">
+        <div class="flex items-center gap-3">
+          <div id="modal-member-avatar" class="w-12 h-12 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-sm ring-2 ring-brand-200">
+            FM
+          </div>
+          <div>
+            <h3 id="modal-member-name" class="text-base font-bold text-slate-900">Member Name</h3>
+            <p id="modal-member-rel" class="text-xs text-slate-500">Relationship</p>
+          </div>
+        </div>
+        <button onclick="closeMemberDetailModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-4 text-xs">
+        <!-- Location-Sharing Status Indicator -->
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <span class="font-bold text-slate-700">Location Sharing Status:</span>
+          <span id="modal-member-status-badge"></span>
+        </div>
+
+        <!-- Last Known Location -->
+        <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+          <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Last Known Location</span>
+          <p id="modal-member-location" class="font-semibold text-slate-800 text-sm">Not Available</p>
+          <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-200/60">
+            <span>Last Update:</span>
+            <span id="modal-member-updated" class="font-medium text-slate-600">—</span>
+          </div>
+        </div>
+
+        <!-- Dedicated Mini Member Map Preview (if location authorized) -->
+        <div id="modal-member-map-section" class="hidden space-y-1.5">
+          <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Position Map</span>
+          <div id="member-detail-map" class="w-full h-44 rounded-xl border border-slate-300 overflow-hidden"></div>
+        </div>
+
+        <!-- Location History Section (Section 21.F: No fabricated history) -->
+        <div>
+          <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Location History Log</span>
+          <div id="modal-member-history-container" class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-500 text-[11px]">
+            No location history available.
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-between pt-3 border-t border-slate-100">
+        <button id="modal-toggle-sharing-btn" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors">
+          Toggle Location Sharing
+        </button>
+        <button onclick="closeMemberDetailModal()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Location Sharing Consent Confirmation Modal (Section 21.E) -->
+  <div id="family-consent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-modal border border-slate-200">
+      <h3 id="consent-modal-title" class="text-base font-bold text-slate-900 mb-2">Location Sharing Settings</h3>
+      <p id="consent-modal-desc" class="text-xs text-slate-600 leading-relaxed mb-6"></p>
+
+      <div class="flex items-center justify-end gap-3">
+        <button onclick="closeConsentModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold text-xs hover:bg-slate-100">
+          Cancel
+        </button>
+        <button onclick="confirmToggleSharing()" class="px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-800 text-white font-bold text-xs shadow-sm">
+          Confirm Change
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS for Map -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/family-safety.js"></script>
+</body>
+</html>

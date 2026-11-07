@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operations Map - GeoSafe Emergency Response | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Operational Header Bar -->
+  <div id="geosafe-responder-nav-container"></div>
+
+  <!-- Map Layout (Full Screen / Operational Mode) -->
+  <main class="flex-1 relative flex flex-col w-full pb-28 md:pb-0 h-[calc(100vh-3.5rem)] overflow-hidden">
+
+    <!-- Leaflet Operational Map Viewport -->
+    <div id="responder-operational-map" class="w-full h-full z-10"></div>
+
+    <!-- Floating Top Controls Bar (Filters & GPS status) -->
+    <div class="absolute top-3 left-3 right-3 z-20 flex items-center justify-between gap-2 pointer-events-none">
+      
+      <!-- Filter Pills (Pointer-events auto) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto p-1 bg-white/80 backdrop-blur-md rounded-2xl border border-[#EEEEEE] shadow-card pointer-events-auto custom-scrollbar">
+        <button id="map-filter-all" type="button" onclick="filterMapMarkers('All')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0">
+          All Targets
+        </button>
+        <button id="map-filter-rescue" type="button" onclick="filterMapMarkers('Rescue')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white/90 border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          Rescues
+        </button>
+        <button id="map-filter-incident" type="button" onclick="filterMapMarkers('Incident')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white/90 border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          Incidents
+        </button>
+        <button id="map-filter-shelter" type="button" onclick="filterMapMarkers('Shelter')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white/90 border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          Shelters
+        </button>
+      </div>
+
+      <!-- Live GPS Status Badge & Locate Me Button -->
+      <div class="flex items-center gap-1.5 pointer-events-auto">
+        <span id="gps-status-indicator" class="hidden sm:inline-block text-[10px] font-bold text-slate-600 bg-white/90 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-[#EEEEEE] shadow-card">
+          GPS: Checking...
+        </span>
+
+        <button id="btn-gps-locate" type="button" onclick="acquireResponderGps(false)" class="p-2.5 rounded-xl bg-white border border-[#EEEEEE] shadow-card hover:bg-[#FFF9E8] transition-all text-[#202020]" title="Locate My Position">
+          <svg class="w-4 h-4 text-[#3478C7]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Floating Bottom Sheet for Selected Task Navigation (Section 5) -->
+    <div id="task-bottom-sheet" class="absolute bottom-4 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 z-30 bg-white rounded-3xl p-4 shadow-modal border border-[#EEEEEE] space-y-3 hidden transition-all">
+      
+      <!-- Sheet Header -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span id="sheet-ref" class="font-mono text-xs font-black text-[#202020]">REF-000</span>
+          <span id="sheet-type-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]">Rescue</span>
+          <span id="sheet-prio-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-slate-100 text-slate-700">High</span>
+        </div>
+        <button onclick="closeTaskBottomSheet()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <!-- Sheet Info -->
+      <div>
+        <h4 id="sheet-title" class="font-bold text-sm text-[#202020] leading-tight">Target Task</h4>
+        <p id="sheet-location" class="text-xs text-[#777777] mt-1 flex items-center gap-1 truncate">Barangay Bayanan</p>
+      </div>
+
+      <!-- Routing Metrics Display (Visible when valid route computed) -->
+      <div id="sheet-route-metrics" class="hidden p-2.5 bg-blue-50/70 rounded-2xl border border-blue-200 text-xs flex items-center justify-between">
+        <div>
+          <span class="text-[10px] text-blue-800 font-bold block">Estimated Travel</span>
+          <span id="sheet-time-value" class="font-black text-sm text-[#202020]">-- min</span>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] text-blue-800 font-bold block">Distance</span>
+          <span id="sheet-dist-value" class="font-black text-sm text-[#202020]">-- km</span>
+        </div>
+      </div>
+
+      <!-- Route Clarification Notice (Section 5) -->
+      <p class="text-[10px] text-[#777777] italic leading-tight">
+        Calculated field route via OpenStreetMap (OSRM). Distinct from officially approved resident evacuation paths.
+      </p>
+
+      <!-- Navigation & Action Buttons -->
+      <div class="space-y-1.5 pt-1">
+        <button id="sheet-btn-route" type="button" onclick="calculateRouteToTask()" class="w-full py-2.5 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+          <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
+          <span>Calculate Field Route</span>
+        </button>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="openExternalGps()" class="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#202020] font-bold text-xs transition-colors flex items-center justify-center gap-1">
+            <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+            <span>External GPS</span>
+          </button>
+          
+          <a id="sheet-btn-view" href="responder-assignments.html" class="flex-1 py-2 rounded-xl bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs text-center transition-colors">
+            View Details
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Mobile Fixed Bottom Navigation Bar -->
+  <div id="geosafe-responder-bottom-nav"></div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="./assets/js/mapping-service.js"></script>
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/responder-ui.js"></script>
+  <script src="./assets/js/responder-map.js"></script>
+</body>
+</html>

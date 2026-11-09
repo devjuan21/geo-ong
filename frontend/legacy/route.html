@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1565C0" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/critical.css" />
+  <link rel="stylesheet" href="/mobile-ui.css?v=3.0" />
+  <title>GeoSafe — Evacuation Navigation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* Google Maps Navigation Mode Styling */
+    :root {
+      --gmap-green: #15803D;
+      --gmap-blue: #1D4ED8;
+      --gmap-dark: #0F172A;
+    }
+
+    body.nav-active-mode {
+      overflow: hidden;
+      padding-bottom: 0 !important;
+    }
+
+    body.nav-active-mode .bottom-nav,
+    body.nav-active-mode .resident-topbar,
+    body.nav-active-mode .page-intro-header,
+    body.nav-active-mode .preview-cards-section {
+      display: none !important;
+    }
+
+    /* Map Box Container */
+    .map-frame-box {
+      width: 100%;
+      height: clamp(280px, 48vh, 460px);
+      min-height: 260px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      position: relative;
+      background: #E2E8F0;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 16px;
+    }
+
+    #route-map {
+      width: 100%;
+      height: 100%;
+      min-height: 260px;
+      z-index: 1;
+    }
+
+    /* Fullscreen Mode when Navigation is ACTIVE */
+    .nav-active-mode .map-frame-box {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100dvh;
+      border-radius: 0;
+      border: none;
+      margin: 0;
+      z-index: 9999;
+    }
+
+    .nav-active-mode #route-map {
+      height: 100dvh;
+    }
+
+    /* Top Navigation Guidance Banner */
+    .gmap-top-hud {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top, 12px));
+      left: clamp(10px, 3vw, 20px);
+      right: clamp(10px, 3vw, 20px);
+      z-index: 10000;
+      background: var(--gmap-green);
+      color: white;
+      border-radius: var(--radius-md);
+      padding: clamp(10px, 2.5vw, 16px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      display: none;
+      align-items: center;
+      gap: 12px;
+      animation: slideDown 0.25s ease;
+    }
+
+    .nav-active-mode .gmap-top-hud {
+      display: flex;
+    }
+
+    .gmap-turn-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .gmap-turn-dist {
+      font-size: 12px;
+      font-weight: 700;
+      color: #BBF7D0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+
+    .gmap-turn-instruction {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    /* Floating Map Controls — Positioned in Corner of Map Container */
+    .gmap-floating-controls {
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .nav-active-mode .gmap-floating-controls {
+      right: clamp(14px, 3.5vw, 20px);
+      bottom: calc(96px + env(safe-area-inset-bottom, 14px));
+      z-index: 10001;
+    }
+
+    .gmap-float-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .gmap-float-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .gmap-float-btn:active {
+      transform: scale(0.92);
+    }
+
+    .gmap-float-btn--active {
+      background: var(--primary) !important;
+      color: #FFFFFF !important;
+      border-color: var(--primary-hover) !important;
+      box-shadow: 0 4px 14px rgba(21, 101, 192, 0.4);
+    }
+
+    .gmap-float-btn--muted {
+      color: var(--text-muted) !important;
+      opacity: 0.85;
+    }
+
+    /* Bottom Navigation Dock */
+    .gmap-bottom-dock {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10000;
+      background: var(--bg-card);
+      color: var(--text);
+      border-top: 1px solid var(--border);
+      padding: 14px clamp(14px, 3.5vw, 24px) max(16px, env(safe-area-inset-bottom, 16px));
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+      border-radius: 20px 20px 0 0;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      animation: slideUp 0.25s ease;
+    }
+
+    .nav-active-mode .gmap-bottom-dock {
+      display: flex;
+    }
+
+    .gmap-eta-time {
+      font-size: 26px;
+      font-weight: 900;
+      color: var(--gmap-green);
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+
+    .gmap-eta-sub {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .gmap-exit-btn {
+      background: #FEE2E2;
+      color: #DC2626;
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .gmap-exit-btn:hover {
+      background: #FECACA;
+    }
+
+    /* Dark Mode Overrides for Float Controls & Dock */
+    [data-theme="dark"] .gmap-float-btn {
+      background: var(--bg-card);
+      color: var(--text);
+      border-color: var(--border);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    }
+
+    [data-theme="dark"] .gmap-float-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-focus);
+      color: var(--border-focus);
+    }
+
+    [data-theme="dark"] .gmap-float-btn--active {
+      background: var(--primary) !important;
+      color: #FFFFFF !important;
+      border-color: var(--border-focus) !important;
+      box-shadow: 0 4px 16px rgba(96, 165, 250, 0.35);
+    }
+
+    [data-theme="dark"] .gmap-bottom-dock {
+      background: var(--bg-card);
+      border-top-color: var(--border);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    [data-theme="dark"] .gmap-eta-time {
+      color: #4ADE80;
+    }
+
+    [data-theme="dark"] .gmap-eta-sub {
+      color: var(--text-muted);
+    }
+
+    [data-theme="dark"] .gmap-exit-btn {
+      background: rgba(220, 38, 38, 0.25);
+      color: #F87171;
+      border: 1px solid rgba(248, 113, 113, 0.35);
+    }
+
+    [data-theme="dark"] .gmap-exit-btn:hover {
+      background: rgba(220, 38, 38, 0.35);
+    }
+
+    [data-theme="dark"] .map-frame-box {
+      background: #0B1120;
+    }
+
+    /* User Beacon Pin */
+    .user-gps-container {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .user-vision-cone {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      background: radial-gradient(circle at 50% 50%, rgba(21, 101, 192, 0.35) 0%, rgba(21, 101, 192, 0) 70%);
+      clip-path: polygon(50% 50%, 20% 0%, 80% 0%);
+      transform-origin: 50% 50%;
+      top: -15px;
+      left: -15px;
+      transition: transform 0.15s ease-out;
+      pointer-events: none;
+    }
+
+    .user-center-dot {
+      width: 16px;
+      height: 16px;
+      background: #1D4ED8;
+      border: 3px solid #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      z-index: 2;
+    }
+
+    .user-pulse-ring {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(29, 78, 216, 0.25);
+      animation: gpsPulse 2s infinite ease-out;
+      z-index: 1;
+    }
+
+    .route-duration-badge {
+      background: #1E293B;
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    @keyframes gpsPulse {
+      0% { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    @keyframes slideDown {
+      from { transform: translateY(-30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="app-shell">
+
+  <!-- HUD: Top Turn Instruction -->
+  <div class="gmap-top-hud" id="gmap-top-hud">
+    <div class="gmap-turn-icon" id="hud-turn-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+    </div>
+    <div style="flex:1;">
+      <div class="gmap-turn-dist" id="hud-turn-dist">In 120 meters</div>
+      <p class="gmap-turn-instruction" id="hud-turn-instruction">Head northeast on designated route</p>
+    </div>
+  </div>
+
+
+
+  <!-- HUD: Bottom ETA Dock -->
+  <div class="gmap-bottom-dock" id="gmap-bottom-dock">
+    <div>
+      <div class="gmap-eta-time" id="hud-eta-min">14 min</div>
+      <div class="gmap-eta-sub">
+        <span id="hud-eta-dist">650 m</span> · <span id="hud-eta-clock">11:55 AM</span> arrival
+      </div>
+    </div>
+    <button type="button" class="gmap-exit-btn" onclick="stopNavigation()" title="Exit Navigation" aria-label="Exit Navigation">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+  </div>
+
+  <!-- Standard Screen Container -->
+  <div class="app-container">
+    <header class="resident-topbar">
+      <div class="resident-brand">
+        <span class="resident-brand__mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+        <span>GeoSafe</span>
+      </div>
+      <div class="resident-topbar__actions" style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" aria-label="Toggle Dark Mode" title="Toggle Dark/Light Mode">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+        <button type="button" class="resident-avatar" id="header-avatar" onclick="openProfileModal()" aria-label="Open Profile Settings">JD</button>
+      </div>
+    </header>
+
+    <div class="page-intro-header" style="margin-bottom:12px;">
+      <h1 style="font-size:22px; font-weight:900; margin:0;">Safe Evacuation Routes</h1>
+      <p style="font-size:12.5px; color:var(--text-muted); margin-top:2px;">Turn-by-turn walking guidance with live directional radar.</p>
+    </div>
+
+    <!-- Map Box with Corner Floating Controls -->
+    <section class="map-frame-box" id="map-wrapper">
+      <div id="route-map"></div>
+
+      <!-- Floating Map Controls (Corner of Map Container) -->
+      <div class="gmap-floating-controls">
+        <button type="button" class="gmap-float-btn gmap-float-btn--active" id="btn-voice-toggle" onclick="toggleVoiceSpeech()" title="Toggle Voice Guidance" aria-label="Toggle Voice Guidance">
+          <span id="voice-icon" style="display:flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          </span>
+        </button>
+        <button type="button" class="gmap-float-btn" onclick="recenterGPS()" title="Recenter GPS" aria-label="Recenter GPS">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Preview Controls Section -->
+    <div class="preview-cards-section">
+      <section class="ui-card">
+        <h2 style="margin-top:0; font-size:15px;">Select Evacuation Haven</h2>
+        <div class="action-grid" style="margin-bottom:14px;">
+          <button type="button" class="action-card route-pick" data-route="1" id="btn-haven-1" style="border:2px solid var(--primary); cursor:pointer; width:100%; text-align:left;">
+            <div class="action-card__icon" style="background:var(--success-light); color:var(--success);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <span class="action-card__label">Baywalk Covered Court<br><small style="font-size:11px; font-weight:500; color:var(--text-muted);">Lakeshore · 8 min</small></span>
+          </button>
+          <button type="button" class="action-card route-pick" data-route="2" id="btn-haven-2" style="border:1px solid var(--border); cursor:pointer; width:100%; text-align:left;">
+            <div class="action-card__icon" style="background:var(--primary-light); color:var(--primary);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 22h20"/><path d="M4 22V7l8-5 8 5v15"/><path d="M10 22V12h4v10"/></svg>
+            </div>
+            <span class="action-card__label">Elementary School Unit 1<br><small style="font-size:11px; font-weight:500; color:var(--text-muted);">National Rd · 12 min</small></span>
+          </button>
+          <button type="button" class="action-card route-pick" data-route="3" id="btn-haven-3" style="border:1px solid var(--border); cursor:pointer; width:100%; text-align:left;">
+            <div class="action-card__icon" style="background:var(--warning-light); color:var(--warning);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="22" x2="9" y2="18"/><line x1="15" y1="22" x2="15" y2="18"/><line x1="8" y1="6" x2="8.01" y2="6"/><line x1="16" y1="6" x2="16.01" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/></svg>
+            </div>
+            <span class="action-card__label">Pedro E. Diaz High School<br><small style="font-size:11px; font-weight:500; color:var(--text-muted);">High Ground · 15 min</small></span>
+          </button>
+          <button type="button" class="action-card route-pick" data-route="4" id="btn-haven-4" style="border:1px solid var(--border); cursor:pointer; width:100%; text-align:left;">
+            <div class="action-card__icon" style="background:var(--purple-light); color:var(--purple);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="21" x2="21" y2="21"/><line x1="4" y1="10" x2="20" y2="10"/><polyline points="12 3 2 10 22 10 12 3"/><line x1="6" y1="10" x2="6" y2="21"/><line x1="10" y1="10" x2="10" y2="21"/><line x1="14" y1="10" x2="14" y2="21"/><line x1="18" y1="10" x2="18" y2="21"/></svg>
+            </div>
+            <span class="action-card__label">Bayanan Multi-Purpose Hall<br><small style="font-size:11px; font-weight:500; color:var(--text-muted);">Medical Post · 6 min</small></span>
+          </button>
+        </div>
+
+        <button type="button" id="start-nav-btn" class="ui-btn ui-btn-primary" style="background:var(--gmap-green); font-size:14.5px; padding:13px; margin-bottom:8px; box-shadow:0 3px 10px rgba(21, 128, 61, 0.3);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+          Start Turn-by-Turn Navigation
+        </button>
+        <button type="button" id="open-maps-btn" class="ui-btn ui-btn-secondary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open in OpenStreetMap Navigation
+        </button>
+      </section>
+
+      <section class="ui-card">
+        <h2 style="margin-top:0; font-size:15px;">Turn-by-Turn Directions</h2>
+        <ol id="directions-list" class="directions-list" style="margin:0; padding:0; list-style:none;"></ol>
+      </section>
+    </div>
+  </div>
+
+  <script src="/firebase-config.js"></script>
+  <script src="/evacuation-routes.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    const user = requireAuth(['resident']);
+    if (!user) throw new Error('unauthorized');
+    injectBottomNav('route');
+
+    let routeMap = null;
+    let routeLayers = null;
+    let userMarkerLayer = null;
+    let userPos = { lat: 14.4106, lng: 121.0502 };
+    let selectedHaven = EVACUATION_HAVENS[0];
+    let watchId = null;
+    let isNavigating = false;
+    let voiceEnabled = true;
+    let currentSteps = [];
+    let currentHeading = 45; // Default orientation facing toward haven
+
+    // SVGs for Navigation Maneuvers
+    const NAV_SVGS = {
+      straight: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
+      right: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18v-7a4 4 0 0 1 4-4h12"/><polyline points="16 3 20 7 16 11"/></svg>`,
+      left: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 18v-7a4 4 0 0 0-4-4H4"/><polyline points="8 3 4 7 8 11"/></svg>`,
+      arrive: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>`
+    };
+
+    // 1. Voice Guidance using HTML5 SpeechSynthesis
+    function speakDirection(text) {
+      if (!voiceEnabled || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleVoiceSpeech() {
+      voiceEnabled = !voiceEnabled;
+      const btnEl = document.getElementById('btn-voice-toggle');
+      const iconEl = document.getElementById('voice-icon');
+      if (voiceEnabled) {
+        btnEl?.classList.remove('gmap-float-btn--muted');
+        btnEl?.classList.add('gmap-float-btn--active');
+        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+        showToast('Voice navigation guidance enabled', 'info');
+      } else {
+        btnEl?.classList.remove('gmap-float-btn--active');
+        btnEl?.classList.add('gmap-float-btn--muted');
+        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+        showToast('Voice navigation muted', 'info');
+      }
+    }
+
+    // 2. Initialize Leaflet Map
+    function initMap() {
+      if (routeMap) return;
+      routeMap = L.map('route-map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([userPos.lat, userPos.lng], 16);
+
+      setupMapTileLayer(routeMap);
+      routeLayers = L.layerGroup().addTo(routeMap);
+    }
+
+    // 3. User Marker with Live Directional Flashlight Cone
+    function createUserMarker(lat, lng) {
+      const icon = L.divIcon({
+        className: 'user-gps-marker',
+        html: `
+          <div class="user-gps-container">
+            <div class="user-pulse-ring"></div>
+            <div class="user-vision-cone" id="vision-cone" style="transform: rotate(${currentHeading}deg);"></div>
+            <div class="user-center-dot"></div>
+          </div>
+        `,
+        iconSize: [50, 50],
+        iconAnchor: [25, 25]
+      });
+      return L.marker([lat, lng], { icon });
+    }
+
+    function updateVisionCone(heading) {
+      currentHeading = heading;
+      const cone = document.getElementById('vision-cone');
+      if (cone) {
+        cone.style.transform = `rotate(${heading}deg)`;
+      }
+    }
+
+    function setupOrientationListener() {
+      const onOrientation = (e) => {
+        let heading = null;
+        if (e.webkitCompassHeading != null) {
+          heading = e.webkitCompassHeading;
+        } else if (e.alpha != null) {
+          heading = 360 - e.alpha;
+        }
+        if (heading != null) updateVisionCone(heading);
+      };
+
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(res => {
+          if (res === 'granted') window.addEventListener('deviceorientation', onOrientation, true);
+        }).catch(() => {});
+      } else {
+        window.addEventListener('deviceorientationabsolute', onOrientation, true);
+        window.addEventListener('deviceorientation', onOrientation, true);
+      }
+    }
+
+    function calculateETAClock(durationSec) {
+      const d = new Date(Date.now() + durationSec * 1000);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // 4. Draw Clean Road Route
+    async function drawRoute(havenId) {
+      initMap();
+      selectedHaven = getHavenById(havenId || selectedHaven.id);
+
+      document.querySelectorAll('.route-pick').forEach(btn => {
+        const rId = parseInt(btn.dataset.route, 10);
+        btn.style.border = selectedHaven.id === rId ? '2px solid var(--primary)' : '1px solid var(--border)';
+      });
+
+      if (routeLayers) routeLayers.clearLayers();
+
+      const distM = haversineKm(userPos.lat, userPos.lng, selectedHaven.lat, selectedHaven.lng) * 1000;
+      const durationSec = (distM / 80) * 60;
+
+      let routeCoords = [
+        [userPos.lat, userPos.lng],
+        [userPos.lat, selectedHaven.lng],
+        [selectedHaven.lat, selectedHaven.lng]
+      ];
+
+      let routeData = {
+        distanceM: distM,
+        durationSec: durationSec,
+        coordinates: routeCoords,
+        steps: [
+          { instruction: `Head toward designated evacuation route on Bayanan`, distanceM: distM * 0.4, durationSec: durationSec * 0.4, type: 'straight' },
+          { instruction: `Follow signs along route toward ${selectedHaven.name}`, distanceM: distM * 0.4, durationSec: durationSec * 0.4, type: 'straight' },
+          { instruction: `Arrive at ${selectedHaven.name} safe haven`, distanceM: distM * 0.2, durationSec: durationSec * 0.2, type: 'arrive' }
+        ]
+      };
+
+      try {
+        const fetched = await fetchWalkingRoute(userPos.lat, userPos.lng, selectedHaven.lat, selectedHaven.lng);
+        if (fetched && fetched.coordinates && fetched.coordinates.length > 1) {
+          routeData = fetched;
+        }
+      } catch (e) {}
+
+      currentSteps = routeData.steps;
+
+      // Draw User Marker with Eye of Sight Cone
+      userMarkerLayer = createUserMarker(userPos.lat, userPos.lng).addTo(routeLayers);
+
+      // Red Destination Pin
+      const redPinIcon = L.divIcon({
+        className: 'gmap-red-pin',
+        html: `
+          <svg width="32" height="40" viewBox="0 0 24 30" fill="none">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="#DC2626"/>
+            <circle cx="12" cy="11" r="5" fill="white"/>
+            <circle cx="12" cy="11" r="3" fill="#991B1B"/>
+          </svg>
+        `,
+        iconSize: [32, 40],
+        iconAnchor: [16, 40]
+      });
+      L.marker([selectedHaven.lat, selectedHaven.lng], { icon: redPinIcon }).bindPopup(`<b>${selectedHaven.name}</b><br>Designated Safe Evacuation Haven`).addTo(routeLayers);
+
+      // Clean Solid Blue Route Polyline
+      L.polyline(routeData.coordinates, {
+        color: '#1D4ED8',
+        weight: 6,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(routeLayers);
+
+      // Duration Badge on Route
+      const midPoint = routeData.coordinates[Math.floor(routeData.coordinates.length / 2)] || [userPos.lat, userPos.lng];
+      const timeBadgeIcon = L.divIcon({
+        className: 'time-badge-wrapper',
+        html: `<div class="route-duration-badge">${Math.round(routeData.durationSec / 60)} min</div>`,
+        iconSize: [70, 30],
+        iconAnchor: [35, 15]
+      });
+      L.marker(midPoint, { icon: timeBadgeIcon }).addTo(routeLayers);
+
+      fitMapToPath(routeMap, routeData.coordinates);
+
+      // Update HUD
+      const minStr = Math.round(routeData.durationSec / 60) + ' min';
+      const distStr = formatDistance(routeData.distanceM);
+      document.getElementById('hud-eta-min').textContent = minStr;
+      document.getElementById('hud-eta-dist').textContent = distStr;
+      document.getElementById('hud-eta-clock').textContent = calculateETAClock(routeData.durationSec);
+
+      // Render step list
+      document.getElementById('directions-list').innerHTML = currentSteps.map((s, i) => `
+        <li style="display:flex; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); align-items:flex-start;">
+          <span style="width:26px; height:26px; border-radius:50%; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; flex-shrink:0;">${i + 1}</span>
+          <div>
+            <div style="font-weight:700; color:var(--text);">${escapeHtml(s.instruction)}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${formatDistance(s.distanceM)} · ${formatDuration(s.durationSec)}</div>
+          </div>
+        </li>
+      `).join('');
+    }
+
+    // 5. Navigation Controls
+    function startNavigation() {
+      isNavigating = true;
+      document.body.classList.add('nav-active-mode');
+
+      setupOrientationListener();
+
+      const firstStep = currentSteps[0] || { instruction: `Walk to ${selectedHaven.name}`, distanceM: 200 };
+      document.getElementById('hud-turn-icon').innerHTML = NAV_SVGS.straight;
+      document.getElementById('hud-turn-dist').textContent = `In ${formatDistance(firstStep.distanceM)}`;
+      document.getElementById('hud-turn-instruction').textContent = firstStep.instruction;
+
+      speakDirection(`Starting walking navigation to ${selectedHaven.name}. ${firstStep.instruction}`);
+
+      if (routeMap) {
+        routeMap.invalidateSize();
+        routeMap.setView([userPos.lat, userPos.lng], 18);
+      }
+
+      startGPSTracking();
+    }
+
+    function stopNavigation() {
+      isNavigating = false;
+      document.body.classList.remove('nav-active-mode');
+      if (watchId != null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (routeMap) {
+        routeMap.invalidateSize();
+        drawRoute(selectedHaven.id);
+      }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+
+    function recenterGPS() {
+      if (routeMap && userPos) {
+        routeMap.setView([userPos.lat, userPos.lng], 18);
+      }
+    }
+
+    function startGPSTracking() {
+      if (!navigator.geolocation || watchId != null) return;
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          if (userMarkerLayer) userMarkerLayer.setLatLng([userPos.lat, userPos.lng]);
+          if (isNavigating && routeMap) routeMap.panTo([userPos.lat, userPos.lng]);
+
+          if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+            updateVisionCone(pos.coords.heading);
+          }
+
+          const remainM = remainingToDestination(userPos.lat, userPos.lng, selectedHaven);
+          document.getElementById('hud-eta-dist').textContent = formatDistance(remainM);
+          document.getElementById('hud-eta-min').textContent = Math.round((remainM / 80)) + ' min';
+
+          if (remainM < 25) {
+            document.getElementById('hud-turn-instruction').textContent = `Arrived at ${selectedHaven.name}`;
+            speakDirection(`You have arrived at ${selectedHaven.name} safe evacuation haven.`);
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 8000 }
+      );
+    }
+
+    // Attach Haven Pickers
+    document.querySelectorAll('.route-pick').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const havenId = parseInt(btn.dataset.route, 10);
+        drawRoute(havenId);
+      });
+    });
+
+    document.getElementById('start-nav-btn').addEventListener('click', startNavigation);
+
+    document.getElementById('open-maps-btn').addEventListener('click', () => {
+      const url = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot&route=${userPos.lat}%2C${userPos.lng}%3B${selectedHaven.lat}%2C${selectedHaven.lng}`;
+      window.open(url, '_blank');
+    });
+
+    // Startup with GPS
+    getGeolocation()
+      .then(pos => {
+        userPos = { lat: pos.latitude, lng: pos.longitude };
+        drawRoute(1);
+      })
+      .catch(() => {
+        drawRoute(1);
+      });
+
+    window.addEventListener('resize', () => routeMap?.invalidateSize());
+  </script>
+</body>
+</html>

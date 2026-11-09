@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In or Register - GeoSafe | Barangay Bayanan Emergency Response</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col justify-between font-sans selection:bg-[#F5B900] selection:text-[#202020]">
+
+  <!-- Top Minimal Header -->
+  <header class="w-full py-4 px-4 sm:px-8 border-b border-[#EEEEEE] bg-white/80 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <a href="login.html" class="flex items-center gap-2.5 group focus:outline-none">
+        <div class="w-9 h-9 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-sm shadow-subtle ring-2 ring-[#FFE872]">
+          <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+        </div>
+        <div>
+          <span class="font-black text-base tracking-tight text-[#202020] block leading-none">GeoSafe</span>
+          <span class="text-[10px] text-[#777777] font-semibold tracking-wide uppercase block mt-0.5">Barangay Bayanan • Muntinlupa City</span>
+        </div>
+      </a>
+
+      <div class="flex items-center gap-2">
+        <button type="button" id="header-switch-register-btn" onclick="switchAuthTab('register')" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+          <span>Create Resident Account</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Centered Auth Card -->
+  <main class="flex-1 flex items-center justify-center p-4 sm:p-6 my-4">
+    <div class="w-full max-w-md bg-white rounded-3xl border border-[#EEEEEE] shadow-modal p-6 sm:p-8 space-y-6 relative overflow-hidden">
+      <!-- Top Accent Bar -->
+      <div class="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#F5B900] via-[#FFD54F] to-[#F5B900]"></div>
+
+      <!-- Brand & Title -->
+      <div class="text-center space-y-2 pt-1">
+        <div class="w-12 h-12 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto shadow-subtle">
+          <svg class="w-6 h-6 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+          </svg>
+        </div>
+        <h1 id="auth-card-title" class="text-xl sm:text-2xl font-black text-[#202020] tracking-tight">Sign In to GeoSafe</h1>
+        <p id="auth-card-subtitle" class="text-xs text-[#777777] leading-relaxed max-w-xs mx-auto">
+          Enter your registered email and password. Your portal is determined automatically by your verified account role.
+        </p>
+      </div>
+
+      <!-- Mode Switcher Tabs (Sign In vs Resident Registration) -->
+      <div class="grid grid-cols-2 gap-1.5 p-1 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE]">
+        <button type="button" id="tab-btn-login" onclick="switchAuthTab('login')" class="py-2 px-3 rounded-xl text-xs font-black transition-all bg-[#F5B900] text-[#202020] shadow-subtle">
+          Sign In
+        </button>
+        <button type="button" id="tab-btn-register" onclick="switchAuthTab('register')" class="py-2 px-3 rounded-xl text-xs font-bold transition-all text-[#777777] hover:text-[#202020]">
+          Resident Registration
+        </button>
+      </div>
+
+      <!-- Alert / Error Message Banner -->
+      <div id="login-error-banner" class="hidden p-3.5 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] text-xs font-semibold flex items-start gap-2.5" role="alert">
+        <svg class="w-4 h-4 text-[#D93636] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
+          <line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line>
+        </svg>
+        <span id="login-error-text" class="flex-1 leading-snug">Invalid email or password.</span>
+      </div>
+
+      <!-- Success Message Banner -->
+      <div id="login-success-banner" class="hidden p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[#278653] text-xs font-semibold flex items-start gap-2.5" role="status">
+        <svg class="w-4 h-4 text-[#278653] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <span id="login-success-text" class="flex-1 leading-snug">Authenticated! Redirecting to your portal...</span>
+      </div>
+
+      <!-- ================================================================== -->
+      <!-- 1. SIGN IN FORM (Zero Role Selector)                               -->
+      <!-- ================================================================== -->
+      <form id="login-form" class="space-y-4" novalidate>
+        <!-- Email Field -->
+        <div>
+          <label for="login-email" class="block text-xs font-bold text-[#202020] mb-1.5">Email Address</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-[#777777] pointer-events-none">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+            </span>
+            <input
+              type="email"
+              id="login-email"
+              name="email"
+              required
+              autocomplete="email"
+              placeholder="name@example.com"
+              class="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] placeholder-[#777777]/60 focus:outline-none focus:ring-2 focus:ring-[#F5B900] focus:border-transparent transition-all"
+            >
+          </div>
+          <p id="email-validation-msg" class="hidden text-[11px] text-[#D93636] font-medium mt-1">Please enter a valid email address.</p>
+        </div>
+
+        <!-- Password Field with Show/Hide Toggle -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="login-password" class="block text-xs font-bold text-[#202020]">Password</label>
+            <button type="button" id="forgot-password-btn" class="text-[11px] font-bold text-[#8A6800] hover:text-[#5C4500] focus:outline-none">
+              Forgot password?
+            </button>
+          </div>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-[#777777] pointer-events-none">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+              </svg>
+            </span>
+            <input
+              type="password"
+              id="login-password"
+              name="password"
+              required
+              autocomplete="current-password"
+              placeholder="Enter your password"
+              class="w-full pl-10 pr-10 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] placeholder-[#777777]/60 focus:outline-none focus:ring-2 focus:ring-[#F5B900] focus:border-transparent transition-all"
+            >
+            <button
+              type="button"
+              id="toggle-password-btn"
+              aria-label="Show password"
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#777777] hover:text-[#202020] focus:outline-none"
+            >
+              <svg id="eye-open-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+              <svg id="eye-closed-icon" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
+              </svg>
+            </button>
+          </div>
+          <p id="password-validation-msg" class="hidden text-[11px] text-[#D93636] font-medium mt-1">Please enter your password.</p>
+        </div>
+
+        <!-- Remember Me Checkbox -->
+        <div class="flex items-center justify-between pt-0.5">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-[#EEEEEE] text-[#F5B900] focus:ring-[#F5B900]">
+            <span class="text-xs font-medium text-[#777777]">Keep me signed in on this device</span>
+          </label>
+        </div>
+
+        <!-- Submit Button -->
+        <button
+          type="submit"
+          id="login-submit-btn"
+          class="w-full py-3 px-4 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] active:scale-[0.99] text-[#202020] font-black text-xs sm:text-sm shadow-subtle transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F5B900]"
+        >
+          <span id="login-btn-text">Sign In to GeoSafe</span>
+          <svg id="login-btn-arrow" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+          </svg>
+          <svg id="login-btn-spinner" class="hidden animate-spin w-4 h-4 text-[#202020]" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
+
+        <p class="text-center text-xs text-[#777777] pt-1">
+          New to Barangay Bayanan GeoSafe?
+          <button type="button" onclick="switchAuthTab('register')" class="font-bold text-[#8A6800] hover:underline ml-1">Create a Resident Account</button>
+        </p>
+      </form>
+
+      <!-- ================================================================== -->
+      <!-- 2. RESIDENT REGISTRATION FORM (Strictly Resident Role on Backend)  -->
+      <!-- ================================================================== -->
+      <form id="register-form" class="hidden space-y-3.5" novalidate>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="reg-first-name" class="block text-xs font-bold text-[#202020] mb-1">First Name <span class="text-[#D93636]">*</span></label>
+            <input
+              type="text"
+              id="reg-first-name"
+              required
+              autocomplete="given-name"
+              placeholder="Juan"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+            >
+          </div>
+          <div>
+            <label for="reg-last-name" class="block text-xs font-bold text-[#202020] mb-1">Last Name <span class="text-[#D93636]">*</span></label>
+            <input
+              type="text"
+              id="reg-last-name"
+              required
+              autocomplete="family-name"
+              placeholder="Dela Cruz"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label for="reg-email" class="block text-xs font-bold text-[#202020] mb-1">Email Address <span class="text-[#D93636]">*</span></label>
+          <input
+            type="email"
+            id="reg-email"
+            required
+            autocomplete="email"
+            placeholder="resident@example.com"
+            class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+          >
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="reg-phone" class="block text-xs font-bold text-[#202020] mb-1">Mobile Number</label>
+            <input
+              type="tel"
+              id="reg-phone"
+              autocomplete="tel"
+              placeholder="0917 000 0000"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+            >
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-[#202020] mb-1">Assigned Jurisdiction</label>
+            <input
+              type="text"
+              value="Barangay Bayanan, Muntinlupa"
+              readonly
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-slate-100 text-xs text-[#777777] cursor-not-allowed"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label for="reg-street" class="block text-xs font-bold text-[#202020] mb-1">House / Building No. &amp; Street</label>
+          <input
+            type="text"
+            id="reg-street"
+            autocomplete="street-address"
+            placeholder="e.g. #42 National Road, Purok 2"
+            class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+          >
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="reg-password" class="block text-xs font-bold text-[#202020] mb-1">Password (min 8 chars) <span class="text-[#D93636]">*</span></label>
+            <input
+              type="password"
+              id="reg-password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="At least 8 characters"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+            >
+          </div>
+          <div>
+            <label for="reg-confirm-password" class="block text-xs font-bold text-[#202020] mb-1">Confirm Password <span class="text-[#D93636]">*</span></label>
+            <input
+              type="password"
+              id="reg-confirm-password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="Re-enter password"
+              class="w-full px-3.5 py-2.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+            >
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          id="register-submit-btn"
+          class="w-full py-3 px-4 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] active:scale-[0.99] text-[#202020] font-black text-xs sm:text-sm shadow-subtle transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F5B900]"
+        >
+          <span id="register-btn-text">Create Resident Account</span>
+          <svg id="register-btn-spinner" class="hidden animate-spin w-4 h-4 text-[#202020]" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
+
+        <p class="text-center text-xs text-[#777777] pt-1">
+          Already have an account?
+          <button type="button" onclick="switchAuthTab('login')" class="font-bold text-[#8A6800] hover:underline ml-1">Sign In</button>
+        </p>
+      </form>
+
+      <!-- Security & Role Routing Notice -->
+      <div class="pt-4 border-t border-[#EEEEEE]">
+        <div class="p-3.5 rounded-2xl bg-[#FFFDF7] border border-[#EEEEEE] text-[11px] text-[#777777] space-y-1">
+          <div class="flex items-center gap-1.5 font-bold text-[#202020]">
+            <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+            </svg>
+            <span>Automatic Role-Based Routing</span>
+          </div>
+          <p class="leading-relaxed">
+            Public registration creates a verified <strong>Resident</strong> account. <strong>Responders</strong> and <strong>Administrators</strong> are provisioned exclusively by the Barangay Bayanan EOC.
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Minimal Footer -->
+  <footer class="py-4 px-4 text-center text-[11px] text-[#777777] border-t border-[#EEEEEE] bg-white/60">
+    <p>GeoSafe Disaster Preparedness &amp; Emergency Response System • Barangay Bayanan, Muntinlupa City</p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/login.js"></script>
+</body>
+</html>

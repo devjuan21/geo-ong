@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Safety Tracker - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Top Navigation Bar (Desktop & Tablet, plus Mobile Header) -->
+  <div id="geosafe-nav-container"></div>
+
+  <!-- Toast Notification Container (Fixed Viewport Center) -->
+  <div id="toast-container" class="fixed top-6 left-1/2 -translate-x-1/2 z-[80] pointer-events-none flex flex-col items-center gap-2 max-w-md w-full px-4"></div>
+
+  <!-- Main Content Wrapper -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-5xl mx-auto w-full space-y-4 pb-28 md:pb-12">
+
+    <!-- Loading State -->
+    <div id="family-loading-state" class="bg-white rounded-3xl border border-[#EEEEEE] p-8 text-center shadow-card">
+      <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      <p class="text-xs text-[#777777] font-medium">Loading family safety circle...</p>
+    </div>
+
+    <!-- EMPTY STATE: User does not belong to any family -->
+    <div id="no-family-state" class="hidden space-y-4">
+      <div class="bg-white rounded-3xl p-6 sm:p-8 border border-[#EEEEEE] shadow-card text-center max-w-xl mx-auto space-y-4">
+        <div class="w-12 h-12 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto shadow-subtle">
+          <svg class="w-6 h-6 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        </div>
+        <div>
+          <h3 class="text-base sm:text-lg font-black text-[#202020] tracking-tight">No Active Family Group</h3>
+          <p class="text-xs text-[#777777] mt-1 max-w-md mx-auto leading-relaxed">
+            Create or join a family circle to register your household address and coordinate during emergencies in Barangay Bayanan.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 max-w-md mx-auto">
+          <button onclick="openCreateFamilyModal()" class="w-full py-2.5 px-4 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle transition-all active:scale-95 flex items-center justify-center gap-2">
+            <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            <span>Create Family</span>
+          </button>
+          <button onclick="openJoinScannerModal()" class="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-[#FFF9E8] border border-[#EEEEEE] hover:border-[#FFE872] text-[#202020] font-bold text-xs shadow-subtle transition-all active:scale-95 flex items-center justify-center gap-2">
+            <svg class="w-4 h-4 text-[#8A6800]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+            <span>Join Family with QR</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVE FAMILY CONTAINER (Order: 1. Header, 2. Address, 3. Members, 4. Pending Requests) -->
+    <div id="active-family-container" class="hidden space-y-4">
+
+      <!-- ===================================================================== -->
+      <!-- 1. FAMILY HEADER                                                      -->
+      <!-- ===================================================================== -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center text-[#8A6800] flex-shrink-0 shadow-subtle">
+            <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 id="header-family-name" class="text-base sm:text-lg font-black text-[#202020] tracking-tight">—</h1>
+              <span id="header-member-count-badge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">
+                0 members
+              </span>
+            </div>
+            <span id="header-role-badge" class="text-[11px] text-[#777777] font-medium block mt-0.5">Family Group</span>
+          </div>
+        </div>
+
+        <!-- Header Actions: Generate QR, Scan QR, Leave -->
+        <div id="header-action-buttons" class="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          <!-- Injected dynamically via family.js -->
+        </div>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- 2. FAMILY ADDRESS                                                     -->
+      <!-- ===================================================================== -->
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card space-y-3">
+        <div class="flex items-center justify-between border-b border-[#EEEEEE] pb-2.5">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-xl bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center text-[#8A6800] flex-shrink-0">
+              <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </div>
+            <h2 class="text-sm font-bold text-[#202020]">Family Address</h2>
+          </div>
+
+          <div id="address-header-actions">
+            <!-- Edit / Toggle Button injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Read-Only Saved Address Card View -->
+        <div id="address-display-view" class="space-y-2 text-xs">
+          <div class="p-3.5 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] space-y-1.5">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <p id="addr-display-line1" class="font-bold text-sm text-[#202020]">No family address registered yet.</p>
+                <p id="addr-display-line2" class="text-[#777777] text-xs mt-0.5">Add your household address to help responders locate your family during emergencies.</p>
+              </div>
+              <span id="addr-status-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex-shrink-0">
+                Not Set
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compact Address Edit Form (Hidden by default when address is saved) -->
+        <form id="address-edit-form" onsubmit="handleSaveAddress(event)" class="hidden space-y-3 text-xs pt-1">
+          <!-- Small Non-Editable Fixed Location Badge -->
+          <div class="p-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-2xl flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <div class="w-6 h-6 rounded-lg bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center flex-shrink-0 text-[#8A6800]">
+                <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              </div>
+              <div class="truncate">
+                <span class="text-[9px] uppercase font-bold text-[#777777] block tracking-wider leading-none">Fixed Location Coverage</span>
+                <span class="font-bold text-xs text-[#202020] truncate block mt-0.5">Barangay Bayanan, Muntinlupa City, Metro Manila, Philippines</span>
+              </div>
+            </div>
+            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white border border-[#EEEEEE] text-[#777777] flex-shrink-0">
+              Fixed
+            </span>
+          </div>
+
+          <!-- 2 Resident Input Fields (2-Column Grid on desktop, stacked on mobile) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- 1. House / Building Number -->
+            <div>
+              <label for="addr-house-number" class="block font-bold text-[#202020] mb-1">
+                House / Building Number <span class="text-[#D93636]">*</span>
+              </label>
+              <input type="text" id="addr-house-number" required placeholder="e.g. #42, Block 5 Lot 12, Unit 2B" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] bg-white">
+            </div>
+
+            <!-- 2. Street Name -->
+            <div>
+              <label for="addr-street" class="block font-bold text-[#202020] mb-1">
+                Street Name <span class="text-[#D93636]">*</span>
+              </label>
+              <input type="text" id="addr-street" required list="street-suggestions" placeholder="e.g. Bautista St, Montillano St, Purok 3" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] bg-white">
+              <datalist id="street-suggestions">
+                <option value="National Road"></option>
+                <option value="Bautista St"></option>
+                <option value="Montillano St"></option>
+                <option value="Rizal St"></option>
+                <option value="Arandia St"></option>
+                <option value="Purok 1"></option>
+                <option value="Purok 2"></option>
+                <option value="Purok 3"></option>
+                <option value="Purok 4"></option>
+                <option value="Purok 5"></option>
+                <option value="Purok 6"></option>
+                <option value="Purok 7"></option>
+              </datalist>
+            </div>
+          </div>
+
+          <!-- Form Buttons -->
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+            <button type="button" id="btn-cancel-address" onclick="cancelAddressEdit()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8] transition-colors">
+              Cancel
+            </button>
+            <button type="submit" id="btn-save-address" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle active:scale-95 transition-all">
+              Save Address
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- 3. FAMILY MEMBERS                                                     -->
+      <!-- ===================================================================== -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-[#202020]">Household Members</h2>
+            <span id="members-count-badge" class="text-xs font-bold text-[#8A6800] bg-white border border-[#FFE872] px-2.5 py-0.5 rounded-full">
+              0 members
+            </span>
+          </div>
+          <span class="text-[11px] text-[#777777]">Supports 3+ members</span>
+        </div>
+
+        <!-- Member Cards Grid -->
+        <div id="family-cards-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <!-- Injected dynamically via family.js -->
+        </div>
+
+        <!-- Single Member Guidance State -->
+        <div id="family-single-member-state" class="hidden p-4 sm:p-5 bg-white rounded-3xl border border-[#EEEEEE] text-center shadow-card max-w-md mx-auto space-y-2">
+          <p class="text-xs text-[#777777] leading-relaxed">
+            You are currently the only member in this family group. Generate a Family QR code to invite household members.
+          </p>
+          <button onclick="openGenerateQRModal()" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle transition-all active:scale-95">
+            <svg class="w-3.5 h-3.5 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+            <span>Generate Family QR</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================================================================== -->
+      <!-- 4. PENDING REQUESTS                                                   -->
+      <!-- ===================================================================== -->
+      <div id="section-pending-requests" class="hidden space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-[#202020]">Pending Requests</h2>
+            <span id="pending-requests-count-badge" class="text-xs font-bold text-[#D93636] bg-[#FFF1F1] border border-[#FFC2C2] px-2.5 py-0.5 rounded-full">
+              0 pending
+            </span>
+          </div>
+          <span class="text-[11px] text-[#777777]">Manager review required</span>
+        </div>
+
+        <div id="pending-requests-list" class="space-y-2.5">
+          <!-- Injected dynamically via family.js -->
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: Generate / View Family QR Modal                                    -->
+  <!-- ========================================================================= -->
+  <div id="qr-display-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE] space-y-3.5">
+      <div class="flex items-center justify-between pb-2 border-b border-[#EEEEEE]">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-xl bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center text-[#8A6800]">
+            <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-[#202020]">Family QR Invitation</h3>
+            <p id="qr-modal-family-name" class="text-[10px] text-[#777777] font-semibold">—</p>
+          </div>
+        </div>
+        <button onclick="closeGenerateQRModal()" class="p-1 rounded-lg text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <!-- Scannable QR SVG Container -->
+      <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] text-center shadow-inner">
+        <div id="qr-modal-canvas-container" class="w-44 h-44 mx-auto flex items-center justify-center">
+          <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <p class="text-[10px] text-[#777777] mt-1.5">Scan with camera or phone to request joining</p>
+      </div>
+
+      <!-- Expiration Notice -->
+      <div class="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700">
+        <span class="font-medium">Expires:</span>
+        <span id="qr-modal-expires-text" class="font-bold text-[#202020]">—</span>
+      </div>
+
+      <!-- Copy Link Field -->
+      <div class="space-y-1">
+        <label class="block text-[10px] font-bold text-[#777777] uppercase">Invitation Link</label>
+        <div class="flex items-center gap-1.5">
+          <input type="text" id="qr-modal-link-input" readonly class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-[#EEEEEE] rounded-xl text-[#202020] focus:outline-none select-all truncate">
+          <button onclick="copyInvitationLink()" class="px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs flex-shrink-0 shadow-subtle active:scale-95">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Action Buttons -->
+      <div class="flex items-center justify-between gap-2 pt-2 border-t border-[#EEEEEE]">
+        <button onclick="revokeActiveInvitation()" class="px-3 py-1.5 rounded-xl border border-[#FFC2C2] text-[#D93636] hover:bg-[#FFF1F1] font-bold text-xs transition-colors">
+          Revoke
+        </button>
+        <button onclick="regenerateActiveInvitation()" class="px-3 py-1.5 rounded-xl bg-white border border-[#FFE872] hover:bg-[#FFF9E8] text-[#8A6800] font-bold text-xs transition-colors">
+          Regenerate QR
+        </button>
+        <button onclick="closeGenerateQRModal()" class="px-3.5 py-1.5 rounded-xl bg-[#202020] text-white font-bold text-xs hover:bg-black transition-colors">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: Join Family / Enter Invitation Token Modal                         -->
+  <!-- ========================================================================= -->
+  <div id="qr-scanner-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE] space-y-3.5">
+      <div class="flex items-center justify-between pb-2 border-b border-[#EEEEEE]">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-xl bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center text-[#8A6800]">
+            <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+          </div>
+          <h3 class="text-sm font-bold text-[#202020]">Join Family Circle</h3>
+        </div>
+        <button onclick="closeJoinScannerModal()" class="p-1 rounded-lg text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <p class="text-[#777777]">
+          Paste the QR invitation link or token provided by your family manager:
+        </p>
+
+        <div>
+          <label for="scanner-token-input" class="block font-bold text-[#202020] mb-1">
+            Invitation Token or URL <span class="text-[#D93636]">*</span>
+          </label>
+          <input type="text" id="scanner-token-input" placeholder="Paste link or token here..." class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+        </div>
+
+        <div>
+          <label for="scanner-rel-input" class="block font-bold text-[#202020] mb-1">
+            Your Relationship <span class="text-[#777777] font-normal">(optional)</span>
+          </label>
+          <select id="scanner-rel-input" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] bg-white">
+            <option value="Spouse">Spouse</option>
+            <option value="Child / Dependent">Child / Dependent</option>
+            <option value="Parent (Senior)">Parent (Senior Citizen)</option>
+            <option value="Sibling">Sibling</option>
+            <option value="Other Relative" selected>Other Relative</option>
+          </select>
+        </div>
+
+        <div id="scanner-validation-status" class="hidden p-2.5 rounded-xl text-xs"></div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+        <button type="button" onclick="closeJoinScannerModal()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+          Cancel
+        </button>
+        <button type="button" id="btn-validate-and-join" onclick="handleValidateAndJoin()" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle active:scale-95">
+          Verify & Join
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: Join Confirmation Screen                                           -->
+  <!-- ========================================================================= -->
+  <div id="join-confirmation-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE] space-y-3.5">
+      <div class="text-center space-y-1.5">
+        <div class="w-10 h-10 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto shadow-subtle">
+          <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        </div>
+        <h3 class="text-sm font-black text-[#202020] tracking-tight">Request to Join Family</h3>
+      </div>
+
+      <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] space-y-1.5 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="text-[#777777]">Family Group:</span>
+          <strong id="confirm-family-name" class="text-[#202020]">—</strong>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[#777777]">Invited By:</span>
+          <strong id="confirm-inviter-name" class="text-[#202020]">—</strong>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[#777777]">Your Account:</span>
+          <strong id="confirm-my-name" class="text-[#202020]">—</strong>
+        </div>
+      </div>
+
+      <p class="text-[10px] text-[#777777] text-center">
+        Your request will be sent to the family manager for approval.
+      </p>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+        <button onclick="closeJoinConfirmModal()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+          Cancel
+        </button>
+        <button id="btn-submit-confirmed-join" onclick="submitConfirmedJoinRequest()" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle active:scale-95">
+          Request to Join
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: Create Family Group Modal                                          -->
+  <!-- ========================================================================= -->
+  <div id="create-family-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-5 shadow-modal border border-[#EEEEEE] space-y-3.5">
+      <div class="flex items-center justify-between pb-2 border-b border-[#EEEEEE]">
+        <h3 class="text-sm font-bold text-[#202020]">Create Family Group</h3>
+        <button onclick="closeCreateFamilyModal()" class="p-1 rounded-lg text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <form id="create-family-form" onsubmit="handleCreateFamily(event)" class="space-y-3 text-xs">
+        <div>
+          <label for="create-family-name" class="block font-bold text-[#202020] mb-1">
+            Family Name <span class="text-[#D93636]">*</span>
+          </label>
+          <input type="text" id="create-family-name" required placeholder="e.g. Dela Cruz Household" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+        </div>
+
+        <div>
+          <label for="create-family-role" class="block font-bold text-[#202020] mb-1">
+            Your Household Role <span class="text-[#D93636]">*</span>
+          </label>
+          <select id="create-family-role" required class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] bg-white">
+            <option value="Head of Household" selected>Head of Household</option>
+            <option value="Parent">Parent</option>
+            <option value="Guardian">Guardian</option>
+            <option value="Family Coordinator">Family Coordinator</option>
+          </select>
+        </div>
+
+        <!-- Fixed Location Coverage Badge -->
+        <div class="p-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-xl flex items-center justify-between gap-2">
+          <div class="truncate">
+            <span class="text-[9px] uppercase font-bold text-[#777777] block tracking-wider leading-none">Fixed Location Coverage</span>
+            <span class="font-bold text-[11px] text-[#202020] truncate block mt-0.5">Barangay Bayanan, Muntinlupa City, Metro Manila, Philippines</span>
+          </div>
+          <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white border border-[#EEEEEE] text-[#777777] flex-shrink-0">
+            Fixed
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label for="create-house-number" class="block font-bold text-[#202020] mb-1">
+              House / Building Number <span class="text-[#D93636]">*</span>
+            </label>
+            <input type="text" id="create-house-number" required maxlength="50" placeholder="e.g. #42, Blk 5 Lot 12" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+          </div>
+
+          <div>
+            <label for="create-street" class="block font-bold text-[#202020] mb-1">
+              Street Name <span class="text-[#D93636]">*</span>
+            </label>
+            <input type="text" id="create-street" required maxlength="150" list="street-suggestions" placeholder="e.g. Bautista St, Purok 3" class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+          </div>
+        </div>
+
+        <div class="p-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-xl text-[10px] text-[#777777]">
+          As creator, you will receive manager permissions to manage the household address, generate QR invitations, and approve member requests.
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+          <button type="button" onclick="closeCreateFamilyModal()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-create-family" class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle active:scale-95">
+            Create Family
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Pure JS Offline QR Code Library -->
+  <script src="./assets/js/qrcode.min.js"></script>
+  <!-- Store, Components & Revised Family Logic (NO Leaflet) -->
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/family.js"></script>
+</body>
+</html>

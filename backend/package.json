@@ -1,0 +1,26 @@
+{
+  "name": "geosafe-backend",
+  "version": "1.0.0",
+  "description": "GeoSafe disaster reporting API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "create-admin": "node scripts/create-admin.js",
+    "seed": "node scripts/seed.js",
+    "test": "node scripts/test-iso25010.js",
+    "verify-auth": "node scripts/verify-auth.js",
+    "verify-ui": "node scripts/ui-verification/verify-all.js",
+    "verify-reorganization": "node scripts/verify-reorganization.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.0",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "socket.io": "^4.7.5"
+  }
+}

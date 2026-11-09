@@ -1,5 +1,21 @@
+# Dependencies
 node_modules/
-package-lock.json
+**/node_modules/
+
+# Environment variables & secrets (Never commit credentials)
+.env
+**/.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Uploads & temporary media
+frontend/assets/uploads/incidents/*
+!frontend/assets/uploads/incidents/.gitkeep
+
+# OS metadata
 .DS_Store
 Thumbs.db
-

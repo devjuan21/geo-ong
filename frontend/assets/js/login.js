@@ -127,28 +127,33 @@ function setupForgotPasswordHandler() {
   if (!forgotBtn) return;
 
   forgotBtn.addEventListener('click', () => {
-    showErrorBanner(
-      'For password resets or credential recovery, please contact the Barangay Bayanan Emergency Operations Center (EOC) administrator.'
+    showToastNotification(
+      'For password resets or credential recovery, please contact the Barangay Bayanan Emergency Operations Center (EOC) administrator.',
+      'info'
     );
   });
 }
 
-function showErrorBanner(message) {
-  const errorBanner = document.getElementById('login-error-banner');
-  const errorText = document.getElementById('login-error-text');
-  const successBanner = document.getElementById('login-success-banner');
+/**
+ * Universal Floating Toast Notification Helper for Auth Pages
+ */
+function showToastNotification(message, type = 'error') {
+  if (window.GeoSafeToast && typeof window.GeoSafeToast.show === 'function') {
+    return window.GeoSafeToast.show({ message, type, duration: 3500 });
+  } else if (window.GeoSafeUI && typeof window.GeoSafeUI.showToast === 'function') {
+    return window.GeoSafeUI.showToast(message, type, 3500);
+  }
+}
 
-  if (successBanner) successBanner.classList.add('hidden');
-  if (errorText) errorText.textContent = message;
-  if (errorBanner) errorBanner.classList.remove('hidden');
+function showErrorBanner(message) {
+  showToastNotification(message, 'error');
 }
 
 function showSuccessBanner(message) {
-  const errorBanner = document.getElementById('login-error-banner');
+  showToastNotification(message, 'success');
   const successBanner = document.getElementById('login-success-banner');
   const successText = document.getElementById('login-success-text');
 
-  if (errorBanner) errorBanner.classList.add('hidden');
   if (successText) successText.textContent = message;
   if (successBanner) successBanner.classList.remove('hidden');
 }
@@ -268,7 +273,20 @@ function setupLoginForm() {
       }, 350);
     } catch (err) {
       setSubmittingState(false);
-      showErrorBanner(err.message || 'Authentication failed. Please check your email and password.');
+      let errorMsg = 'Invalid email or password.';
+      if (err && (err.status === 401 || err.statusCode === 401)) {
+        errorMsg = 'Invalid email or password.';
+      } else if (err && err.isOffline) {
+        errorMsg = 'No internet connection. Please check your connection and try again.';
+      } else if (err && err.message) {
+        const msg = String(err.message).trim();
+        if (/invalid.*(email|password|credential)/i.test(msg) || /authentication failed/i.test(msg) || /unauthorized/i.test(msg)) {
+          errorMsg = 'Invalid email or password.';
+        } else {
+          errorMsg = msg.endsWith('.') ? msg : `${msg}.`;
+        }
+      }
+      showToastNotification(errorMsg, 'error');
     }
   });
 }
@@ -290,19 +308,19 @@ function setupRegisterForm() {
     const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
 
     if (!firstName || !lastName) {
-      showErrorBanner('Please enter both your first name and last name.');
+      showToastNotification('Please enter both your first name and last name.', 'warning');
       return;
     }
     if (!email || !isValidEmail(email)) {
-      showErrorBanner('Please enter a valid email address.');
+      showToastNotification('Please enter a valid email address.', 'warning');
       return;
     }
     if (!password || password.length < 8) {
-      showErrorBanner('Password must be at least 8 characters long.');
+      showToastNotification('Password must be at least 8 characters long.', 'warning');
       return;
     }
     if (password !== confirmPassword) {
-      showErrorBanner('Passwords do not match. Please verify your password confirmation.');
+      showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
 
@@ -328,10 +346,10 @@ function setupRegisterForm() {
       if (loginEmailInput) loginEmailInput.value = email;
       if (loginPassInput) loginPassInput.focus();
 
-      showSuccessBanner('Resident account created in MySQL! Please sign in with your password below.');
+      showSuccessBanner('Account successfully created. Please sign in with your password below.');
     } catch (err) {
       setRegisterSubmittingState(false);
-      showErrorBanner(err.message || 'Registration failed. Please try again.');
+      showToastNotification(err.message || 'Failed to create account. Please try again.', 'error');
     }
   });
 }

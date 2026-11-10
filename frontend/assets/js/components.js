@@ -437,13 +437,17 @@ const GeoSafeUI = {
    * Setup toast container
    */
   setupToastContainer() {
+    if (typeof window !== 'undefined' && window.GeoSafeToast) {
+      return document.getElementById('geosafe-toast-container');
+    }
     let container = document.getElementById('geosafe-toast-container');
     if (!container) {
       container = document.createElement('div');
       container.id = 'geosafe-toast-container';
       container.setAttribute('aria-live', 'polite');
-      container.setAttribute('role', 'status');
-      container.className = 'fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none w-[calc(100%-2rem)] max-w-md px-2';
+      container.setAttribute('role', 'region');
+      container.setAttribute('aria-label', 'Notifications');
+      container.className = 'fixed top-4 inset-x-4 sm:inset-x-auto sm:top-6 sm:right-6 z-[100] pointer-events-none flex flex-col gap-2.5 items-center sm:items-end w-auto max-w-[calc(100%-2rem)] sm:max-w-sm sm:w-full';
       document.body.appendChild(container);
     }
     return container;
@@ -455,43 +459,63 @@ const GeoSafeUI = {
    * @param {string} type - 'success' | 'error' | 'warning' | 'info'
    * @param {number} duration - Auto close duration ms
    */
-  showToast(message, type = 'info', duration = 4000) {
+  showToast(message, type = 'info', duration = 3500) {
+    if (typeof window !== 'undefined' && window.GeoSafeToast) {
+      return window.GeoSafeToast.show({ message, type, duration });
+    }
     const container = this.setupToastContainer();
+    if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = 'pointer-events-auto w-full transform transition-all duration-300 ease-out translate-y-3 opacity-0 px-4 py-3 rounded-2xl shadow-lg text-xs font-semibold flex items-center gap-3 border backdrop-blur-md';
+    toast.className = 'pointer-events-auto w-full transform transition-all duration-300 ease-out opacity-0 -translate-y-3 sm:translate-y-0 sm:translate-x-6 scale-95 p-3.5 sm:p-4 rounded-2xl shadow-modal text-xs font-semibold flex items-start gap-3 border backdrop-blur-md';
 
     if (type === 'success') {
-      toast.classList.add('bg-emerald-900/95', 'text-white', 'border-emerald-600/50', 'shadow-emerald-950/30');
+      toast.classList.add('bg-[#F0FDF4]', 'text-[#202020]', 'border-[#BBF7D0]');
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center flex-shrink-0">
-          ${this.getIcon('check', 'w-3.5 h-3.5')}
+        <div class="w-6 h-6 rounded-xl bg-[#DCFCE7] text-[#278653] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+          ${this.getIcon('check', 'w-3.5 h-3.5 text-[#278653]')}
         </div>
-        <span class="flex-1 text-xs leading-snug break-words">${message}</span>
+        <div class="flex-1 min-w-0 pt-0.5">
+          <p class="leading-snug break-words text-[#202020]">${message}</p>
+        </div>
       `;
     } else if (type === 'error') {
-      toast.classList.add('bg-rose-900/95', 'text-white', 'border-rose-600/50', 'shadow-rose-950/30');
+      toast.classList.add('bg-[#FFF1F1]', 'text-[#202020]', 'border-[#FFC2C2]');
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
       toast.innerHTML = `
-        <div class="w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 flex items-center justify-center flex-shrink-0">
-          ${this.getIcon('alert-triangle', 'w-3.5 h-3.5')}
+        <div class="w-6 h-6 rounded-xl bg-[#FFE0E0] text-[#D93636] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+          <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line></svg>
         </div>
-        <span class="flex-1 text-xs leading-snug break-words">${message}</span>
+        <div class="flex-1 min-w-0 pt-0.5">
+          <p class="leading-snug break-words text-[#202020]">${message}</p>
+        </div>
       `;
     } else if (type === 'warning') {
-      toast.classList.add('bg-amber-900/95', 'text-white', 'border-amber-600/50', 'shadow-amber-950/30');
+      toast.classList.add('bg-[#FFFDF0]', 'text-[#202020]', 'border-[#FFE872]');
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center flex-shrink-0">
-          ${this.getIcon('alert-triangle', 'w-3.5 h-3.5')}
+        <div class="w-6 h-6 rounded-xl bg-[#FFF3D0] text-[#8A6800] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+          ${this.getIcon('alert-triangle', 'w-3.5 h-3.5 text-[#8A6800]')}
         </div>
-        <span class="flex-1 text-xs leading-snug break-words">${message}</span>
+        <div class="flex-1 min-w-0 pt-0.5">
+          <p class="leading-snug break-words text-[#202020]">${message}</p>
+        </div>
       `;
     } else {
-      toast.classList.add('bg-slate-900/95', 'text-white', 'border-slate-600/50', 'shadow-slate-950/30');
+      toast.classList.add('bg-[#F8FAFC]', 'text-[#202020]', 'border-[#E2E8F0]');
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-5 h-5 rounded-full bg-slate-500/20 text-slate-300 flex items-center justify-center flex-shrink-0">
-          ${this.getIcon('info', 'w-3.5 h-3.5')}
+        <div class="w-6 h-6 rounded-xl bg-[#E2E8F0] text-[#475569] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+          ${this.getIcon('info', 'w-3.5 h-3.5 text-[#202020]')}
         </div>
-        <span class="flex-1 text-xs leading-snug break-words">${message}</span>
+        <div class="flex-1 min-w-0 pt-0.5">
+          <p class="leading-snug break-words text-[#202020]">${message}</p>
+        </div>
       `;
     }
 
@@ -499,12 +523,14 @@ const GeoSafeUI = {
 
     const triggerAnimate = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
     triggerAnimate(() => {
-      toast.classList.remove('translate-y-3', 'opacity-0');
+      toast.classList.remove('opacity-0', '-translate-y-3', 'sm:translate-x-6', 'scale-95');
+      toast.classList.add('opacity-100', 'translate-y-0', 'sm:translate-x-0', 'scale-100');
     });
 
     setTimeout(() => {
-      toast.classList.add('opacity-0', 'translate-y-3');
-      setTimeout(() => toast.remove(), 300);
+      toast.classList.remove('opacity-100', 'translate-y-0', 'sm:translate-x-0', 'scale-100');
+      toast.classList.add('opacity-0', '-translate-y-2', 'sm:translate-x-6', 'scale-95');
+      setTimeout(() => toast.remove(), 250);
     }, duration);
   },
 

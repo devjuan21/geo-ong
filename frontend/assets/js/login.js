@@ -151,16 +151,10 @@ function showErrorBanner(message) {
 
 function showSuccessBanner(message) {
   showToastNotification(message, 'success');
-  const successBanner = document.getElementById('login-success-banner');
-  const successText = document.getElementById('login-success-text');
-
-  if (successText) successText.textContent = message;
-  if (successBanner) successBanner.classList.remove('hidden');
 }
 
 function hideErrorBanner() {
-  const errorBanner = document.getElementById('login-error-banner');
-  if (errorBanner) errorBanner.classList.add('hidden');
+  // Toast notifications manage their own auto-dismiss and lifecycle
 }
 
 function setSubmittingState(isSubmitting) {
@@ -213,45 +207,33 @@ function setupLoginForm() {
   const emailInput = document.getElementById('login-email');
   const passwordInput = document.getElementById('login-password');
   const rememberInput = document.getElementById('login-remember');
-  const emailMsg = document.getElementById('email-validation-msg');
-  const passwordMsg = document.getElementById('password-validation-msg');
 
   if (!form || !emailInput || !passwordInput) return;
 
-  emailInput.addEventListener('input', () => {
-    emailMsg?.classList.add('hidden');
-    hideErrorBanner();
-  });
-
-  passwordInput.addEventListener('input', () => {
-    passwordMsg?.classList.add('hidden');
-    hideErrorBanner();
-  });
-
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    hideErrorBanner();
 
     const email = emailInput.value.trim();
     const password = passwordInput.value;
     const rememberMe = Boolean(rememberInput && rememberInput.checked);
 
-    let hasValidationError = false;
-    if (!email || !isValidEmail(email)) {
-      emailMsg?.classList.remove('hidden');
-      hasValidationError = true;
-    } else {
-      emailMsg?.classList.add('hidden');
+    if (!email) {
+      showToastNotification('Please enter your email address.', 'warning');
+      emailInput.focus();
+      return;
     }
 
-    if (!password || password.length < 1) {
-      passwordMsg?.classList.remove('hidden');
-      hasValidationError = true;
-    } else {
-      passwordMsg?.classList.add('hidden');
+    if (!isValidEmail(email)) {
+      showToastNotification('Please enter a valid email address.', 'warning');
+      emailInput.focus();
+      return;
     }
 
-    if (hasValidationError) return;
+    if (!password) {
+      showToastNotification('Please enter your password.', 'warning');
+      passwordInput.focus();
+      return;
+    }
 
     setSubmittingState(true);
 

@@ -209,6 +209,11 @@
   }
 
   function showBannerMessage(message, type = 'success') {
+    // Route admin notifications through the shared floating toast system when available.
+    if (window.GeoSafeToast && typeof window.GeoSafeToast.show === 'function') {
+      const toastType = ['success', 'error', 'info', 'warning'].includes(type) ? type : 'info';
+      return window.GeoSafeToast.show({ message, type: toastType });
+    }
     const banner = document.getElementById('admin-toast-banner');
     const textEl = document.getElementById('admin-toast-text');
     if (!banner || !textEl) return;
@@ -905,7 +910,7 @@
       document.getElementById('modal-reporter-name').textContent = rep.name || 'Anonymous Resident';
       const repIdEl = document.getElementById('modal-reporter-id');
       if (repIdEl) {
-        repIdEl.textContent = rep.userId || (rep.id ? `USR-${String(rep.id).padStart(5, '0')}` : 'USR-00000');
+        repIdEl.textContent = rep.userCode || rep.userId || (rep.id ? `RSDNT-${String(rep.id).padStart(4, '0')}` : '—');
       }
       document.getElementById('modal-reporter-phone').textContent = rep.phone || 'Not provided';
       document.getElementById('modal-reporter-email').textContent = rep.email || 'Not provided';
@@ -1397,7 +1402,7 @@
       tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
       const userRole = u.role || u.roleName || 'Resident';
       const roleUnit = u.badgeNumber ? `${userRole} (${u.badgeNumber})` : userRole;
-      const displayId = u.userId || u.userCode || `USR-${String(u.id).padStart(5, '0')}`;
+      const displayId = u.userCode || u.userId || u.user_code || (u.id ? `USR-${String(u.id).padStart(5, '0')}` : '—');
 
       tr.innerHTML = `
         <td class="px-4 py-3 text-xs font-mono font-bold text-[#202020] whitespace-nowrap">
@@ -1435,7 +1440,7 @@
     if (!modal) return;
 
     const idEl = document.getElementById('user-modal-id');
-    if (idEl) idEl.textContent = userCode || `USR-${String(id).padStart(5, '0')}`;
+    if (idEl) idEl.textContent = userCode || (id ? `USR-${id}` : '—');
     document.getElementById('user-modal-name').textContent = name;
     document.getElementById('user-modal-email').textContent = email;
     document.getElementById('user-modal-current-status').innerHTML = getAccountStatusBadgeHtml(currentStatus);
@@ -2157,6 +2162,87 @@
         }
       });
     }
+
+    bindDropdownListeners();
+  }
+
+  /**
+   * Admin Profile Dropdown & Modal Controls
+   */
+  function toggleProfileDropdown(event) {
+    if (event) {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+    const dropdown = document.getElementById('admin-profile-dropdown');
+    const chevron = document.getElementById('admin-profile-chevron');
+    const btn = document.getElementById('admin-profile-menu-btn');
+    if (!dropdown) return;
+
+    const isHidden = dropdown.classList.contains('hidden');
+    if (isHidden) {
+      closeAllDropdowns();
+      dropdown.classList.remove('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      if (chevron) chevron.classList.add('rotate-180');
+    } else {
+      closeProfileDropdown();
+    }
+  }
+
+  function closeProfileDropdown() {
+    const dropdown = document.getElementById('admin-profile-dropdown');
+    const chevron = document.getElementById('admin-profile-chevron');
+    const btn = document.getElementById('admin-profile-menu-btn');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+      dropdown.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      if (chevron) chevron.classList.remove('rotate-180');
+    }
+  }
+
+  function closeAllDropdowns() {
+    document.querySelectorAll('[id$="-profile-dropdown"]').forEach(dd => {
+      dd.classList.add('hidden');
+    });
+    document.querySelectorAll('[id$="-profile-chevron"]').forEach(ch => {
+      ch.classList.remove('rotate-180');
+    });
+    document.querySelectorAll('[id$="-profile-menu-btn"]').forEach(btn => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function openAdminProfileModal() {
+    closeProfileDropdown();
+    const modal = document.getElementById('admin-profile-modal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closeAdminProfileModal() {
+    const modal = document.getElementById('admin-profile-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function bindDropdownListeners() {
+    if (state._dropdownListenersBound) return;
+    state._dropdownListenersBound = true;
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('admin-header-profile-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+          closeProfileDropdown();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          closeProfileDropdown();
+          closeAdminProfileModal();
+        }
+      });
+    }
   }
 
   async function initAdminPortal() {
@@ -2196,12 +2282,50 @@
       }
 
       state.adminUser = check.user;
+      const adminDisplayName = check.user.name || check.user.email || 'Administrator';
+      const adminRoleName = check.user.role || 'Administrator';
+      const adminUserCode = check.user.userCode || check.user.user_code || 'ADM-0001';
+      const adminEmail = check.user.email || 'admin@geosafe.org';
+
       if (headerName && check.user) {
-        headerName.textContent = check.user.name || check.user.email || 'Administrator';
+        headerName.textContent = adminDisplayName;
       }
+      const headerMobileName = document.getElementById('admin-header-name-mobile');
+      if (headerMobileName) headerMobileName.textContent = adminDisplayName;
+
+      const headerRole = document.getElementById('admin-header-role');
+      if (headerRole) headerRole.textContent = adminRoleName;
+      const headerMobileRole = document.getElementById('admin-header-role-mobile');
+      if (headerMobileRole) headerMobileRole.textContent = adminRoleName;
+
+      const headerAvatar = document.getElementById('admin-header-avatar');
+      if (headerAvatar) {
+        const initials = (adminDisplayName[0] || 'A').toUpperCase();
+        headerAvatar.textContent = initials;
+      }
+
       const sidebarName = document.getElementById('admin-sidebar-name');
       if (sidebarName && check.user) {
-        sidebarName.textContent = check.user.name || check.user.email || 'Administrator';
+        sidebarName.textContent = adminDisplayName;
+      }
+      const sidebarUserId = document.getElementById('admin-sidebar-user-id');
+      if (sidebarUserId && check.user) {
+        sidebarUserId.textContent = adminUserCode;
+      }
+
+      // Populate Admin Profile Modal fields
+      const modalName = document.getElementById('admin-modal-name');
+      if (modalName) modalName.textContent = adminDisplayName;
+      const modalEmail = document.getElementById('admin-modal-email');
+      if (modalEmail) modalEmail.textContent = adminEmail;
+      const modalUserId = document.getElementById('admin-modal-user-id');
+      if (modalUserId) modalUserId.textContent = adminUserCode;
+      const modalRole = document.getElementById('admin-modal-role');
+      if (modalRole) modalRole.textContent = adminRoleName;
+      const modalAvatar = document.getElementById('admin-modal-avatar');
+      if (modalAvatar) {
+        const initials = (adminDisplayName[0] || 'A').toUpperCase();
+        modalAvatar.textContent = initials;
       }
 
       if (shellEl) shellEl.classList.remove('hidden');
@@ -2228,6 +2352,10 @@
     closeMobileDrawer,
     toggleMobileDrawer,
     toggleDesktopSidebar,
+    toggleProfileDropdown,
+    closeProfileDropdown,
+    openAdminProfileModal,
+    closeAdminProfileModal,
     switchAdminSection,
     loadDashboardOverview,
     closeMapMarkerPanel,

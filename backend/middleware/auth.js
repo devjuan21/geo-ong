@@ -92,7 +92,7 @@ async function verifyRequestSession(req) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status
+      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.id = ?
@@ -119,6 +119,8 @@ async function verifyRequestSession(req) {
       ok: true,
       user: {
         id: user.id,
+        user_code: user.user_code,
+        userCode: user.user_code,
         name: user.name,
         email: user.email,
         role_id: user.role_id,

@@ -112,6 +112,7 @@ const GeoSafeUI = {
     this.renderOfflineBanner();
     this.setupToastContainer();
     this.renderNotificationsModal();
+    this.bindDropdownListeners();
 
     // Dynamically update greeting and notification counts from real records
     await this.syncHeaderResidentData();
@@ -202,15 +203,66 @@ const GeoSafeUI = {
                 <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D93636] ring-2 ring-white"></span>
               </button>
 
-              <!-- Resident Profile Avatar -->
-              <a href="profile.html" id="header-profile-avatar" class="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#FFF3D0] border border-[#FFD54F] text-[#202020] font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-subtle cursor-pointer hover:ring-2 hover:ring-[#F5B900] transition-all" title="Resident Profile">
-                R
-              </a>
+              <!-- Interactive Resident Profile Section & Dropdown -->
+              <div class="relative" id="resident-header-profile-wrapper">
+                <button
+                  type="button"
+                  id="resident-profile-menu-btn"
+                  onclick="GeoSafeUI.toggleProfileDropdown(event)"
+                  class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  title="Account menu"
+                >
+                  <div id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#FFF3D0] border border-[#FFD54F] text-[#202020] font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
+                    R
+                  </div>
+                  <div class="text-left hidden sm:block min-w-0">
+                    <span id="header-profile-name" class="text-xs font-bold text-[#202020] block leading-tight truncate max-w-[130px]">Resident</span>
+                    <span id="header-profile-role" class="text-[10px] text-[#777777] font-semibold block leading-tight">Resident</span>
+                  </div>
+                  <svg id="resident-profile-chevron" class="w-3.5 h-3.5 text-[#777777] transition-transform duration-200 group-hover:text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
 
-              <!-- Sign Out Button -->
-              <button type="button" onclick="GeoSafeUI.handleLogout()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF1F1] hover:border-[#FFC2C2] hover:text-[#D93636] text-[11px] font-bold text-[#777777] transition-colors shadow-subtle" title="Sign Out">
-                <span>Sign Out</span>
-              </button>
+                <!-- Dropdown Menu -->
+                <div
+                  id="resident-profile-dropdown"
+                  class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-[#EEEEEE] shadow-modal py-1.5 z-50 transform origin-top-right transition-all"
+                  role="menu"
+                  aria-orientation="vertical"
+                >
+                  <div class="px-3.5 py-2 border-b border-[#EEEEEE] sm:hidden">
+                    <span id="header-profile-name-mobile" class="text-xs font-bold text-[#202020] block truncate">Resident</span>
+                    <span id="header-profile-role-mobile" class="text-[10px] text-[#777777] font-semibold block">Resident</span>
+                  </div>
+                  <a
+                    href="profile.html"
+                    id="header-menu-item-profile"
+                    role="menuitem"
+                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-[#FFF9E8] hover:text-[#8A6800] transition-colors"
+                  >
+                    <svg class="w-4 h-4 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    <span>Profile</span>
+                  </a>
+                  <div class="my-1 border-t border-[#EEEEEE]"></div>
+                  <button
+                    type="button"
+                    id="header-menu-item-logout"
+                    role="menuitem"
+                    onclick="GeoSafeUI.handleLogout()"
+                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#D93636] hover:bg-[#FFF1F1] transition-colors text-left"
+                  >
+                    <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
           </div>
@@ -285,12 +337,23 @@ const GeoSafeUI = {
       // 2. Resident Profile Name & Avatar (Section 2.A: Dynamic, not hardcoded)
       const profile = await window.geoSafeStore.getResidentProfile().catch(() => ({}));
       const nameEl = document.getElementById('header-resident-name');
+      const profileNameEl = document.getElementById('header-profile-name');
+      const profileNameMobileEl = document.getElementById('header-profile-name-mobile');
+      const profileRoleEl = document.getElementById('header-profile-role');
+      const profileRoleMobileEl = document.getElementById('header-profile-role-mobile');
       const avatarEl = document.getElementById('header-profile-avatar');
 
       const firstName = profile.firstName ? profile.firstName.trim() : 'Resident';
       const lastName = profile.lastName ? profile.lastName.trim() : '';
+      const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Resident';
+      const roleName = profile.role || 'Resident';
 
       if (nameEl) nameEl.textContent = firstName;
+      if (profileNameEl) profileNameEl.textContent = fullName;
+      if (profileNameMobileEl) profileNameMobileEl.textContent = fullName;
+      if (profileRoleEl) profileRoleEl.textContent = roleName;
+      if (profileRoleMobileEl) profileRoleMobileEl.textContent = roleName;
+
       if (avatarEl) {
         const initials = ((firstName[0] || 'R') + (lastName[0] || '')).toUpperCase();
         avatarEl.textContent = initials;
@@ -402,6 +465,73 @@ const GeoSafeUI = {
     }
   },
 
+  /**
+   * Profile Dropdown Controls (Section 1 & 2: Interactive Header Dropdown)
+   */
+  toggleProfileDropdown(event) {
+    if (event) {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+    const dropdown = document.getElementById('resident-profile-dropdown');
+    const chevron = document.getElementById('resident-profile-chevron');
+    const btn = document.getElementById('resident-profile-menu-btn');
+    if (!dropdown) return;
+
+    const isHidden = dropdown.classList.contains('hidden');
+    if (isHidden) {
+      this.closeAllDropdowns();
+      dropdown.classList.remove('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      if (chevron) chevron.classList.add('rotate-180');
+    } else {
+      this.closeProfileDropdown();
+    }
+  },
+
+  closeProfileDropdown() {
+    const dropdown = document.getElementById('resident-profile-dropdown');
+    const chevron = document.getElementById('resident-profile-chevron');
+    const btn = document.getElementById('resident-profile-menu-btn');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+      dropdown.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      if (chevron) chevron.classList.remove('rotate-180');
+    }
+  },
+
+  closeAllDropdowns() {
+    document.querySelectorAll('[id$="-profile-dropdown"]').forEach(dd => {
+      dd.classList.add('hidden');
+    });
+    document.querySelectorAll('[id$="-profile-chevron"]').forEach(ch => {
+      ch.classList.remove('rotate-180');
+    });
+    document.querySelectorAll('[id$="-profile-menu-btn"]').forEach(btn => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  },
+
+  bindDropdownListeners() {
+    if (this._dropdownListenersBound) return;
+    this._dropdownListenersBound = true;
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('resident-header-profile-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+          this.closeProfileDropdown();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          this.closeProfileDropdown();
+        }
+      });
+    }
+  },
+
   async handleLogout() {
     if (window.geoSafeStore) {
       await window.geoSafeStore.logout();
@@ -459,7 +589,7 @@ const GeoSafeUI = {
    * @param {string} type - 'success' | 'error' | 'warning' | 'info'
    * @param {number} duration - Auto close duration ms
    */
-  showToast(message, type = 'info', duration = 3500) {
+  showToast(message, type = 'info', duration = 4000) {
     if (typeof window !== 'undefined' && window.GeoSafeToast) {
       return window.GeoSafeToast.show({ message, type, duration });
     }

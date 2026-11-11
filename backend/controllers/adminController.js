@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS, roleLabel, roleDisplayName } = require('../config/roles');
+const { generateNextUserCode } = require('../services/userIdService');
 const { emitStatusUpdate } = require('../socket');
 const { detectSeverity } = require('../utils/severityDetector');
 const { calculateReportPriority } = require('../utils/prioritizer');
@@ -552,6 +553,7 @@ async function getAdminReportDetail(req, res) {
         `SELECT r.*,
                 u.name AS reporter_name,
                 u.email AS reporter_email,
+                u.user_code AS reporter_user_code,
                 u.status AS reporter_account_status,
                 up.phone_number AS reporter_phone,
                 up.street_address AS reporter_street,
@@ -662,7 +664,8 @@ async function getAdminReportDetail(req, res) {
         updatedAt: r.updated_at,
         reporter: {
           id: r.user_id,
-          userId: `USR-${String(r.user_id).padStart(5, '0')}`,
+          userId: r.reporter_user_code || `RSDNT-${String(r.user_id).padStart(4, '0')}`,
+          userCode: r.reporter_user_code || `RSDNT-${String(r.user_id).padStart(4, '0')}`,
           name: r.reporter_name || 'Resident',
           email: r.reporter_email || 'Not provided',
           phone: r.reporter_phone || 'Not provided',
@@ -705,6 +708,7 @@ async function getAdminReportDetail(req, res) {
       `SELECT rr.*,
               u.name AS reporter_name,
               u.email AS reporter_email,
+              u.user_code AS reporter_user_code,
               u.status AS reporter_account_status,
               up.phone_number AS reporter_phone,
               up.street_address AS reporter_street,
@@ -822,7 +826,8 @@ async function getAdminReportDetail(req, res) {
       updatedAt: r.updated_at,
       reporter: {
         id: r.user_id,
-        userId: `USR-${String(r.user_id).padStart(5, '0')}`,
+        userId: r.reporter_user_code || `RSDNT-${String(r.user_id).padStart(4, '0')}`,
+        userCode: r.reporter_user_code || `RSDNT-${String(r.user_id).padStart(4, '0')}`,
         name: r.reporter_name || 'Resident',
         email: r.reporter_email || 'Not provided',
         phone: r.reporter_phone || 'Not provided',
@@ -1153,7 +1158,7 @@ async function getAdminUsers(req, res) {
     );
 
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role_id, u.role AS user_role, r.name AS role_name,
+      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, u.role AS user_role, r.name AS role_name,
               u.status, u.account_status, u.safety_status, u.last_login_at, u.created_at,
               up.first_name, up.last_name, up.phone_number, up.street_address, up.barangay, up.city,
               up.verification_status,
@@ -1183,7 +1188,7 @@ async function getAdminUsers(req, res) {
       if (statusFilter !== 'all' && acctStatus !== statusFilter) return false;
       if (search) {
         const rawId = String(u.id);
-        const userCode = `usr-${String(u.id).padStart(5, '0')}`;
+        const userCode = String(u.user_code || '').toLowerCase();
         const hay = `${rawId} ${userCode} ${u.name} ${u.email} ${u.phone_number || ''} ${u.street_address || ''} ${u.badge_number || ''} ${u.assigned_unit || ''} ${u.department || ''}`.toLowerCase();
         if (!hay.includes(search)) return false;
       }
@@ -1196,11 +1201,12 @@ async function getAdminUsers(req, res) {
     const startIdx = (safePage - 1) * limit;
     const paginated = filtered.slice(startIdx, startIdx + limit).map((u) => {
       const displayRole = u.role_name || roleDisplayName(u.role_id) || (targetRoleId === ROLE_IDS.RESPONDER ? 'Responder' : 'Resident');
-      const userCode = `USR-${String(u.id).padStart(5, '0')}`;
+      const userCode = u.user_code || (u.role_id === ROLE_IDS.RESPONDER ? `RSPDR-${String(u.id).padStart(4, '0')}` : `RSDNT-${String(u.id).padStart(4, '0')}`);
       return {
         id: u.id,
         userId: userCode,
         userCode: userCode,
+        user_code: userCode,
         name: u.name,
         firstName: u.first_name || '',
         lastName: u.last_name || '',
@@ -1303,11 +1309,12 @@ async function createResponderAccount(req, res) {
       return res.status(409).json({ error: 'Badge number is already assigned to another Responder.' });
     }
 
+    const { userCode } = await generateNextUserCode(conn, ROLE_IDS.RESPONDER);
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const [insertRes] = await conn.query(
-      `INSERT INTO users (name, email, password_hash, role_id, role, status, account_status)
-       VALUES (?, ?, ?, ?, 'responder', 'active', 'active')`,
-      [fullName, normalizedEmail, passwordHash, ROLE_IDS.RESPONDER]
+      `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
+       VALUES (?, ?, ?, ?, ?, 'responder', 'active', 'active')`,
+      [userCode, fullName, normalizedEmail, passwordHash, ROLE_IDS.RESPONDER]
     );
     const newResponderId = insertRes.insertId;
 
@@ -1337,6 +1344,7 @@ async function createResponderAccount(req, res) {
       entityId: String(newResponderId),
       newValues: {
         id: newResponderId,
+        user_code: userCode,
         name: fullName,
         email: normalizedEmail,
         role_id: ROLE_IDS.RESPONDER,
@@ -1351,6 +1359,9 @@ async function createResponderAccount(req, res) {
       message: 'Responder account created.',
       user: {
         id: newResponderId,
+        user_code: userCode,
+        userCode: userCode,
+        userId: userCode,
         name: fullName,
         email: normalizedEmail,
         roleId: ROLE_IDS.RESPONDER,
@@ -1889,13 +1900,14 @@ async function createResidentAccount(req, res) {
       return res.status(409).json({ error: 'An account with this email address already exists.' });
     }
 
+    const { userCode } = await generateNextUserCode(conn, ROLE_IDS.RESIDENT);
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const fullName = `${first_name.trim()} ${last_name.trim()}`.trim();
 
     const [userRes] = await conn.query(
-      `INSERT INTO users (name, role_id, role, email, password_hash, status, account_status, created_at)
-       VALUES (?, ?, 'resident', ?, ?, 'active', 'active', NOW())`,
-      [fullName, ROLE_IDS.RESIDENT, email, passwordHash]
+      `INSERT INTO users (user_code, name, role_id, role, email, password_hash, status, account_status, created_at)
+       VALUES (?, ?, ?, 'resident', ?, ?, 'active', 'active', NOW())`,
+      [userCode, fullName, ROLE_IDS.RESIDENT, email, passwordHash]
     );
     const newUserId = userRes.insertId;
 
@@ -1910,7 +1922,7 @@ async function createResidentAccount(req, res) {
       action: 'USER_REGISTERED',
       entityType: 'USER_MANAGEMENT',
       entityId: newUserId,
-      newValues: { id: newUserId, name: fullName, email, first_name, last_name, role: 'Resident', result: 'SUCCESS' },
+      newValues: { id: newUserId, user_code: userCode, name: fullName, email, first_name, last_name, role: 'Resident', result: 'SUCCESS' },
       req,
     });
 
@@ -1920,6 +1932,9 @@ async function createResidentAccount(req, res) {
       message: 'Resident account created successfully.',
       user: {
         id: newUserId,
+        user_code: userCode,
+        userCode: userCode,
+        userId: userCode,
         email,
         firstName: first_name.trim(),
         lastName: last_name.trim(),

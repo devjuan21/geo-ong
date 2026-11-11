@@ -126,9 +126,15 @@ router.get('/dashboard/summary', requireRole('resident', 'admin'), async (req, r
       verificationStatus: p.verification_status || 'Unverified Resident',
     };
 
-    const [contactRows] = await pool.query(
-      'SELECT * FROM emergency_contacts WHERE is_active = 1 ORDER BY display_order ASC, agency_name ASC'
-    );
+    let contactRows = [];
+    try {
+      const [rows] = await pool.query(
+        'SELECT * FROM emergency_contacts WHERE is_active = 1 ORDER BY display_order ASC, agency_name ASC'
+      );
+      contactRows = rows;
+    } catch {
+      contactRows = [];
+    }
 
     return res.json({
       counts,
@@ -170,6 +176,9 @@ router.get('/profile', async (req, res) => {
 
     return res.json({
       id: req.user.id,
+      userId: req.user.user_code || req.user.userCode || `RSDNT-${String(req.user.id).padStart(4, '0')}`,
+      userCode: req.user.user_code || req.user.userCode || `RSDNT-${String(req.user.id).padStart(4, '0')}`,
+      role: req.user.role === 'admin' ? 'Administrator' : req.user.role === 'responder' ? 'Responder' : 'Resident',
       firstName: p.first_name || nameParts[0] || '',
       lastName: p.last_name || nameParts.slice(1).join(' ') || '',
       email: req.user.email,
@@ -512,7 +521,7 @@ router.get('/emergency-contacts', async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM emergency_contacts WHERE is_active = 1 ORDER BY display_order ASC');
     return res.json(rows);
   } catch (err) {
-    return res.status(503).json({ error: 'Unable to load emergency contacts' });
+    return res.json([]);
   }
 });
 
@@ -529,6 +538,8 @@ router.get('/responder/profile', requireRole('responder', 'admin'), async (req, 
     const parts = String(req.user.name || '').trim().split(/\s+/);
     return res.json({
       id: req.user.id,
+      userId: req.user.user_code || req.user.userCode || `RSPDR-${String(req.user.id).padStart(4, '0')}`,
+      userCode: req.user.user_code || req.user.userCode || `RSPDR-${String(req.user.id).padStart(4, '0')}`,
       firstName: parts[0] || 'Responder',
       lastName: parts.slice(1).join(' ') || '',
       email: req.user.email,

@@ -26,6 +26,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const bcrypt = require('bcrypt');
 const pool = require('../models/db');
 const { ROLE_IDS, roleLabel } = require('../config/roles');
+const { generateNextUserCode } = require('../services/userIdService');
 
 const BCRYPT_ROUNDS = 12;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -275,11 +276,12 @@ async function main() {
 
       const adminRoleId = ROLE_IDS.ADMINISTRATOR;
       const legacyRoleEnum = roleLabel(adminRoleId); // 'admin'
+      const { userCode } = await generateNextUserCode(conn, adminRoleId);
 
       const [insertUser] = await conn.query(
-        `INSERT INTO users (name, email, password_hash, role_id, role, status, account_status)
-         VALUES (?, ?, ?, ?, ?, 'active', 'active')`,
-        [fullName, email, passwordHash, adminRoleId, legacyRoleEnum]
+        `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', 'active')`,
+        [userCode, fullName, email, passwordHash, adminRoleId, legacyRoleEnum]
       );
 
       const newAdminId = insertUser.insertId;
@@ -302,6 +304,7 @@ async function main() {
           String(newAdminId),
           JSON.stringify({
             id: newAdminId,
+            user_code: userCode,
             name: fullName,
             email,
             role_id: adminRoleId,
@@ -316,6 +319,7 @@ async function main() {
       console.log('\n======================================================================');
       console.log(' [SUCCESS] Initial Administrator Account Provisioned');
       console.log('======================================================================');
+      console.log(` User ID    : ${userCode} (Role Prefix: ADM)`);
       console.log(` Account ID : ${newAdminId}`);
       console.log(` Full Name  : ${fullName}`);
       console.log(` Email      : ${email}`);

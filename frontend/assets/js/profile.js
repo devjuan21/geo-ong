@@ -69,7 +69,7 @@ function populateProfileForm(profile) {
   }
 
   const idEl = document.getElementById('profile-resident-id');
-  if (idEl) idEl.textContent = profile.barangayIdNumber || 'Pending Setup';
+  if (idEl) idEl.textContent = profile.userCode || profile.user_code || profile.userId || profile.barangayIdNumber || 'Pending Setup';
 
   const badgeEl = document.getElementById('profile-status-badge');
   if (badgeEl) {

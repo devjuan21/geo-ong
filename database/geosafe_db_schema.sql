@@ -34,11 +34,23 @@ CREATE TABLE roles (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 1.1b Role Sequences (Atomic sequence generation per canonical role)
+CREATE TABLE role_sequences (
+  role_id INT NOT NULL PRIMARY KEY,
+  role_name VARCHAR(50) NOT NULL UNIQUE,
+  prefix VARCHAR(10) NOT NULL UNIQUE,
+  next_val INT UNSIGNED NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_role_sequences_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 1.2 Core Users Table
 -- Authoritative role relationship: users.role_id -> roles.id
 -- Legacy compatibility columns (role, family_group_id) are synchronized by triggers
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  user_code VARCHAR(32) DEFAULT NULL UNIQUE,
   name VARCHAR(120) NOT NULL,
   email VARCHAR(160) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
@@ -1163,3 +1175,8 @@ INSERT INTO roles (id, name, description) VALUES
   (1, 'Administrator', 'Full emergency operations command, user governance, and disaster dispatch oversight'),
   (2, 'Responder', 'Field responder unit handling active incident verification and rescue missions'),
   (3, 'Resident', 'Community member reporting incidents, requesting rescue, and monitoring alerts');
+
+INSERT INTO role_sequences (role_id, role_name, prefix, next_val) VALUES
+  (1, 'Administrator', 'ADM', 1),
+  (2, 'Responder', 'RSPDR', 1),
+  (3, 'Resident', 'RSDNT', 1);

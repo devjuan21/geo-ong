@@ -94,6 +94,7 @@ const GeoSafeResponderUI = {
     this.setupToastContainer();
     this.renderNotificationsModal();
     this.renderDutyStatusModal();
+    this.bindDropdownListeners();
 
     await this.syncHeaderResponderData();
 
@@ -172,10 +173,66 @@ const GeoSafeResponderUI = {
                 <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D93636] ring-2 ring-white"></span>
               </button>
 
-              <!-- Responder Profile Avatar (Links to Profile) -->
-              <a href="responder-profile.html" id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#202020] border-2 border-[#F5B900] text-[#F5B900] font-black text-xs flex items-center justify-center flex-shrink-0 shadow-subtle hover:scale-105 transition-all" title="View Responder Profile">
-                —
-              </a>
+              <!-- Interactive Responder Profile Section & Dropdown -->
+              <div class="relative" id="responder-header-profile-wrapper">
+                <button
+                  type="button"
+                  id="responder-profile-menu-btn"
+                  onclick="GeoSafeResponderUI.toggleProfileDropdown(event)"
+                  class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  title="Account menu"
+                >
+                  <div id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#202020] border-2 border-[#F5B900] text-[#F5B900] font-black text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
+                    —
+                  </div>
+                  <div class="text-left hidden sm:block min-w-0">
+                    <span id="header-responder-dropdown-name" class="text-xs font-bold text-[#202020] block leading-tight truncate max-w-[130px]">Responder</span>
+                    <span id="header-responder-dropdown-role" class="text-[10px] text-[#777777] font-semibold block leading-tight">Responder</span>
+                  </div>
+                  <svg id="responder-profile-chevron" class="w-3.5 h-3.5 text-[#777777] transition-transform duration-200 group-hover:text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
+
+                <!-- Dropdown Menu -->
+                <div
+                  id="responder-profile-dropdown"
+                  class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-[#EEEEEE] shadow-modal py-1.5 z-50 transform origin-top-right transition-all"
+                  role="menu"
+                  aria-orientation="vertical"
+                >
+                  <div class="px-3.5 py-2 border-b border-[#EEEEEE] sm:hidden">
+                    <span id="header-responder-dropdown-name-mobile" class="text-xs font-bold text-[#202020] block truncate">Responder</span>
+                    <span id="header-responder-dropdown-role-mobile" class="text-[10px] text-[#777777] font-semibold block">Responder</span>
+                  </div>
+                  <a
+                    href="responder-profile.html"
+                    id="responder-menu-item-profile"
+                    role="menuitem"
+                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-[#FFF9E8] hover:text-[#8A6800] transition-colors"
+                  >
+                    <svg class="w-4 h-4 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    <span>Profile</span>
+                  </a>
+                  <div class="my-1 border-t border-[#EEEEEE]"></div>
+                  <button
+                    type="button"
+                    id="responder-menu-item-logout"
+                    role="menuitem"
+                    onclick="GeoSafeResponderUI.handleLogout()"
+                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#D93636] hover:bg-[#FFF1F1] transition-colors text-left"
+                  >
+                    <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
 
             </div>
 
@@ -304,10 +361,22 @@ const GeoSafeResponderUI = {
         return;
       }
 
-      const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
+      const fullName = `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Responder';
+      const roleName = profile.role || 'Responder';
+
       if (nameEl) {
-        nameEl.textContent = fullName || 'Responder';
+        nameEl.textContent = fullName;
       }
+      const dropdownName = document.getElementById('header-responder-dropdown-name');
+      const dropdownNameMobile = document.getElementById('header-responder-dropdown-name-mobile');
+      const dropdownRole = document.getElementById('header-responder-dropdown-role');
+      const dropdownRoleMobile = document.getElementById('header-responder-dropdown-role-mobile');
+
+      if (dropdownName) dropdownName.textContent = fullName;
+      if (dropdownNameMobile) dropdownNameMobile.textContent = fullName;
+      if (dropdownRole) dropdownRole.textContent = roleName;
+      if (dropdownRoleMobile) dropdownRoleMobile.textContent = roleName;
+
       if (unitEl) {
         unitEl.textContent = profile.assignedUnit || profile.department || 'Emergency Operations';
       }
@@ -368,9 +437,89 @@ const GeoSafeResponderUI = {
   },
 
   /**
+   * Profile Dropdown Controls (Section 1 & 2: Interactive Header Dropdown)
+   */
+  toggleProfileDropdown(event) {
+    if (event) {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+    const dropdown = document.getElementById('responder-profile-dropdown');
+    const chevron = document.getElementById('responder-profile-chevron');
+    const btn = document.getElementById('responder-profile-menu-btn');
+    if (!dropdown) return;
+
+    const isHidden = dropdown.classList.contains('hidden');
+    if (isHidden) {
+      this.closeAllDropdowns();
+      dropdown.classList.remove('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      if (chevron) chevron.classList.add('rotate-180');
+    } else {
+      this.closeProfileDropdown();
+    }
+  },
+
+  closeProfileDropdown() {
+    const dropdown = document.getElementById('responder-profile-dropdown');
+    const chevron = document.getElementById('responder-profile-chevron');
+    const btn = document.getElementById('responder-profile-menu-btn');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+      dropdown.classList.add('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      if (chevron) chevron.classList.remove('rotate-180');
+    }
+  },
+
+  closeAllDropdowns() {
+    document.querySelectorAll('[id$="-profile-dropdown"]').forEach(dd => {
+      dd.classList.add('hidden');
+    });
+    document.querySelectorAll('[id$="-profile-chevron"]').forEach(ch => {
+      ch.classList.remove('rotate-180');
+    });
+    document.querySelectorAll('[id$="-profile-menu-btn"]').forEach(btn => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  },
+
+  bindDropdownListeners() {
+    if (this._dropdownListenersBound) return;
+    this._dropdownListenersBound = true;
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('responder-header-profile-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+          this.closeProfileDropdown();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          this.closeProfileDropdown();
+        }
+      });
+    }
+  },
+
+  async handleLogout() {
+    if (window.geoSafeStore) {
+      if (typeof window.geoSafeStore.logoutResponder === 'function') {
+        await window.geoSafeStore.logoutResponder();
+      } else {
+        await window.geoSafeStore.logout();
+      }
+    }
+    window.location.replace('/login.html');
+  },
+
+  /**
    * Setup fixed viewport-centered toast container
    */
   setupToastContainer() {
+    // The shared GeoSafeToast system (toast.js) owns the top-right container.
+    if (typeof window !== 'undefined' && window.GeoSafeToast) return;
     let container = document.getElementById('geosafe-toast-container');
     if (!container) {
       container = document.createElement('div');
@@ -385,7 +534,10 @@ const GeoSafeResponderUI = {
   /**
    * Trigger a modern viewport-centered notification toast
    */
-  showToast(message, type = 'info') {
+  showToast(message, type = 'info', duration = 4000) {
+    if (typeof window !== 'undefined' && window.GeoSafeToast) {
+      return window.GeoSafeToast.show({ message, type, duration });
+    }
     this.setupToastContainer();
     const container = document.getElementById('geosafe-toast-container');
     if (!container) return;

@@ -2,17 +2,22 @@ const bcrypt = require('bcrypt');
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { isValidRoleId, roleLabel } = require('../config/roles');
+const { generateNextUserCode } = require('../services/userIdService');
 
 async function getUsers(req, res) {
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.created_at
+      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.created_at
        FROM users u
        JOIN roles r ON r.id = u.role_id
        ORDER BY u.role_id, u.name`
     );
     return res.json({
-      users: rows.map((u) => ({ ...u, role: roleLabel(u.role_id) })),
+      users: rows.map((u) => ({
+        ...u,
+        userCode: u.user_code,
+        role: roleLabel(u.role_id),
+      })),
     });
   } catch (err) {
     console.error('[Users API] getUsers failed:', err.message);
@@ -38,29 +43,47 @@ async function createUser(req, res) {
   }
   const roleId = parseInt(role_id, 10);
 
+  const connection = await pool.getConnection();
   try {
-    const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    await connection.beginTransaction();
+
+    const [existing] = await connection.query('SELECT id FROM users WHERE email = ? FOR UPDATE', [email]);
     if (existing.length) {
+      await connection.rollback();
       return res.status(409).json({ error: 'Email already registered' });
     }
 
+    const { userCode } = await generateNextUserCode(connection, roleId);
     const password_hash = await bcrypt.hash(password, 10);
-    const [result] = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role_id, role, status, account_status)
-       VALUES (?, ?, ?, ?, ?, 'active', 'active')`,
-      [name, email, password_hash, roleId, roleLabel(roleId)]
+    const [result] = await connection.query(
+      `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', 'active')`,
+      [userCode, name, email, password_hash, roleId, roleLabel(roleId)]
     );
+
+    await connection.commit();
 
     return res.status(201).json({
       message: 'Account created',
-      user: { id: result.insertId, name, email, role_id: roleId, role: roleLabel(roleId) },
+      user: {
+        id: result.insertId,
+        user_code: userCode,
+        userCode,
+        name,
+        email,
+        role_id: roleId,
+        role: roleLabel(roleId),
+      },
     });
   } catch (err) {
+    await connection.rollback().catch(() => {});
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'Email already registered' });
     }
     console.error('[Users API] createUser failed:', err.message);
     return res.status(503).json({ error: 'Account creation is temporarily unavailable' });
+  } finally {
+    connection.release();
   }
 }
 

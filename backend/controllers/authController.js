@@ -5,6 +5,7 @@ const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
+const { generateNextUserCode } = require('../services/userIdService');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -28,6 +29,8 @@ function roleDisplayName(roleId) {
 function publicUser(row) {
   return {
     id: row.id,
+    user_code: row.user_code || null,
+    userCode: row.user_code || null,
     name: row.name,
     email: row.email,
     role_id: row.role_id,
@@ -191,11 +194,13 @@ async function register(req, res) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
+    const { userCode } = await generateNextUserCode(conn, ROLE_IDS.RESIDENT);
+
     const password_hash = await bcrypt.hash(password, 10);
     const [result] = await conn.query(
-      `INSERT INTO users (name, email, password_hash, role_id, role, status, account_status)
-       VALUES (?, ?, ?, ?, 'resident', 'active', 'active')`,
-      [fullName, email, password_hash, ROLE_IDS.RESIDENT]
+      `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
+       VALUES (?, ?, ?, ?, ?, 'resident', 'active', 'active')`,
+      [userCode, fullName, email, password_hash, ROLE_IDS.RESIDENT]
     );
 
     const newUserId = result.insertId;
@@ -214,6 +219,7 @@ async function register(req, res) {
         newUserId,
         String(newUserId),
         JSON.stringify({
+          user_code: userCode,
           name: fullName,
           email,
           role: 'Resident',
@@ -232,12 +238,12 @@ async function register(req, res) {
       eventType: 'user_registered',
       attemptedRole: 'Resident',
       req,
-      details: `Self-registered Resident account (${fullName})`,
+      details: `Self-registered Resident account (${fullName}, ${userCode})`,
     });
 
     await conn.commit();
 
-    const row = { id: newUserId, name: fullName, email, role_id: ROLE_IDS.RESIDENT, role_name: 'Resident' };
+    const row = { id: newUserId, user_code: userCode, name: fullName, email, role_id: ROLE_IDS.RESIDENT, role_name: 'Resident' };
     return res.status(201).json({
       message: 'Registration successful. Please sign in with your new Resident account.',
       user: publicUser(row),
@@ -265,7 +271,7 @@ async function login(req, res) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.password_hash, u.role_id, r.name AS role_name, u.status, u.account_status
+      `SELECT u.id, u.user_code, u.name, u.email, u.password_hash, u.role_id, r.name AS role_name, u.status, u.account_status
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.email = ?

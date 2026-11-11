@@ -58,6 +58,7 @@ function populateProfileFields(p) {
   p = p || {};
 
   const nameEl = document.getElementById('prof-full-name');
+  const userIdEl = document.getElementById('prof-user-id');
   const badgeEl = document.getElementById('prof-badge-number');
   const unitEl = document.getElementById('prof-unit-name');
   const callsignEl = document.getElementById('prof-callsign');
@@ -68,7 +69,8 @@ function populateProfileFields(p) {
 
   const fullName = `${p.firstName || ''} ${p.lastName || ''}`.trim();
   if (nameEl) nameEl.textContent = fullName || 'Responder Profile (Incomplete)';
-  if (badgeEl) badgeEl.textContent = p.badgeNumber || p.id || 'Not Assigned';
+  if (userIdEl) userIdEl.textContent = p.userCode || p.userId || p.user_code || '—';
+  if (badgeEl) badgeEl.textContent = p.badgeNumber || 'Not Assigned';
   if (unitEl) unitEl.textContent = p.department || p.assignedUnit || 'No Unit Assigned';
   if (callsignEl) callsignEl.textContent = p.callsign || 'None';
   if (phoneEl) phoneEl.textContent = p.phone || 'None provided';

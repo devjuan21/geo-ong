@@ -44,7 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Toast Notification (Fixed Viewport Center)
  */
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', duration = 4000) {
+  if (typeof window !== 'undefined' && window.GeoSafeToast) {
+    return window.GeoSafeToast.show({ message, type, duration });
+  }
   const container = document.getElementById('toast-container');
   if (!container) return;
 

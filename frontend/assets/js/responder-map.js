@@ -207,7 +207,7 @@ window.acquireResponderGps = async function (silent = false) {
   if (btn) btn.classList.add('animate-pulse');
 
   try {
-    const pos = await GeoSafeMapping.getUserLocation();
+    const pos = await window.GeoSafeMapping.getCurrentLocation();
     currentGpsLocation = { lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy };
 
     if (!silent) {

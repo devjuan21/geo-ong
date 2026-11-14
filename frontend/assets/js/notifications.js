@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   GeoSafeUI.init('notifications', 'Notifications');
   setupFilterTabs();
   await loadNotifications();
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadNotifications();
+  });
 });
 
 function setupFilterTabs() {
@@ -74,7 +78,6 @@ function renderNotifications(notifs) {
     rescue: { icon: 'life-buoy', color: 'bg-emergency-100 text-emergency-600' },
     report: { icon: 'file-text', color: 'bg-brand-100 text-brand-700' },
     alert: { icon: 'alert-triangle', color: 'bg-amber-100 text-amber-700' },
-    family: { icon: 'users', color: 'bg-emerald-100 text-emerald-700' },
     system: { icon: 'info', color: 'bg-slate-100 text-slate-700' }
   };
 

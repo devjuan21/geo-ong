@@ -2,15 +2,15 @@ const fs = require('fs');
 const path = require('path');
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
-const { emitNewReport, emitStatusUpdate } = require('../socket');
-const { detectSeverity } = require('../utils/severityDetector');
-const { calculateReportPriority, sortReportsByPriority } = require('../utils/prioritizer');
+const { ROLE_IDS } = require('../config/roles');
+const { emitNewReport, emitStatusUpdate } = require('../services/socketService');
+const { isPointInsideBayanan } = require('../utils/bayananBoundary');
 
 // Canonical incident storage: `reports` is the ONLY incident table written by the application.
 // Allowed values mirror the reports.status / reports.severity ENUMs exactly.
 const VALID_STATUSES = ['pending', 'verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved', 'false_alarm', 'dismissed'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
-const ASSIGNMENT_PRIORITY = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 
 const REPORT_SELECT = `
   SELECT r.*, u.name AS reporter_name, resp.name AS responder_name
@@ -21,6 +21,31 @@ const REPORT_SELECT = `
 function dbUnavailable(res, err, action) {
   console.error(`[Reports API] ${action} failed:`, err.message);
   return res.status(503).json({ error: 'Incident database is unavailable. Please try again.' });
+}
+
+function parseBase64Image(dataUri) {
+  if (typeof dataUri !== 'string' || !dataUri.startsWith('data:image/')) {
+    return null;
+  }
+  const match = dataUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+  const mimeType = match[1].toLowerCase();
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return { error: `Unsupported image MIME type: ${mimeType}. Allowed: image/jpeg, image/png, image/webp.` };
+  }
+  const extMap = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  };
+  const ext = extMap[mimeType] || 'jpg';
+  const buffer = Buffer.from(match[2], 'base64');
+  return {
+    mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
+    ext,
+    buffer,
+  };
 }
 
 async function createReport(req, res) {
@@ -38,15 +63,41 @@ async function createReport(req, res) {
   const longitude = Number(req.body.longitude);
   const is_public = req.body.authorizedForCommunity === false || req.body.is_public === 0 ? 0 : 1;
 
-  const detection = detectSeverity(incident_type, description);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'Valid geographic coordinates (latitude and longitude) are required.' });
+  }
+
+  if (!isPointInsideBayanan(latitude, longitude)) {
+    return res.status(400).json({
+      error: 'Submitted incident location is outside the official administrative boundary of Barangay Bayanan, Muntinlupa City.'
+    });
+  }
+
   let severity = 'medium';
-  const requestedSeverity = String(req.body.severity || '').toLowerCase();
+  const requestedSeverity = String(req.body.severity || '').trim().toLowerCase();
   if (VALID_SEVERITIES.includes(requestedSeverity)) {
     severity = requestedSeverity;
   } else if (requestedSeverity === 'moderate') {
     severity = 'medium';
-  } else if (detection && detection.severity && VALID_SEVERITIES.includes(detection.severity)) {
-    severity = detection.severity;
+  }
+
+  // Validate Base64 photos before starting DB transaction
+  const rawPhotos = Array.isArray(req.body.photos)
+    ? req.body.photos
+    : req.body.photo
+    ? [req.body.photo]
+    : [];
+  const parsedPhotos = [];
+  for (const item of rawPhotos) {
+    if (!item) continue;
+    const parsed = parseBase64Image(item);
+    if (!parsed) {
+      return res.status(400).json({ error: 'Invalid Base64 image format.' });
+    }
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    parsedPhotos.push(parsed);
   }
 
   const conn = await pool.getConnection().catch((err) => { dbUnavailable(res, err, 'createReport'); return null; });
@@ -94,37 +145,54 @@ async function createReport(req, res) {
     );
 
     // Persist photo attachments if supplied
-    const photos = Array.isArray(req.body.photos) ? req.body.photos : [];
-    if (photos.length > 0) {
+    if (parsedPhotos.length > 0) {
       const uploadDir = path.join(__dirname, '../../frontend/assets/uploads/incidents');
       try {
         fs.mkdirSync(uploadDir, { recursive: true });
       } catch (e) {}
 
-      for (let idx = 0; idx < photos.length; idx++) {
-        const photo = photos[idx];
-        if (typeof photo === 'string' && photo.startsWith('data:image/')) {
-          const match = photo.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
-          if (match) {
-            const rawExt = match[1].toLowerCase();
-            const ext = rawExt === 'jpeg' ? 'jpg' : (rawExt.includes('png') ? 'png' : 'jpg');
-            const buffer = Buffer.from(match[2], 'base64');
-            const fileName = `inc-${result.insertId}-${idx + 1}-${Date.now()}.${ext}`;
-            const filePath = path.join(uploadDir, fileName);
-            fs.writeFileSync(filePath, buffer);
+      for (let idx = 0; idx < parsedPhotos.length; idx++) {
+        const { mimeType, ext, buffer } = parsedPhotos[idx];
+        const fileName = `inc-${result.insertId}-${idx + 1}-${Date.now()}.${ext}`;
+        const filePath = path.join(uploadDir, fileName);
+        fs.writeFileSync(filePath, buffer);
 
-            const fileUrl = `/assets/uploads/incidents/${fileName}`;
-            const mimeType = `image/${rawExt}`;
-            const fileSize = buffer.length;
+        const fileUrl = `/assets/uploads/incidents/${fileName}`;
+        const fileSize = buffer.length;
 
-            await conn.query(
-              `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by)
-               VALUES (?, ?, ?, ?, ?, ?)`,
-              [result.insertId, fileUrl, fileName, mimeType, fileSize, req.user.id]
-            );
-          }
-        }
+        await conn.query(
+          `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [result.insertId, fileUrl, fileName, mimeType, fileSize, req.user.id]
+        );
       }
+    }
+
+    // Create notification for Administrators
+    try {
+      const notifSeverity = severity === 'critical' ? 'Critical' : 'High';
+      const [notifRes] = await conn.query(
+        `INSERT INTO notifications (title, message, severity, category, created_by)
+         VALUES (?, ?, ?, 'Alert', ?)`,
+        [
+          `New Incident Report: ${referenceNumber}`,
+          `${incident_type} reported at ${address} (${severity.toUpperCase()}).`,
+          notifSeverity,
+          req.user.id,
+        ]
+      );
+      const [admins] = await conn.query(
+        "SELECT id FROM users WHERE role_id = ? AND status = 'active'",
+        [ROLE_IDS.ADMINISTRATOR]
+      );
+      for (const admin of admins) {
+        await conn.query(
+          'INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)',
+          [notifRes.insertId, admin.id]
+        );
+      }
+    } catch (notifErr) {
+      console.warn('[Reports API] Could not persist admin notification:', notifErr.message);
     }
 
     // Persist audit log entry for administrative oversight
@@ -161,14 +229,17 @@ async function createReport(req, res) {
       [result.insertId]
     );
 
-    const report = calculateReportPriority(rows[0]);
-    report.referenceNumber = referenceNumber;
-    report.incidentType = incident_type;
-    report.location = address;
-    report.databaseId = result.insertId;
-    report.rawId = result.insertId;
-    report.id = referenceNumber; // Normalised string ID for UI compatibility
-    report.attachments = attachments;
+    const report = {
+      ...rows[0],
+      referenceNumber,
+      incidentType: incident_type,
+      location: address,
+      databaseId: result.insertId,
+      rawId: result.insertId,
+      id: referenceNumber, // Normalised string ID for UI compatibility
+      attachments,
+      photos: attachments.map((a) => a.file_url),
+    };
 
     emitNewReport(report);
     return res.status(201).json({
@@ -201,7 +272,7 @@ async function getReports(req, res) {
     query += ' ORDER BY r.created_at DESC';
 
     const [rows] = await pool.query(query, params);
-    return res.json({ reports: sortReportsByPriority(rows) });
+    return res.json({ reports: rows });
   } catch (err) {
     return dbUnavailable(res, err, 'getReports');
   }
@@ -216,7 +287,20 @@ async function getReportById(req, res) {
     if (req.user.role === 'resident' && row.user_id !== req.user.id) {
       return res.status(403).json({ error: 'You can only view your own reports' });
     }
-    return res.json({ report: calculateReportPriority(row) });
+    const [attachments] = await pool.query(
+      `SELECT id, file_url, file_name, file_type, file_size, created_at
+       FROM incident_attachments
+       WHERE incident_id = ?
+       ORDER BY created_at ASC`,
+      [row.id]
+    );
+    return res.json({
+      report: {
+        ...row,
+        attachments,
+        photos: attachments.map((a) => a.file_url),
+      },
+    });
   } catch (err) {
     return dbUnavailable(res, err, 'getReportById');
   }
@@ -311,7 +395,11 @@ async function updateReportStatus(req, res) {
     await conn.commit();
 
     const [rows] = await pool.query(`${REPORT_SELECT} WHERE r.id = ?`, [reportId]);
-    const updated = calculateReportPriority(rows[0]);
+    const updated = {
+      ...rows[0],
+      recordType: 'incident',
+      residentId: rows[0].user_id,
+    };
     if (updates.length) emitStatusUpdate(updated);
     return res.json({ message: updates.length ? 'Report updated' : 'No changes', report: updated });
   } catch (err) {

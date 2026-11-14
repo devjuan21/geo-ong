@@ -8,7 +8,6 @@
  * - NO dummy or sample reports.
  * - NO dummy rescue requests.
  * - NO dummy hazard alerts.
- * - NO dummy family members.
  * - NO dummy evacuation centers.
  * - NO dummy notifications.
  * - NO pre-populated resident accounts or emergency contact numbers.
@@ -56,9 +55,7 @@ const FRESH_SYSTEM_INITIAL_STATE = {
   rescueRequests: [],
   hazardAlerts: [],
   evacuationCenters: [],
-  familyMembers: [],
   notifications: [],
-  tropicalCyclone: null,
   responderProfile: null,
   responderAssignments: [],
   emergencyContacts: []

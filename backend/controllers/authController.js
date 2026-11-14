@@ -188,19 +188,28 @@ async function register(req, res) {
   try {
     await conn.beginTransaction();
 
-    const [existing] = await conn.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    const [roleRows] = await conn.query(
+      "SELECT id, name FROM roles WHERE LOWER(name) = 'resident' LIMIT 1"
+    );
+    if (!roleRows.length) {
+      await conn.rollback();
+      return res.status(503).json({ error: 'Resident role is not configured.' });
+    }
+    const residentRole = roleRows[0];
+
+    const [existing] = await conn.query('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1', [email]);
     if (existing.length) {
       await conn.rollback();
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const { userCode } = await generateNextUserCode(conn, ROLE_IDS.RESIDENT);
+    const { userCode } = await generateNextUserCode(conn, residentRole.id);
 
     const password_hash = await bcrypt.hash(password, 10);
     const [result] = await conn.query(
       `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
        VALUES (?, ?, ?, ?, ?, 'resident', 'active', 'active')`,
-      [userCode, fullName, email, password_hash, ROLE_IDS.RESIDENT]
+      [userCode, fullName, email, password_hash, residentRole.id]
     );
 
     const newUserId = result.insertId;
@@ -222,8 +231,8 @@ async function register(req, res) {
           user_code: userCode,
           name: fullName,
           email,
-          role: 'Resident',
-          role_id: ROLE_IDS.RESIDENT,
+          role: residentRole.name,
+          role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
           status: 'SUCCESS',
         }),
@@ -232,18 +241,9 @@ async function register(req, res) {
       ]
     );
 
-    await logSecurityEvent(conn, {
-      userId: newUserId,
-      email,
-      eventType: 'user_registered',
-      attemptedRole: 'Resident',
-      req,
-      details: `Self-registered Resident account (${fullName}, ${userCode})`,
-    });
-
     await conn.commit();
 
-    const row = { id: newUserId, user_code: userCode, name: fullName, email, role_id: ROLE_IDS.RESIDENT, role_name: 'Resident' };
+    const row = { id: newUserId, user_code: userCode, name: fullName, email, role_id: residentRole.id, role_name: residentRole.name };
     return res.status(201).json({
       message: 'Registration successful. Please sign in with your new Resident account.',
       user: publicUser(row),
@@ -251,7 +251,7 @@ async function register(req, res) {
     });
   } catch (err) {
     await conn.rollback().catch(() => {});
-    if (err.code === 'ER_DUP_ENTRY') {
+    if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
       return res.status(409).json({ error: 'Email already registered' });
     }
     console.error('[Auth] register failed:', err.message);

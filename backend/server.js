@@ -1,4 +1,5 @@
 const path = require('path');
+const os = require('os');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const http = require('http');
 const express = require('express');
@@ -13,7 +14,6 @@ const authRoutes = require('./routes/authRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const alertRoutes = require('./routes/alertRoutes');
 const userRoutes = require('./routes/userRoutes');
-const familyRoutes = require('./routes/familyRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const evacRoutes = require('./routes/evacRoutes');
 const hospitalRoutes = require('./routes/hospitalRoutes');
@@ -35,7 +35,6 @@ for (const prefix of ['/api/v1', '/api']) {
   app.use(`${prefix}/reports`, reportRoutes);
   app.use(`${prefix}/alerts`, alertRoutes);
   app.use(`${prefix}/users`, userRoutes);
-  app.use(`${prefix}/family`, familyRoutes);
   app.use(`${prefix}/admin`, adminRoutes);
   app.use(`${prefix}/evacuation-centers`, evacRoutes);
   app.use(`${prefix}/hospitals`, hospitalRoutes);
@@ -55,8 +54,6 @@ app.use('/api', (_req, res) => {
 const RESIDENT_HTML_PAGES = new Set([
   '/',
   '/index.html',
-  '/family.html',
-  '/family-safety.html',
   '/evacuation-routes.html',
   '/evacuation-centers.html',
   '/report-incident.html',
@@ -203,9 +200,31 @@ async function verifySchemaReady() {
   }
 }
 
+function getLanIpv4Addresses() {
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      const isIpv4 = iface.family === 'IPv4' || iface.family === 4;
+      if (isIpv4 && !iface.internal && iface.address) {
+        addresses.push({ interface: name, address: iface.address });
+      }
+    }
+  }
+  return addresses;
+}
+
 if (require.main === module) {
-  server.listen(PORT, async () => {
+  server.listen(PORT, '0.0.0.0', async () => {
     console.log(`GeoSafe server listening on http://localhost:${PORT}`);
+    const lanAddresses = getLanIpv4Addresses();
+    if (lanAddresses.length > 0) {
+      lanAddresses.forEach((item) => {
+        console.log(`[LAN Access] http://${item.address}:${PORT} (${item.interface})`);
+      });
+    } else {
+      console.log(`[LAN Access] Bound to 0.0.0.0:${PORT} (no external IPv4 interface detected)`);
+    }
     await verifySchemaReady();
   });
 }

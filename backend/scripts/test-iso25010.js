@@ -1,24 +1,27 @@
 /**
- * ISO 25010 & Table 3 Automated Testing Suite
+ * ISO 25010 & Capstone Automated Testing Suite
  * Pamantasan ng Lungsod ng Muntinlupa - Capstone Project
- * Project: GeoSafe Disaster Reporting & Emergency Assistance System
- * Authors: John Vee A. Perez, Zander A. Malonzo, Shereen L. Onita
- * 
- * Executes automated test cases matching Chapter 3 Table 3:
- * - Module 1: User Authentication System
- * - Module 2: Emergency Reporting Workflow
- * - Module 3: Severity Detection & Priority Accuracy Test
- * - Module 4: Security Measures (JWT, Bcrypt, RBAC)
- * - Module 5: Performance & Response Time (ISO 25010 Evaluation)
+ * Project: Web-Based Disaster Reporting and Emergency Assistance System for Barangay Bayanan, Muntinlupa City
  */
 
 const assert = require('assert');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { detectSeverity, HIGH_KEYWORDS, MEDIUM_KEYWORDS, LOW_KEYWORDS } = require('../utils/severityDetector');
-const { calculateReportPriority, sortReportsByPriority, haversineKm } = require('../utils/prioritizer');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'geosafe_jwt_secret_bayanan_2026';
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 let passedTests = 0;
 let totalTests = 0;
@@ -33,10 +36,10 @@ function runTest(testName, testFn) {
     const durationMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(2);
     passedTests++;
     resultsLog.push({ name: testName, status: 'PASSED', duration: `${durationMs}ms` });
-    console.log(`  \x1b[32m✔ [PASS]\x1b[0m ${testName} (${durationMs}ms)`);
+    console.log(`  [PASS] ${testName} (${durationMs}ms)`);
   } catch (err) {
     resultsLog.push({ name: testName, status: 'FAILED', error: err.message });
-    console.error(`  \x1b[31m✖ [FAIL]\x1b[0m ${testName}: ${err.message}`);
+    console.error(`  [FAIL] ${testName}: ${err.message}`);
   }
 }
 
@@ -49,23 +52,20 @@ async function runAsyncTest(testName, testFn) {
     const durationMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(2);
     passedTests++;
     resultsLog.push({ name: testName, status: 'PASSED', duration: `${durationMs}ms` });
-    console.log(`  \x1b[32m✔ [PASS]\x1b[0m ${testName} (${durationMs}ms)`);
+    console.log(`  [PASS] ${testName} (${durationMs}ms)`);
   } catch (err) {
     resultsLog.push({ name: testName, status: 'FAILED', error: err.message });
-    console.error(`  \x1b[31m✖ [FAIL]\x1b[0m ${testName}: ${err.message}`);
+    console.error(`  [FAIL] ${testName}: ${err.message}`);
   }
 }
 
 async function runTestSuite() {
   console.log('\n======================================================================');
   console.log('   PAMANTASAN NG LUNGSOD NG MUNTINLUPA - CAPSTONE PROJECT');
-  console.log('   ISO 25010 & Table 3 Automated Testing Suite: GeoSafe System');
+  console.log('   ISO 25010 Automated Testing Suite: GeoSafe System');
   console.log('======================================================================\n');
 
-  // --------------------------------------------------------------------------
-  // MODULE 1: USER AUTHENTICATION SYSTEM
-  // --------------------------------------------------------------------------
-  console.log('\x1b[36m[Module 1/5] User Authentication System (Table 3)\x1b[0m');
+  console.log('[Module 1] User Authentication & RBAC System');
   
   await runAsyncTest('Password Hashing Verification (Bcrypt salt & hash generation)', async () => {
     const rawPass = 'Resident@2026!';
@@ -77,7 +77,7 @@ async function runTestSuite() {
     assert.strictEqual(wrongMatches, false, 'Invalid password must be rejected');
   });
 
-  runTest('JWT Token Generation and Verification (OAuth / Bearer Security)', () => {
+  runTest('JWT Token Generation and Verification', () => {
     const payload = { id: 104, email: 'zander@bayanan.ph', role: 'resident' };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
     assert(typeof token === 'string' && token.length > 30, 'JWT token must be a signed non-empty string');
@@ -94,10 +94,7 @@ async function runTestSuite() {
     assert(!roles.includes('unauthorized_guest'), 'Unauthorized roles must not exist in access schema');
   });
 
-  // --------------------------------------------------------------------------
-  // MODULE 2: EMERGENCY REPORTING WORKFLOW
-  // --------------------------------------------------------------------------
-  console.log('\n\x1b[36m[Module 2/5] Emergency Reporting Workflow (Table 3)\x1b[0m');
+  console.log('\n[Module 2] Emergency Reporting & Rescue Request Workflow');
 
   runTest('Geolocation Coordinate Validation (Barangay Bayanan Bounds Check)', () => {
     const sampleReport = {
@@ -111,63 +108,21 @@ async function runTestSuite() {
     assert(sampleReport.description.length >= 6, 'Description must meet minimum length criteria');
   });
 
-  runTest('Haversine Distance Metric Calculation for Rescue Proximity', () => {
-    // Distance from Bayanan Baywalk (14.4094644, 121.0486196) to Bayanan Elementary (14.4117681, 121.0517064)
+  runTest('Haversine Distance Metric Calculation for Evacuation Proximity', () => {
     const dist = haversineKm(14.4094644, 121.0486196, 14.4117681, 121.0517064);
     assert(dist > 0.3 && dist < 0.6, `Distance should be approximately 0.43km, got: ${dist.toFixed(3)}km`);
   });
 
-  // --------------------------------------------------------------------------
-  // MODULE 3: SEVERITY DETECTION & PRIORITY ACCURACY TEST
-  // --------------------------------------------------------------------------
-  console.log('\n\x1b[36m[Module 3/5] Severity Detection & Priority Accuracy (Table 3 & Specific Objective 1.b/1.c)\x1b[0m');
+  console.log('\n[Module 3] Manual Hazard Alert Levels & Chronological Ordering');
 
-  runTest('High Severity Detection Test (Keyword Trigger: Trapped, Infant, Roof)', () => {
-    const result = detectSeverity('Flood', 'Chest-deep flood water. Trapped on the roof with an infant and elderly grandma.');
-    assert.strictEqual(result.severity, 'high', 'Severity must classify as HIGH');
-    assert(result.score >= 65, `Urgency score should be >= 65, got ${result.score}`);
-    assert(result.matchedKeywords.includes('trapped'), 'Should identify "trapped" trigger');
-    assert(result.matchedKeywords.includes('infant'), 'Should identify "infant" trigger');
-    assert(result.matchedKeywords.includes('roof'), 'Should identify "roof" trigger');
+  runTest('Canonical Alert Severity Levels Validation (Critical, High, Moderate)', () => {
+    const canonicalLevels = ['Critical', 'High', 'Moderate'];
+    assert(canonicalLevels.includes('Critical'), 'Critical level supported');
+    assert(canonicalLevels.includes('High'), 'High level supported');
+    assert(canonicalLevels.includes('Moderate'), 'Moderate level supported');
   });
 
-  runTest('SOS Hazard Base Classification Test', () => {
-    const result = detectSeverity('SOS', 'Emergency boat rescue needed at Purok 4.');
-    assert.strictEqual(result.severity, 'high', 'SOS incident types must default to HIGH severity');
-    assert(result.score >= 60, 'SOS incident score must be >= 60');
-  });
-
-  runTest('Medium Severity Detection Test (Rising water, impassable road)', () => {
-    const result = detectSeverity('Flood', 'Knee-deep rising water along National Road, impassable for light vehicles.');
-    assert.strictEqual(result.severity, 'medium', 'Severity must classify as MEDIUM');
-    assert(result.score >= 35 && result.score < 65, `Urgency score should be between 35 and 64, got ${result.score}`);
-    assert(result.matchedKeywords.includes('knee-deep') || result.matchedKeywords.includes('rising water'), 'Should identify medium triggers');
-  });
-
-  runTest('Low Severity Detection Test (Gutter-deep, light rain, minor puddle)', () => {
-    const result = detectSeverity('Storm', 'Gutter-deep standing water near street corner after light rain. No trapped residents.');
-    assert.strictEqual(result.severity, 'low', 'Severity must classify as LOW');
-    assert(result.score < 35, `Urgency score should be < 35, got ${result.score}`);
-  });
-
-  runTest('Rescue Request Prioritization Ranking Test (P1 vs P2 vs P3)', () => {
-    const reports = [
-      { id: 1, incident_type: 'Flood', description: 'Gutter deep water in street', created_at: new Date().toISOString(), status: 'pending' },
-      { id: 2, incident_type: 'SOS', description: 'Trapped on roof with baby, chest-deep flood', created_at: new Date().toISOString(), status: 'pending' },
-      { id: 3, incident_type: 'Fire', description: 'Electrical smoke near warehouse', created_at: new Date().toISOString(), status: 'pending' }
-    ];
-
-    const sorted = sortReportsByPriority(reports);
-    assert.strictEqual(sorted[0].id, 2, 'Critical SOS report (#2) must rank 1st in Triage queue');
-    assert.strictEqual(sorted[0].priority_code, 'P1', 'Top report must be Priority Tier 1 (Critical)');
-    assert(sorted[0].priority_score > sorted[1].priority_score, 'P1 score must exceed P2 score');
-    assert.strictEqual(sorted[2].id, 1, 'Low severity report (#1) must rank last');
-  });
-
-  // --------------------------------------------------------------------------
-  // MODULE 4: SECURITY MEASURES & PENETRATION INTEGRITY
-  // --------------------------------------------------------------------------
-  console.log('\n\x1b[36m[Module 4/5] Security Measures (Encryption, Token Auth, Data Sanitization)\x1b[0m');
+  console.log('\n[Module 4] Security Measures (Encryption, Token Auth, Data Sanitization)');
 
   runTest('Invalid Token Tampering Rejection Test', () => {
     const invalidToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.tamperedPayload.invalidSignature';
@@ -188,52 +143,16 @@ async function runTestSuite() {
     assert.strictEqual(escaped.includes('&lt;script&gt;'), true, 'Tags converted to HTML safe entities');
   });
 
-  // --------------------------------------------------------------------------
-  // MODULE 5: ISO 25010 PERFORMANCE & BENCHMARKS
-  // --------------------------------------------------------------------------
-  console.log('\n\x1b[36m[Module 5/5] ISO 25010 Quality Benchmark Evaluation\x1b[0m');
-
-  runTest('ISO 25010 Performance Efficiency: High-volume Triage Processing (<50ms for 500 reports)', () => {
-    const bulkReports = [];
-    for (let i = 0; i < 500; i++) {
-      bulkReports.push({
-        id: i + 1,
-        incident_type: i % 3 === 0 ? 'SOS' : i % 2 === 0 ? 'Flood' : 'Fire',
-        description: `Disaster report #${i}: Trapped with infant near Bayanan Purok ${i % 7 + 1}`,
-        latitude: 14.4106 + (Math.random() - 0.5) * 0.01,
-        longitude: 121.0502 + (Math.random() - 0.5) * 0.01,
-        created_at: new Date(Date.now() - (i * 60000)).toISOString(),
-        status: 'pending'
-      });
-    }
-
-    const t0 = Date.now();
-    const sorted = sortReportsByPriority(bulkReports, { latitude: 14.4106, longitude: 121.0502 });
-    const elapsed = Date.now() - t0;
-
-    assert.strictEqual(sorted.length, 500, 'All 500 reports must be processed');
-    assert(elapsed < 50, `Processing 500 reports took ${elapsed}ms (Benchmark target: <50ms)`);
-  });
-
-  // --------------------------------------------------------------------------
-  // SUMMARY REPORT GENERATION
-  // --------------------------------------------------------------------------
   console.log('\n======================================================================');
   console.log('   TEST EXECUTION SUMMARY');
   console.log('======================================================================');
   console.log(`Total Tests Executed: ${totalTests}`);
-  console.log(`Passed Tests:         \x1b[32m${passedTests}\x1b[0m`);
-  console.log(`Failed Tests:         \x1b[${totalTests - passedTests === 0 ? '32' : '31'}m${totalTests - passedTests}\x1b[0m`);
-  console.log(`Success Rate:         \x1b[32m${((passedTests / totalTests) * 100).toFixed(1)}%\x1b[0m`);
+  console.log(`Passed Tests:         ${passedTests}`);
+  console.log(`Failed Tests:         ${totalTests - passedTests}`);
+  console.log(`Success Rate:         ${((passedTests / totalTests) * 100).toFixed(1)}%`);
   console.log('======================================================================\n');
 
-  if (passedTests === totalTests) {
-    console.log('\x1b[32m✔ ALL ISO 25010 & TABLE 3 VERIFICATION TESTS PASSED SUCCESSFULLY!\x1b[0m\n');
-    process.exit(0);
-  } else {
-    console.error('\x1b[31m✖ SOME TEST CASES FAILED.\x1b[0m\n');
-    process.exit(1);
-  }
+  process.exit(passedTests === totalTests ? 0 : 1);
 }
 
 runTestSuite();

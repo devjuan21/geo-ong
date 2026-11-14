@@ -5,7 +5,7 @@
  * 1. Home (index.html)
  * 2. Evacuation Routes (evacuation-routes.html)
  * 3. Report / Rescue (report-rescue.html) - Visually emphasized emergency action
- * 4. Family (family.html)
+ * 4. Hazard Alerts (hazard-alerts.html)
  * 
  * - Mobile: Fixed 4-item bottom navigation bar with safe-area insets.
  * - Desktop/Tablet: Top navigation bar with the exact same 4 items.
@@ -40,11 +40,11 @@ const GeoSafeUI = {
       isEmergencyAction: true
     },
     {
-      id: 'family',
-      label: 'Family Safety',
-      shortLabel: 'Family',
-      href: 'family.html',
-      icon: 'users'
+      id: 'hazard-alerts',
+      label: 'Hazard Alerts',
+      shortLabel: 'Alerts',
+      href: 'hazard-alerts.html',
+      icon: 'bell'
     }
   ],
 
@@ -62,7 +62,12 @@ const GeoSafeUI = {
       'shield-check': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>`,
       'info': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`,
       'x': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`,
-      'check': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`
+      'check': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`,
+      'life-buoy': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><circle cx="12" cy="12" r="4" stroke-width="2"></circle><line x1="4.93" y1="4.93" x2="9.17" y2="9.17" stroke-width="2"></line><line x1="14.83" y1="14.83" x2="19.07" y2="19.07" stroke-width="2"></line><line x1="14.83" y1="9.17" x2="19.07" y2="4.93" stroke-width="2"></line><line x1="4.93" y1="19.07" x2="9.17" y2="14.83" stroke-width="2"></line></svg>`,
+      'file-text': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`,
+      'alert-circle': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line></svg>`,
+      'check-circle': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`,
+      'radio': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" stroke-width="2"></circle><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.24 7.76a6 6 0 010 8.49m-8.48-.01a6 6 0 010-8.49m11.31-2.82a10 10 0 010 14.14m-14.14 0a10 10 0 010-14.14"></path></svg>`
     };
     return icons[name] || '';
   },
@@ -84,8 +89,8 @@ const GeoSafeUI = {
       if (path.includes('report-rescue') || path.includes('report') || path.includes('rescue')) {
         return 'report-rescue';
       }
-      if (path.includes('family')) {
-        return 'family';
+      if (path.includes('hazard-alerts') || path.includes('alert')) {
+        return 'hazard-alerts';
       }
       if (path.includes('index') || path.endsWith('/') || path === '') {
         return 'home';
@@ -96,7 +101,7 @@ const GeoSafeUI = {
 
   /**
    * Initialize navigation for the active page
-   * @param {string} activePageId - 'home' | 'evacuation-routes' | 'report-rescue' | 'family'
+   * @param {string} activePageId - 'home' | 'evacuation-routes' | 'report-rescue' | 'hazard-alerts'
    * @param {string} pageTitle - Human readable title
    */
   async init(activePageId, pageTitle = '') {
@@ -116,6 +121,13 @@ const GeoSafeUI = {
 
     // Dynamically update greeting and notification counts from real records
     await this.syncHeaderResidentData();
+
+    if (!this._realtimeListenerBound && typeof window !== 'undefined') {
+      this._realtimeListenerBound = true;
+      window.addEventListener('geosafe:realtime-update', () => {
+        this.syncHeaderResidentData();
+      });
+    }
 
     // Sync online/offline indicators
     if (window.geoSafeStore) {
@@ -158,7 +170,7 @@ const GeoSafeUI = {
     }).join('');
 
     container.innerHTML = `
-      <header class="bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] sticky top-0 z-30 shadow-subtle">
+      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full z-40 bg-white border-b border-[#EEEEEE] shadow-subtle" style="padding-top: env(safe-area-inset-top, 0px);">
         <div class="max-w-7xl mx-auto px-3 sm:px-5 lg:px-8">
           <div class="flex items-center justify-between h-12 sm:h-13 gap-2">
             
@@ -268,7 +280,21 @@ const GeoSafeUI = {
           </div>
         </div>
       </header>
+      <div id="geosafe-header-spacer" aria-hidden="true" style="height: calc(3.25rem + env(safe-area-inset-top, 0px));"></div>
     `;
+
+    const syncHeaderSpacer = () => {
+      const headerEl = document.getElementById('geosafe-top-header');
+      const spacerEl = document.getElementById('geosafe-header-spacer');
+      if (headerEl && spacerEl && headerEl.offsetHeight > 0) {
+        spacerEl.style.height = `${headerEl.offsetHeight}px`;
+      }
+    };
+    syncHeaderSpacer();
+    if (!this._headerResizeBound) {
+      this._headerResizeBound = true;
+      window.addEventListener('resize', syncHeaderSpacer);
+    }
   },
 
   /**
@@ -680,6 +706,105 @@ const GeoSafeUI = {
     if (diffSecs < 86400) return `${Math.floor(diffSecs / 3600)}h ago`;
 
     return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  },
+
+  /**
+   * Format an ISO date string into a readable Philippine date and time
+   * @param {string} isoDateString
+   * @returns {string}
+   */
+  formatDate(isoDateString) {
+    if (!isoDateString) return '—';
+    const date = new Date(isoDateString);
+    if (isNaN(date.getTime())) return String(isoDateString);
+    return date.toLocaleString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  },
+
+  /**
+   * Render a severity badge HTML snippet
+   */
+  renderSeverityBadge(severity = 'Moderate') {
+    const normalized = String(severity || 'Moderate');
+    const styles = {
+      Critical: 'bg-rose-100 text-rose-700 border-rose-200',
+      High: 'bg-orange-100 text-orange-700 border-orange-200',
+      Moderate: 'bg-amber-100 text-amber-800 border-amber-200',
+      Medium: 'bg-amber-100 text-amber-800 border-amber-200',
+      Low: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    };
+    const cls = styles[normalized] || styles.Moderate;
+    return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized}</span>`;
+  },
+
+  /**
+   * Render a report or rescue status badge HTML snippet
+   */
+  renderReportStatusBadge(status = 'Pending Review') {
+    const normalized = String(status || 'Pending Review');
+    const styles = {
+      'Pending': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Pending Review': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Verified': 'bg-sky-100 text-sky-700 border-sky-200',
+      'Assigned': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+      'En Route': 'bg-blue-100 text-blue-700 border-blue-200',
+      'On Scene': 'bg-purple-100 text-purple-700 border-purple-200',
+      'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
+      'Resolved': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Rescued': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Rejected': 'bg-slate-100 text-slate-600 border-slate-200'
+    };
+    const cls = styles[normalized] || 'bg-slate-100 text-slate-700 border-slate-200';
+    return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized}</span>`;
+  },
+
+  /**
+   * Render a rescue priority badge HTML snippet
+   */
+  renderPriorityBadge(priority = 'High') {
+    const normalized = String(priority || 'High');
+    const styles = {
+      Critical: 'bg-rose-100 text-rose-700 border-rose-200',
+      High: 'bg-orange-100 text-orange-700 border-orange-200',
+      Medium: 'bg-amber-100 text-amber-800 border-amber-200',
+      Moderate: 'bg-amber-100 text-amber-800 border-amber-200',
+      Low: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+    };
+    const cls = styles[normalized] || styles.High;
+    return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized} Priority</span>`;
+  },
+
+  /**
+   * Render an evacuation center status badge HTML snippet
+   */
+  renderCenterStatusBadge(status = 'Open') {
+    const normalized = String(status || 'Open');
+    const styles = {
+      'Open': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Available': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Near Capacity': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Limited': 'bg-amber-100 text-amber-800 border-amber-200',
+      'Full': 'bg-rose-100 text-rose-700 border-rose-200',
+      'Closed': 'bg-slate-100 text-slate-600 border-slate-200'
+    };
+    const cls = styles[normalized] || styles.Open;
+    return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized}</span>`;
+  },
+
+  /**
+   * Alias helpers for notification/profile header sync
+   */
+  async updateUnreadNotificationBadge() {
+    return this.syncHeaderResidentData();
+  },
+
+  async updateUserHeader() {
+    return this.syncHeaderResidentData();
   }
 };
 

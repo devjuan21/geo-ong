@@ -11,9 +11,32 @@ router.use(authenticate);
 router.post(
   '/',
   requireRole('admin'),
+  (req, _res, next) => {
+    if (req.body && !req.body.severity && req.body.level) {
+      req.body.severity = req.body.level;
+    }
+    next();
+  },
   [
     body('message').trim().isLength({ min: 5, max: 1000 }),
-    body('severity').isIn(['low', 'medium', 'high']),
+    body('severity')
+      .optional({ values: 'falsy' })
+      .isIn([
+        'Critical',
+        'High',
+        'Moderate',
+        'Medium',
+        'Low',
+        'critical',
+        'high',
+        'moderate',
+        'medium',
+        'low',
+        'Advisory',
+        'Watch',
+        'Warning',
+        'Critical Evacuation',
+      ]),
   ],
   createAlert
 );

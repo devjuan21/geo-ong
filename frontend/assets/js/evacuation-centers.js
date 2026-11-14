@@ -25,10 +25,14 @@ function initEvacMap() {
 
   try {
     evacMap = L.map('evac-map').setView([14.4075, 121.0475], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors | Barangay Bayanan Evac Map'
-    }).addTo(evacMap);
+    if (window.GeoSafeMapping && typeof window.GeoSafeMapping.addBaseTileLayer === 'function') {
+      window.GeoSafeMapping.addBaseTileLayer(evacMap);
+    } else {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors | Barangay Bayanan Evac Map'
+      }).addTo(evacMap);
+    }
   } catch (err) {
     console.warn('Evac map init warning:', err);
   }
@@ -150,15 +154,10 @@ function renderCenterCards(centers) {
   if (emptyEl) emptyEl.classList.add('hidden');
 
   container.innerHTML = centers.map(c => {
-    const pct = Math.round((c.capacity.current / c.capacity.total) * 100);
-    let barColor = 'bg-emerald-500';
-    if (pct >= 85) barColor = 'bg-rose-500';
-    else if (pct >= 60) barColor = 'bg-amber-500';
-
     return `
       <div class="bg-white rounded-2xl border border-slate-200 shadow-card p-5 transition-all hover:shadow-card-hover flex flex-col justify-between" id="center-card-${c.id}">
         <div>
-          <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="flex items-start justify-between gap-3 mb-3">
             <div>
               <h3 class="text-base font-bold text-slate-900">${c.name}</h3>
               <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
@@ -167,20 +166,6 @@ function renderCenterCards(centers) {
               </p>
             </div>
             ${GeoSafeUI.renderCenterStatusBadge(c.status)}
-          </div>
-
-          <!-- Capacity Meter -->
-          <div class="my-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
-            <div class="flex items-center justify-between text-xs font-semibold mb-1.5">
-              <span class="text-slate-700">Occupancy Level</span>
-              <span class="text-slate-900">${c.capacity.current} / ${c.capacity.total} (${pct}%)</span>
-            </div>
-            <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-              <div class="${barColor} h-2 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
-            </div>
-            <div class="flex items-center justify-between text-[11px] text-slate-500 mt-1.5">
-              <span>Remaining Space: <strong class="text-emerald-700 font-bold">${c.capacity.available} individuals</strong></span>
-            </div>
           </div>
 
           <!-- Facilities -->

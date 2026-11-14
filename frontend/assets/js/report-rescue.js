@@ -104,8 +104,6 @@ function initReportMapPicker() {
 
   try {
     reportMap = GeoSafeMapping.createMap('report-map-picker', {
-      center: [reportCoords.lat, reportCoords.lng],
-      zoom: 15,
       scrollWheelZoom: false
     });
 
@@ -138,8 +136,6 @@ function initRescueMapPicker() {
 
   try {
     rescueMap = GeoSafeMapping.createMap('rescue-map-picker', {
-      center: [rescueCoords.lat, rescueCoords.lng],
-      zoom: 15,
       scrollWheelZoom: false
     });
 
@@ -233,34 +229,153 @@ window.acquireGpsForRescue = async function () {
   }
 };
 
-/**
- * Handle Photo Upload Preview
- */
-window.handlePhotoUpload = function (event, prefix) {
-  const file = event.target.files?.[0];
-  const nameLabel = document.getElementById(`${prefix}-photo-filename`);
-  const previewContainer = document.getElementById(`${prefix}-photo-preview-container`);
+let activeCameraStream = null;
+let activeCameraPrefix = 'rep';
+
+function stopCameraStream() {
+  if (activeCameraStream) {
+    activeCameraStream.getTracks().forEach((track) => track.stop());
+    activeCameraStream = null;
+  }
+  const videoEl = document.getElementById('camera-video-preview');
+  if (videoEl) {
+    videoEl.srcObject = null;
+    videoEl.classList.add('hidden');
+  }
+}
+
+window.addEventListener('pagehide', stopCameraStream);
+window.addEventListener('beforeunload', stopCameraStream);
+
+window.openCameraCapture = async function (prefix) {
+  activeCameraPrefix = prefix === 'res' ? 'res' : 'rep';
+
+  const modal = document.getElementById('camera-capture-modal');
+  const loadingEl = document.getElementById('camera-loading-state');
+  const errorEl = document.getElementById('camera-error-state');
+  const errorText = document.getElementById('camera-error-text');
+  const videoEl = document.getElementById('camera-video-preview');
+  const captureBtn = document.getElementById('btn-capture-photo');
+
+  stopCameraStream();
+  if (modal) modal.classList.remove('hidden');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (errorEl) errorEl.classList.add('hidden');
+  if (videoEl) videoEl.classList.add('hidden');
+  if (captureBtn) captureBtn.disabled = true;
+
+  if (typeof window !== 'undefined' && window.isSecureContext === false) {
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (errorEl) errorEl.classList.remove('hidden');
+    if (errorText) errorText.textContent = 'Camera access requires a secure HTTPS (or localhost) connection.';
+    return;
+  }
+
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (errorEl) errorEl.classList.remove('hidden');
+    if (errorText) errorText.textContent = 'Camera is not supported by this browser or device.';
+    return;
+  }
+
+  try {
+    try {
+      activeCameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+    } catch (constraintErr) {
+      if (constraintErr && (constraintErr.name === 'OverconstrainedError' || constraintErr.name === 'NotFoundError')) {
+        activeCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      } else {
+        throw constraintErr;
+      }
+    }
+
+    if (videoEl) {
+      videoEl.srcObject = activeCameraStream;
+      await videoEl.play();
+      videoEl.classList.remove('hidden');
+    }
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (captureBtn) captureBtn.disabled = false;
+  } catch (err) {
+    console.warn('Camera permission/open error:', err);
+    stopCameraStream();
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (errorEl) errorEl.classList.remove('hidden');
+
+    let msg = 'Unable to access the device camera. Please try again.';
+    if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+      msg = 'Camera permission was denied. Please allow camera access in your browser settings to take a photo.';
+    } else if (err && (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError')) {
+      msg = 'No camera was detected on this device.';
+    } else if (err && err.name === 'NotReadableError') {
+      msg = 'Camera is currently in use by another application.';
+    }
+    if (errorText) errorText.textContent = msg;
+  }
+};
+
+window.retryCameraCapture = function () {
+  window.openCameraCapture(activeCameraPrefix);
+};
+
+window.closeCameraCapture = function () {
+  stopCameraStream();
+  document.getElementById('camera-capture-modal')?.classList.add('hidden');
+};
+
+window.captureCameraPhoto = function () {
+  const videoEl = document.getElementById('camera-video-preview');
+  const canvasEl = document.getElementById('camera-capture-canvas');
+  if (!videoEl || !canvasEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+    GeoSafeUI.showToast('Camera preview is not ready yet.', 'warning');
+    return;
+  }
+
+  const maxDim = 1280;
+  let w = videoEl.videoWidth;
+  let h = videoEl.videoHeight;
+  if (w > maxDim || h > maxDim) {
+    const scale = maxDim / Math.max(w, h);
+    w = Math.round(w * scale);
+    h = Math.round(h * scale);
+  }
+
+  canvasEl.width = w;
+  canvasEl.height = h;
+  const ctx = canvasEl.getContext('2d');
+  ctx.drawImage(videoEl, 0, 0, w, h);
+
+  const dataUrl = canvasEl.toDataURL('image/jpeg', 0.85);
+  if (activeCameraPrefix === 'rep') {
+    reportPhotoBase64 = dataUrl;
+  } else {
+    rescuePhotoBase64 = dataUrl;
+  }
+
+  const previewImg = document.getElementById(`${activeCameraPrefix}-photo-preview`);
+  const previewContainer = document.getElementById(`${activeCameraPrefix}-photo-preview-container`);
+  if (previewImg && previewContainer) {
+    previewImg.src = dataUrl;
+    previewContainer.classList.remove('hidden');
+  }
+
+  window.closeCameraCapture();
+  GeoSafeUI.showToast('Photo captured.', 'success');
+};
+
+window.removeCapturedPhoto = function (prefix) {
+  if (prefix === 'rep') {
+    reportPhotoBase64 = null;
+  } else {
+    rescuePhotoBase64 = null;
+  }
   const previewImg = document.getElementById(`${prefix}-photo-preview`);
-
-  if (!file) return;
-
-  if (nameLabel) nameLabel.textContent = file.name;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataUrl = e.target.result;
-    if (prefix === 'rep') {
-      reportPhotoBase64 = dataUrl;
-    } else {
-      rescuePhotoBase64 = dataUrl;
-    }
-
-    if (previewImg && previewContainer) {
-      previewImg.src = dataUrl;
-      previewContainer.classList.remove('hidden');
-    }
-  };
-  reader.readAsDataURL(file);
+  const previewContainer = document.getElementById(`${prefix}-photo-preview-container`);
+  if (previewImg) previewImg.src = '';
+  if (previewContainer) previewContainer.classList.add('hidden');
 };
 
 /* ========================================================================= */
@@ -311,7 +426,7 @@ window.submitReportFinal = async function () {
     latitude: reportCoords.lat,
     longitude: reportCoords.lng,
     coordinates: { lat: reportCoords.lat, lng: reportCoords.lng },
-    authorizedForCommunity: document.getElementById('rep-community-auth')?.checked !== false,
+    authorizedForCommunity: false,
     photos: reportPhotoBase64 ? [reportPhotoBase64] : []
   };
 

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Leaflet CSS for Map Pickers -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css"/>
 </head>
 <body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
 
@@ -22,12 +22,7 @@
     <!-- Compact Page Header & Workflow Selector -->
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <div>
-          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white text-[#8A6800] border border-[#FFE872] mb-1">
-            Barangay Bayanan Emergency
-          </div>
-          <h1 class="text-lg sm:text-xl font-black text-[#202020] tracking-tight">Report / Rescue</h1>
-        </div>
+        <h1 class="text-lg sm:text-xl font-black text-[#202020] tracking-tight">Report / Rescue</h1>
       </div>
 
       <!-- Two Selection Cards (Responsive: Stacked on Mobile, Side-by-Side on Tablet/Desktop) -->
@@ -129,27 +124,22 @@
             </div>
           </div>
 
-          <!-- Options: Date & Public Authorization -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="rep-community-auth" checked class="w-4 h-4 rounded text-[#F5B900] focus:ring-[#F5B900] border-[#EEEEEE]">
-              <span class="text-xs text-[#777777]">Share on community map (identity kept private)</span>
-            </label>
-            <input type="hidden" id="rep-datetime" value="">
-          </div>
+          <input type="hidden" id="rep-datetime" value="">
 
-          <!-- Photo Attachment Pill -->
+          <!-- Take Photo Evidence -->
           <div>
             <div class="flex items-center gap-2">
-              <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFE872] bg-[#FFF9E8] hover:bg-[#FFF3D0] text-xs font-bold text-[#202020] transition-colors">
-                <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span>Attach Photo</span>
-                <input type="file" id="rep-photo-input" accept="image/*" class="hidden" onchange="handlePhotoUpload(event, 'rep')">
-              </label>
-              <span id="rep-photo-filename" class="text-[11px] text-[#777777] truncate max-w-xs">No file chosen</span>
+              <button type="button" onclick="openCameraCapture('rep')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFE872] bg-[#FFF9E8] hover:bg-[#FFF3D0] text-xs font-bold text-[#202020] transition-colors">
+                <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                <span>Take Photo</span>
+              </button>
             </div>
-            <div id="rep-photo-preview-container" class="mt-2 hidden">
-              <img id="rep-photo-preview" src="" alt="Incident Preview" class="h-20 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+            <div id="rep-photo-preview-container" class="mt-2 hidden space-y-2">
+              <img id="rep-photo-preview" src="" alt="Incident Preview" class="h-24 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="openCameraCapture('rep')" class="px-2.5 py-1 rounded-lg bg-[#FFF9E8] hover:bg-[#FFF3D0] border border-[#FFE872] text-[11px] font-bold text-[#202020]">Retake Photo</button>
+                <button type="button" onclick="removeCapturedPhoto('rep')" class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF1F1] border border-[#EEEEEE] text-[11px] font-bold text-[#D93636]">Remove Photo</button>
+              </div>
             </div>
           </div>
 
@@ -242,15 +232,17 @@
           <!-- Situation Photo -->
           <div>
             <div class="flex items-center gap-2">
-              <label class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFC2C2] bg-[#FFF1F1] hover:bg-[#FFE0E0] text-xs font-bold text-[#D93636] transition-colors">
-                <svg class="w-3.5 h-3.5 text-[#D93636]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span>Attach Photo</span>
-                <input type="file" id="res-photo-input" accept="image/*" class="hidden" onchange="handlePhotoUpload(event, 'res')">
-              </label>
-              <span id="res-photo-filename" class="text-[11px] text-[#777777] truncate max-w-xs">No file chosen</span>
+              <button type="button" onclick="openCameraCapture('res')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#FFC2C2] bg-[#FFF1F1] hover:bg-[#FFE0E0] text-xs font-bold text-[#D93636] transition-colors">
+                <svg class="w-3.5 h-3.5 text-[#D93636]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                <span>Take Photo</span>
+              </button>
             </div>
-            <div id="res-photo-preview-container" class="mt-2 hidden">
-              <img id="res-photo-preview" src="" alt="Rescue Preview" class="h-20 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+            <div id="res-photo-preview-container" class="mt-2 hidden space-y-2">
+              <img id="res-photo-preview" src="" alt="Rescue Preview" class="h-24 w-auto rounded-xl border border-[#EEEEEE] object-cover">
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="openCameraCapture('res')" class="px-2.5 py-1 rounded-lg bg-[#FFF9E8] hover:bg-[#FFF3D0] border border-[#FFE872] text-[11px] font-bold text-[#202020]">Retake Photo</button>
+                <button type="button" onclick="removeCapturedPhoto('res')" class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF1F1] border border-[#EEEEEE] text-[11px] font-bold text-[#D93636]">Remove Photo</button>
+              </div>
             </div>
           </div>
 
@@ -344,8 +336,44 @@
     </div>
   </div>
 
+  <!-- CAMERA CAPTURE MODAL -->
+  <div id="camera-capture-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/70 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-4 shadow-modal border border-[#EEEEEE] space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-black text-[#202020]">Take Photo</h3>
+        <button type="button" onclick="closeCameraCapture()" class="px-2.5 py-1 rounded-lg border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:bg-slate-50">
+          Close Camera
+        </button>
+      </div>
+
+      <div id="camera-loading-state" class="h-56 rounded-2xl bg-[#FFFDF7] border border-[#EEEEEE] flex flex-col items-center justify-center gap-2 text-xs font-semibold text-[#555555]">
+        <div class="w-5 h-5 border-2 border-[#F5B900] border-t-transparent rounded-full animate-spin"></div>
+        <span>Opening camera...</span>
+      </div>
+
+      <div id="camera-error-state" class="hidden p-4 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-center space-y-2.5">
+        <p id="camera-error-text" class="text-xs font-semibold text-[#D93636]"></p>
+        <button type="button" onclick="retryCameraCapture()" class="px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold">
+          Retry Camera
+        </button>
+      </div>
+
+      <video id="camera-video-preview" autoplay playsinline muted class="hidden w-full h-56 sm:h-64 bg-black rounded-2xl object-cover"></video>
+      <canvas id="camera-capture-canvas" class="hidden"></canvas>
+
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" onclick="closeCameraCapture()" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:bg-slate-50">
+          Close Camera
+        </button>
+        <button type="button" id="btn-capture-photo" onclick="captureCameraPhoto()" disabled class="px-4 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] disabled:opacity-50 text-[#202020] text-xs font-black shadow-subtle">
+          Capture Photo
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="./assets/vendor/leaflet/leaflet.js"></script>
   <!-- Mapping Service, Store, Components & Page Logic -->
   <script src="./assets/js/mapping-service.js"></script>
   <script src="./assets/js/mock-data.js"></script>

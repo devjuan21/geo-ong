@@ -3,9 +3,12 @@ const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS, roleLabel, roleDisplayName } = require('../config/roles');
 const { generateNextUserCode } = require('../services/userIdService');
-const { emitStatusUpdate } = require('../socket');
-const { detectSeverity } = require('../utils/severityDetector');
-const { calculateReportPriority } = require('../utils/prioritizer');
+const {
+  emitStatusUpdate,
+  emitAssignmentUpdate,
+  emitAlertBroadcast,
+  emitAdminAnnouncement,
+} = require('../services/socketService');
 
 const BCRYPT_ROUNDS = 12;
 
@@ -107,6 +110,25 @@ async function writeAuditLog(connOrPool, { userId, action, entityType, entityId,
   } catch (err) {
     console.warn('[Admin Audit] Could not write audit_logs:', err.message);
   }
+}
+
+async function insertNotificationForUsers(connOrPool, { title, message, severity = 'High', category = 'Alert', createdBy = null, userIds = [] }) {
+  const uniqueIds = Array.from(new Set(userIds.filter((id) => Number.isInteger(Number(id)) && Number(id) > 0).map(Number)));
+  if (!uniqueIds.length) return null;
+  const safeSeverity = ['Critical', 'High'].includes(severity) ? severity : 'High';
+  const safeCategory = 'Alert';
+  const [notifRes] = await connOrPool.query(
+    `INSERT INTO notifications (title, message, severity, category, created_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    [String(title).slice(0, 150), String(message), safeSeverity, safeCategory, createdBy]
+  );
+  for (const uid of uniqueIds) {
+    await connOrPool.query(
+      'INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)',
+      [notifRes.insertId, uid]
+    );
+  }
+  return notifRes.insertId;
 }
 
 // ============================================================================
@@ -277,7 +299,7 @@ async function getAdminOverview(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminOverview failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load dashboard overview from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load dashboard overview from database.' });
   }
 }
 
@@ -355,19 +377,16 @@ async function getVulnerableResidents(req, res) {
   try {
     const [rows] = await pool.query(
       `SELECT 
-        u.id, u.name, u.email,
+        u.id, u.user_code, u.name, u.email,
         up.phone_number AS contact_number,
         up.street_address AS address,
+        up.barangay,
+        up.medical_notes,
         u.safety_status, u.last_latitude, u.last_longitude, u.battery_level,
-        fg.family_name AS family_group_name,
-        fm.id AS family_member_id,
-        fm.relationship AS family_relationship,
         (SELECT COUNT(*) FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' AND (r.severity IN ('high', 'critical') OR r.incident_type = 'SOS')) AS active_critical_reports,
         (SELECT r.description FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' ORDER BY r.created_at DESC LIMIT 1) AS latest_incident_description
       FROM users u
       LEFT JOIN user_profiles up ON up.user_id = u.id
-      LEFT JOIN family_members fm ON fm.user_id = u.id AND fm.membership_status = 'active'
-      LEFT JOIN family_groups fg ON fg.id = fm.family_id AND fg.status = 'active'
       WHERE u.role_id = ?
         AND (
           u.safety_status IN ('need_help', 'injured', 'no_response')
@@ -522,7 +541,7 @@ async function getAdminReportsList(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminReportsList failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load reports from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load reports from database.' });
   }
 }
 
@@ -596,15 +615,6 @@ async function getAdminReportDetail(req, res) {
         [recordId]
       );
 
-      const detection = detectSeverity(r.incident_type || 'General Incident', r.description || '');
-      const priorityInfo = calculateReportPriority({
-        incident_type: r.incident_type,
-        description: r.description,
-        created_at: r.created_at,
-        latitude: r.latitude,
-        longitude: r.longitude,
-      });
-
       const mappedAttachments = attachments.map((att) => ({
         id: att.id,
         fileUrl: att.file_url,
@@ -633,6 +643,8 @@ async function getAdminReportDetail(req, res) {
         createdAt: h.created_at,
       }));
 
+      const displaySev = normalizeSeverityDisplay(r.severity);
+
       const detail = {
         uid: `incident-${r.id}`,
         id: r.id,
@@ -648,7 +660,7 @@ async function getAdminReportDetail(req, res) {
         address: r.address || 'Barangay Bayanan, Muntinlupa City',
         latitude: r.latitude !== null ? Number(r.latitude) : null,
         longitude: r.longitude !== null ? Number(r.longitude) : null,
-        severity: normalizeSeverityDisplay(r.severity),
+        severity: displaySev,
         rawSeverity: r.severity,
         status: r.status,
         rawStatus: r.status,
@@ -675,16 +687,8 @@ async function getAdminReportDetail(req, res) {
           verificationStatus: r.reporter_verification_status || 'Unverified Resident',
           accountStatus: r.reporter_account_status || 'active',
         },
-        severityDetection: {
-          detectedSeverity: detection.severity,
-          urgencyScore: detection.score,
-          matchedKeywords: detection.matchedKeywords || [],
-          recommendation: detection.recommendation || '',
-        },
         priorityDetails: {
-          tier: priorityInfo.priorityTier || 'Standard',
-          score: priorityInfo.priorityScore || 50,
-          breakdown: priorityInfo.breakdown || {},
+          tier: displaySev,
         },
         attachments: mappedAttachments,
         history: mappedHistory,
@@ -757,15 +761,6 @@ async function getAdminReportDetail(req, res) {
       [recordId]
     );
 
-    const detection = detectSeverity(r.emergency_type || 'Emergency Rescue', r.description || '');
-    const priorityInfo = calculateReportPriority({
-      incident_type: r.emergency_type || 'SOS',
-      description: r.description,
-      created_at: r.created_at,
-      latitude: r.latitude,
-      longitude: r.longitude,
-    });
-
     const mappedAttachments = attachments.map((att) => ({
       id: att.id,
       fileUrl: att.file_url,
@@ -794,6 +789,8 @@ async function getAdminReportDetail(req, res) {
       createdAt: h.created_at,
     }));
 
+    const displaySev = normalizeSeverityDisplay(r.priority);
+
     const detail = {
       uid: `rescue-${r.id}`,
       id: r.id,
@@ -812,7 +809,7 @@ async function getAdminReportDetail(req, res) {
       address: r.address || 'Barangay Bayanan, Muntinlupa City',
       latitude: r.latitude !== null ? Number(r.latitude) : null,
       longitude: r.longitude !== null ? Number(r.longitude) : null,
-      severity: normalizeSeverityDisplay(r.priority),
+      severity: displaySev,
       rawSeverity: String(r.priority || 'High').toLowerCase(),
       status: r.status,
       rawStatus: r.status,
@@ -842,16 +839,8 @@ async function getAdminReportDetail(req, res) {
         vulnerableDetails: r.vulnerable_details || 'None specified',
         landmark: r.landmark || 'None specified',
       },
-      severityDetection: {
-        detectedSeverity: detection.severity,
-        urgencyScore: detection.score,
-        matchedKeywords: detection.matchedKeywords || [],
-        recommendation: detection.recommendation || '',
-      },
       priorityDetails: {
-        tier: priorityInfo.priorityTier || 'High',
-        score: priorityInfo.priorityScore || 80,
-        breakdown: priorityInfo.breakdown || {},
+        tier: displaySev,
       },
       attachments: mappedAttachments,
       history: mappedHistory,
@@ -870,7 +859,7 @@ async function getAdminReportDetail(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminReportDetail failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load report details from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load report details from database.' });
   }
 }
 
@@ -922,6 +911,7 @@ async function reviewAdminReport(req, res) {
       }
       const current = rows[0];
       const recordId = current.id;
+      const refNum = current.reference_number || `INC-${recordId}`;
 
       let targetStatus = status || current.status;
       if (action === 'verify') targetStatus = 'verified';
@@ -986,22 +976,26 @@ async function reviewAdminReport(req, res) {
         );
       }
 
-      if (isClarification) {
-        const [notifRes] = await conn.query(
-          `INSERT INTO notifications (title, message, severity, category, related_entity_type, related_entity_id, created_by)
-           VALUES (?, ?, 'Warning', 'Incident', 'incident_report', ?, ?)`,
-          [
-            `Clarification Requested: ${current.reference_number || 'INC-' + current.id}`,
-            trimmedReason,
-            recordId,
-            req.user.id,
-          ]
-        );
-        await conn.query(
-          `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
-          [notifRes.insertId, current.user_id]
-        );
+      const notifTitle = isClarification
+        ? `Clarification Requested: ${refNum}`
+        : `Report Update (${refNum}): ${normalizeIncidentStatusLabel(targetStatus)}`;
+      const notifMsg = isClarification
+        ? trimmedReason
+        : `Your incident report ${refNum} is now marked "${normalizeIncidentStatusLabel(targetStatus)}". ${historyRemark}`;
+
+      const notifRecipients = [current.user_id];
+      if (targetAssignee && targetAssignee !== current.assigned_to) {
+        notifRecipients.push(targetAssignee);
       }
+
+      await insertNotificationForUsers(conn, {
+        title: notifTitle,
+        message: notifMsg,
+        severity: targetSeverity === 'critical' ? 'Critical' : 'High',
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: notifRecipients,
+      });
 
       await writeAuditLog(conn, {
         userId: req.user.id,
@@ -1013,14 +1007,33 @@ async function reviewAdminReport(req, res) {
           ? 'INCIDENT_REPORT_VERIFIED'
           : 'INCIDENT_REPORT_REVIEWED',
         entityType: 'reports',
-        entityId: current.reference_number || String(recordId),
+        entityId: refNum,
         oldValues: { status: current.status, severity: current.severity, assigned_to: current.assigned_to },
         newValues: { status: targetStatus, severity: targetSeverity, assigned_to: targetAssignee, reason: historyRemark },
         req,
       });
 
       await conn.commit();
-      emitStatusUpdate({ id: recordId, status: targetStatus, severity: targetSeverity });
+
+      if (targetAssignee && targetAssignee !== current.assigned_to) {
+        emitAssignmentUpdate({
+          id: recordId,
+          referenceNumber: refNum,
+          assignmentType: 'incident',
+          status: targetStatus,
+          assignedTo: targetAssignee,
+          residentId: current.user_id,
+        });
+      }
+      emitStatusUpdate({
+        id: recordId,
+        referenceNumber: refNum,
+        recordType: 'incident',
+        status: targetStatus,
+        severity: targetSeverity,
+        assignedTo: targetAssignee,
+        residentId: current.user_id,
+      });
       return res.json({ message: 'Incident report review saved.', status: targetStatus });
     }
 
@@ -1032,6 +1045,7 @@ async function reviewAdminReport(req, res) {
     }
     const current = rows[0];
     const recordId = current.id;
+    const refNum = current.reference_number || `RES-${recordId}`;
 
     let targetStatus = status || current.status;
     if (action === 'verify') targetStatus = current.status === 'Pending Dispatch' ? 'Assigned' : current.status;
@@ -1073,8 +1087,9 @@ async function reviewAdminReport(req, res) {
       [recordId, current.status, targetStatus, req.user.id, historyRemark]
     );
 
+    let responderId = null;
     if (assignedTo) {
-      const responderId = parseInt(assignedTo, 10);
+      responderId = parseInt(assignedTo, 10);
       const [respCheck] = await conn.query(
         "SELECT id FROM users WHERE id = ? AND role_id = ? AND status = 'active'",
         [responderId, ROLE_IDS.RESPONDER]
@@ -1090,22 +1105,24 @@ async function reviewAdminReport(req, res) {
       );
     }
 
-    if (isClarification) {
-      const [notifRes] = await conn.query(
-        `INSERT INTO notifications (title, message, severity, category, related_entity_type, related_entity_id, created_by)
-         VALUES (?, ?, 'Warning', 'Rescue', 'rescue_request', ?, ?)`,
-        [
-          `Clarification Requested: ${current.reference_number || 'RES-' + current.id}`,
-          trimmedReason,
-          recordId,
-          req.user.id,
-        ]
-      );
-      await conn.query(
-        `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
-        [notifRes.insertId, current.user_id]
-      );
-    }
+    const notifTitle = isClarification
+      ? `Clarification Requested: ${refNum}`
+      : `Rescue Update (${refNum}): ${targetStatus}`;
+    const notifMsg = isClarification
+      ? trimmedReason
+      : `Your emergency rescue request ${refNum} is now marked "${targetStatus}". ${historyRemark}`;
+
+    const notifRecipients = [current.user_id];
+    if (responderId) notifRecipients.push(responderId);
+
+    await insertNotificationForUsers(conn, {
+      title: notifTitle,
+      message: notifMsg,
+      severity: targetPriority === 'Critical' ? 'Critical' : 'High',
+      category: 'Alert',
+      createdBy: req.user.id,
+      userIds: notifRecipients,
+    });
 
     await writeAuditLog(conn, {
       userId: req.user.id,
@@ -1117,18 +1134,38 @@ async function reviewAdminReport(req, res) {
         ? 'RESCUE_REQUEST_VERIFIED'
         : 'RESCUE_REQUEST_REVIEWED',
       entityType: 'rescue_requests',
-      entityId: current.reference_number || String(recordId),
+      entityId: refNum,
       oldValues: { status: current.status, priority: current.priority },
       newValues: { status: targetStatus, priority: targetPriority, reason: historyRemark },
       req,
     });
 
     await conn.commit();
+
+    if (responderId) {
+      emitAssignmentUpdate({
+        id: recordId,
+        referenceNumber: refNum,
+        assignmentType: 'rescue',
+        status: targetStatus,
+        assignedTo: responderId,
+        residentId: current.user_id,
+      });
+    }
+    emitStatusUpdate({
+      id: recordId,
+      referenceNumber: refNum,
+      recordType: 'rescue',
+      status: targetStatus,
+      priority: targetPriority,
+      assignedTo: responderId,
+      residentId: current.user_id,
+    });
     return res.json({ message: 'Rescue request review saved.', status: targetStatus });
   } catch (err) {
     await conn.rollback().catch(() => {});
     console.error('[Admin API] reviewAdminReport failed:', err.message);
-    return res.status(503).json({ error: 'Unable to save report review in MySQL.' });
+    return res.status(503).json({ error: 'Unable to save report review in database.' });
   } finally {
     conn.release();
   }
@@ -1168,7 +1205,6 @@ async function getAdminUsers(req, res) {
        LEFT JOIN user_profiles up ON up.user_id = u.id
        LEFT JOIN responder_profiles rp ON rp.user_id = u.id
        WHERE (u.role_id = ? OR (u.role_id IS NULL AND LOWER(u.role) = ?))
-       GROUP BY u.id
        ORDER BY u.created_at DESC, u.id DESC`,
       [targetRoleId, targetRoleName]
     );
@@ -1246,7 +1282,7 @@ async function getAdminUsers(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminUsers failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load user directory from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load user directory from database.' });
   }
 }
 
@@ -1481,7 +1517,6 @@ function classifyModuleFromEntity(entityType, action) {
   if (ent === 'user_management' || act.includes('user_registered')) return 'USER_MANAGEMENT';
   if (ent.includes('report') || act.includes('incident')) return 'Incident Reports';
   if (ent.includes('rescue') || act.includes('rescue')) return 'Rescue Requests';
-  if (ent.includes('family') || act.includes('family')) return 'Family Safety';
   if (ent.includes('alert') || ent.includes('broadcast')) return 'Emergency Broadcasts';
   if (ent.includes('auth') || act.includes('login') || act.includes('logout') || act.includes('token')) {
     return 'Authentication';
@@ -1634,7 +1669,7 @@ async function getAdminAuditLogs(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminAuditLogs failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load audit logs from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load audit logs from database.' });
   }
 }
 
@@ -1712,7 +1747,7 @@ async function getAdminRespondersList(req, res) {
     return res.json({ responders, total: responders.length });
   } catch (err) {
     console.error('[Admin API] getAdminRespondersList failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load responders roster from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load responders roster from database.' });
   }
 }
 
@@ -1758,11 +1793,12 @@ async function assignResponder(req, res) {
     const responderName = [responderUser.first_name, responderUser.last_name].filter(Boolean).join(' ') || responderUser.badge_number;
 
     if (assignmentType === 'incident') {
-      const [[report]] = await conn.query('SELECT id, reference_number, status, assigned_to FROM reports WHERE id = ?', [idToAssign]);
+      const [[report]] = await conn.query('SELECT id, user_id, reference_number, status, assigned_to FROM reports WHERE id = ?', [idToAssign]);
       if (!report) {
         await conn.rollback();
         return res.status(404).json({ error: 'Incident report not found.' });
       }
+      const refNum = report.reference_number || `INC-${idToAssign}`;
 
       const [assignRes] = await conn.query(
         `INSERT INTO incident_assignments (report_id, responder_user_id, assigned_by, assignment_status, dispatch_instructions, assigned_at)
@@ -1788,6 +1824,15 @@ async function assignResponder(req, res) {
         [idToAssign, report.status, newReportStatus, req.user.id, `Assigned to responder ${responderName} (${responderUser.badge_number})`]
       );
 
+      await insertNotificationForUsers(conn, {
+        title: `Responder Dispatched: ${refNum}`,
+        message: `Responder ${responderName} (${responderUser.badge_number}) has been assigned to incident ${refNum}.`,
+        severity: 'High',
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: [report.user_id, respUserId],
+      });
+
       await writeAuditLog(conn, {
         userId: req.user.id,
         action: 'ASSIGN_RESPONDER_INCIDENT',
@@ -1801,24 +1846,39 @@ async function assignResponder(req, res) {
       await conn.commit();
 
       try {
+        emitAssignmentUpdate({
+          id: idToAssign,
+          referenceNumber: refNum,
+          assignmentId: assignRes.insertId,
+          assignmentType: 'incident',
+          status: newReportStatus,
+          assignedTo: respUserId,
+          responderId: respUserId,
+          responderName,
+          badgeNumber: responderUser.badge_number,
+          residentId: report.user_id,
+        });
         emitStatusUpdate(idToAssign, 'incident', newReportStatus, {
+          referenceNumber: refNum,
           assignedTo: respUserId,
           responderName,
           badgeNumber: responderUser.badge_number,
+          residentId: report.user_id,
         });
       } catch (e) {}
 
       return res.json({
-        message: `Assigned responder ${responderName} to incident ${report.reference_number || `INC-${idToAssign}`}.`,
+        message: `Assigned responder ${responderName} to incident ${refNum}.`,
         assignmentId: assignRes.insertId,
         newStatus: newReportStatus,
       });
     } else {
-      const [[rescue]] = await conn.query('SELECT id, reference_number, status FROM rescue_requests WHERE id = ?', [idToAssign]);
+      const [[rescue]] = await conn.query('SELECT id, user_id, reference_number, status FROM rescue_requests WHERE id = ?', [idToAssign]);
       if (!rescue) {
         await conn.rollback();
         return res.status(404).json({ error: 'Rescue request not found.' });
       }
+      const refNum = rescue.reference_number || `RES-${idToAssign}`;
 
       const [assignRes] = await conn.query(
         `INSERT INTO rescue_assignments (rescue_id, responder_user_id, assigned_by, assignment_status, dispatch_instructions, assigned_at)
@@ -1843,6 +1903,15 @@ async function assignResponder(req, res) {
         [idToAssign, rescue.status, req.user.id, `Dispatched responder ${responderName} (${responderUser.badge_number})`]
       );
 
+      await insertNotificationForUsers(conn, {
+        title: `Rescue Team Dispatched: ${refNum}`,
+        message: `Responder ${responderName} (${responderUser.badge_number}) has been assigned to rescue request ${refNum}.`,
+        severity: 'Critical',
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: [rescue.user_id, respUserId],
+      });
+
       await writeAuditLog(conn, {
         userId: req.user.id,
         action: 'ASSIGN_RESPONDER_RESCUE',
@@ -1856,15 +1925,29 @@ async function assignResponder(req, res) {
       await conn.commit();
 
       try {
+        emitAssignmentUpdate({
+          id: idToAssign,
+          referenceNumber: refNum,
+          assignmentId: assignRes.insertId,
+          assignmentType: 'rescue',
+          status: 'Assigned',
+          assignedTo: respUserId,
+          responderId: respUserId,
+          responderName,
+          badgeNumber: responderUser.badge_number,
+          residentId: rescue.user_id,
+        });
         emitStatusUpdate(idToAssign, 'rescue', 'Assigned', {
+          referenceNumber: refNum,
           assignedTo: respUserId,
           responderName,
           badgeNumber: responderUser.badge_number,
+          residentId: rescue.user_id,
         });
       } catch (e) {}
 
       return res.json({
-        message: `Assigned responder ${responderName} to rescue ${rescue.reference_number || `RES-${idToAssign}`}.`,
+        message: `Assigned responder ${responderName} to rescue ${refNum}.`,
         assignmentId: assignRes.insertId,
         newStatus: 'Assigned',
       });
@@ -1998,7 +2081,7 @@ async function getEmergencyBroadcasts(req, res) {
     return res.json({ broadcasts, total: broadcasts.length });
   } catch (err) {
     console.error('[Admin API] getEmergencyBroadcasts failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load broadcast logs from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load broadcast logs from database.' });
   }
 }
 
@@ -2011,13 +2094,36 @@ async function createEmergencyBroadcast(req, res) {
   const { title, message, severity, target_scope, targetScope, target_zones, targetZones } = req.body;
   const broadcastTitle = String(title || '').trim();
   const broadcastMsg = String(message || '').trim();
-  const broadcastSeverity = severity || 'Advisory';
+  const rawSev = String(severity || 'Advisory').trim();
   const scope = target_scope || targetScope || 'All Barangay Bayanan';
   const zones = target_zones || targetZones || null;
 
-  const validSeverities = ['Advisory', 'Watch', 'Warning', 'Critical Evacuation'];
-  if (!validSeverities.includes(broadcastSeverity)) {
-    return res.status(400).json({ error: `Invalid severity. Must be one of: ${validSeverities.join(', ')}` });
+  // Support manual alert levels (Critical, High, Moderate) as well as broadcast ENUM labels
+  const sevLower = rawSev.toLowerCase();
+  let broadcastSeverity = 'Advisory';
+  let mappedAlertSeverity = 'medium';
+  let displayLevel = 'Moderate';
+
+  if (sevLower === 'critical' || sevLower === 'critical evacuation') {
+    broadcastSeverity = 'Critical Evacuation';
+    mappedAlertSeverity = 'critical';
+    displayLevel = 'Critical';
+  } else if (sevLower === 'high' || sevLower === 'warning') {
+    broadcastSeverity = 'Warning';
+    mappedAlertSeverity = 'high';
+    displayLevel = 'High';
+  } else if (sevLower === 'moderate' || sevLower === 'medium' || sevLower === 'watch') {
+    broadcastSeverity = 'Watch';
+    mappedAlertSeverity = 'medium';
+    displayLevel = 'Moderate';
+  } else if (sevLower === 'low' || sevLower === 'advisory') {
+    broadcastSeverity = 'Advisory';
+    mappedAlertSeverity = 'low';
+    displayLevel = 'Moderate';
+  } else {
+    return res.status(400).json({
+      error: 'Invalid severity. Must be one of: Critical, High, Moderate, Advisory, Watch, Warning, Critical Evacuation',
+    });
   }
 
   const validScopes = ['All Barangay Bayanan', 'Lakeshore Zone', 'Specific Purok', 'Responders Only'];
@@ -2029,17 +2135,18 @@ async function createEmergencyBroadcast(req, res) {
   try {
     await conn.beginTransaction();
 
-    let recipientCount = 0;
+    let recipientRows = [];
     if (scope === 'Responders Only') {
-      const [[cntRow]] = await conn.query(
-        "SELECT COUNT(*) AS count FROM users WHERE role_id = ? AND status = 'active'",
+      const [rows] = await conn.query(
+        "SELECT id FROM users WHERE role_id = ? AND status = 'active'",
         [ROLE_IDS.RESPONDER]
       );
-      recipientCount = Number((cntRow && cntRow.count) || 0);
+      recipientRows = rows;
     } else {
-      const [[cntRow]] = await conn.query("SELECT COUNT(*) AS count FROM users WHERE status = 'active'");
-      recipientCount = Number((cntRow && cntRow.count) || 0);
+      const [rows] = await conn.query("SELECT id FROM users WHERE status = 'active'");
+      recipientRows = rows;
     }
+    const recipientCount = recipientRows.length;
 
     const [bRes] = await conn.query(
       `INSERT INTO emergency_broadcast_logs 
@@ -2049,43 +2156,53 @@ async function createEmergencyBroadcast(req, res) {
     );
     const broadcastId = bRes.insertId;
 
-    const alertSeverityMap = {
-      Advisory: 'low',
-      Watch: 'medium',
-      Warning: 'high',
-      'Critical Evacuation': 'critical',
-    };
-    const mappedAlertSeverity = alertSeverityMap[broadcastSeverity] || 'medium';
-
-    await conn.query(
+    const [alertRes] = await conn.query(
       `INSERT INTO alerts (message, severity, created_by, created_at)
        VALUES (?, ?, ?, NOW())`,
-      [`[${broadcastSeverity.toUpperCase()}] ${broadcastTitle}: ${broadcastMsg}`, mappedAlertSeverity, req.user.id]
+      [`[${displayLevel.toUpperCase()}] ${broadcastTitle}: ${broadcastMsg}`, mappedAlertSeverity, req.user.id]
     );
+
+    await insertNotificationForUsers(conn, {
+      title: `[${displayLevel}] ${broadcastTitle}`,
+      message: broadcastMsg,
+      severity: mappedAlertSeverity === 'critical' ? 'Critical' : 'High',
+      category: 'Alert',
+      createdBy: req.user.id,
+      userIds: recipientRows.map((u) => u.id),
+    });
 
     await writeAuditLog(conn, {
       userId: req.user.id,
       action: 'CREATE_EMERGENCY_BROADCAST',
       entityType: 'emergency_broadcast_logs',
       entityId: broadcastId,
-      newValues: { title: broadcastTitle, severity: broadcastSeverity, target_scope: scope, recipients_count: recipientCount },
+      newValues: { title: broadcastTitle, severity: broadcastSeverity, level: displayLevel, target_scope: scope, recipients_count: recipientCount },
       req,
     });
 
     await conn.commit();
 
+    const broadcastPayload = {
+      id: broadcastId,
+      alertId: alertRes.insertId,
+      referenceNumber: `BRD-${String(broadcastId).padStart(4, '0')}`,
+      title: broadcastTitle,
+      message: broadcastMsg,
+      description: broadcastMsg,
+      severity: displayLevel,
+      broadcastSeverity,
+      rawSeverity: mappedAlertSeverity,
+      targetScope: scope,
+      recipientsCount: recipientCount,
+      broadcastedAt: new Date().toISOString(),
+    };
+
+    emitAlertBroadcast(broadcastPayload);
+    emitAdminAnnouncement(broadcastPayload);
+
     return res.status(201).json({
       message: 'Emergency broadcast transmitted successfully.',
-      broadcast: {
-        id: broadcastId,
-        referenceNumber: `BRD-${String(broadcastId).padStart(4, '0')}`,
-        title: broadcastTitle,
-        message: broadcastMsg,
-        severity: broadcastSeverity,
-        targetScope: scope,
-        recipientsCount: recipientCount,
-        broadcastedAt: new Date(),
-      },
+      broadcast: broadcastPayload,
     });
   } catch (err) {
     await conn.rollback();
@@ -2101,26 +2218,32 @@ async function createEmergencyBroadcast(req, res) {
 // ============================================================================
 
 function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
+  const now = new Date();
   if (period === 'today') {
-    return { clause: `DATE(${dateColumn}) = CURDATE()`, params: [] };
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    return { clause: `${dateColumn} >= ?`, params: [startOfDay] };
   }
   if (period === '7d') {
-    return { clause: `${dateColumn} >= DATE_SUB(NOW(), INTERVAL 7 DAY)`, params: [] };
+    return { clause: `${dateColumn} >= ?`, params: [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)] };
   }
   if (period === '30d') {
-    return { clause: `${dateColumn} >= DATE_SUB(NOW(), INTERVAL 30 DAY)`, params: [] };
+    return { clause: `${dateColumn} >= ?`, params: [new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)] };
   }
   if (period === 'this_month') {
-    return { clause: `${dateColumn} >= DATE_FORMAT(NOW(), '%Y-%m-01')`, params: [] };
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    return { clause: `${dateColumn} >= ?`, params: [startOfMonth] };
   }
   if (period === 'last_month') {
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
     return {
-      clause: `${dateColumn} >= DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-01') AND ${dateColumn} < DATE_FORMAT(NOW(), '%Y-%m-01')`,
-      params: [],
+      clause: `${dateColumn} >= ? AND ${dateColumn} < ?`,
+      params: [startOfLastMonth, startOfThisMonth],
     };
   }
   if (period === 'this_year') {
-    return { clause: `${dateColumn} >= DATE_FORMAT(NOW(), '%Y-01-01')`, params: [] };
+    const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    return { clause: `${dateColumn} >= ?`, params: [startOfYear] };
   }
   if (period === 'custom' && from && to) {
     return {
@@ -2183,12 +2306,18 @@ async function getAdminAnalytics(req, res) {
       resqDateFilter.params
     );
 
+    const monthExpr = pool.isPostgres
+      ? "TO_CHAR(created_at, 'YYYY-MM')"
+      : "DATE_FORMAT(created_at, '%Y-%m')";
+    const since12Months = new Date();
+    since12Months.setMonth(since12Months.getMonth() - 12);
     const [monthlyTrends] = await pool.query(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month_label, COUNT(*) AS count
+      `SELECT ${monthExpr} AS month_label, COUNT(*) AS count
        FROM reports
-       WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+       WHERE created_at >= ?
        GROUP BY month_label
-       ORDER BY month_label ASC`
+       ORDER BY month_label ASC`,
+      [since12Months]
     );
 
     const [locations] = await pool.query(
@@ -2228,7 +2357,7 @@ async function getAdminAnalytics(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminAnalytics failed:', err.message);
-    return res.status(503).json({ error: 'Unable to aggregate analytics from MySQL.' });
+    return res.status(503).json({ error: 'Unable to aggregate analytics from database.' });
   }
 }
 
@@ -2353,11 +2482,14 @@ async function getAdminSystemSettings(req, res) {
     await pool.query('SELECT 1');
     const dbLatencyMs = Date.now() - startPing;
 
+    const since24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [[failedLoginsRow]] = await pool.query(
-      "SELECT COUNT(*) AS count FROM auth_security_logs WHERE event_type = 'login_failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+      "SELECT COUNT(*) AS count FROM auth_security_logs WHERE event_type = 'login_failed' AND created_at >= ?",
+      [since24Hours]
     );
     const [[successLoginsRow]] = await pool.query(
-      "SELECT COUNT(*) AS count FROM auth_security_logs WHERE event_type = 'login_success' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+      "SELECT COUNT(*) AS count FROM auth_security_logs WHERE event_type = 'login_success' AND created_at >= ?",
+      [since24Hours]
     );
 
     const [recentSecurityEvents] = await pool.query(
@@ -2384,7 +2516,7 @@ async function getAdminSystemSettings(req, res) {
     });
   } catch (err) {
     console.error('[Admin API] getAdminSystemSettings failed:', err.message);
-    return res.status(503).json({ error: 'Unable to load system settings from MySQL.' });
+    return res.status(503).json({ error: 'Unable to load system settings from database.' });
   }
 }
 

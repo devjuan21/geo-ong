@@ -36,8 +36,6 @@ assert(indexHtml.includes('Hazard Alerts'), 'Hazard Alerts card is present');
 assert(indexHtml.includes('No active hazard alerts.'), 'Exact empty state: "No active hazard alerts."');
 assert(indexHtml.includes('Evacuation Centers'), 'Evacuation Centers card is present');
 assert(indexHtml.includes('No evacuation centers available.'), 'Exact empty state: "No evacuation centers available."');
-assert(indexHtml.includes('Family Safety'), 'Compact Family Safety card is present');
-assert(indexHtml.includes('No family members added.'), 'Exact empty state: "No family members added."');
 
 // 2. Verify Compact Header in components.js
 console.log('\n2. Checking Compact Header in components.js:');
@@ -82,15 +80,12 @@ async function testHomepageData() {
   const centers = await store.getEvacuationCenters();
   assert(centers.length === 0, 'Initial evacuation centers count is 0');
 
-  const members = await store.getFamilyMembers();
-  assert(members.length === 0, 'Initial family members count is 0');
-
   const profile = await store.getResidentProfile();
   assert(profile !== undefined, 'Resident profile is accessible');
 
   console.log('\n================================================================');
   if (failedTests === 0) {
-    console.log(' ALL 25 HOMEPAGE REFINEMENT CHECKS PASSED PERFECTLY (0 FAILURES)!');
+    console.log(' ALL HOMEPAGE REFINEMENT CHECKS PASSED PERFECTLY (0 FAILURES)!');
   } else {
     console.error(` COMPLETED WITH ${failedTests} FAILURE(S).`);
     process.exit(1);
@@ -102,4 +97,3 @@ testHomepageData().catch(err => {
   console.error('Fatal test error:', err);
   process.exit(1);
 });
-

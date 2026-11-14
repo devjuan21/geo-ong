@@ -1,10 +1,9 @@
 process.chdir(require('path').join(__dirname, '../../../frontend'));
 const fs = require('fs');
-const path = require('path');
 
 console.log('================================================================');
 console.log(' GeoSafe Minimal Text Redesign Verification Suite');
-console.log(' Testing: Evacuation Routes, Report / Rescue, Family Safety');
+console.log(' Testing: Evacuation Routes & Report / Rescue');
 console.log('================================================================\n');
 
 let passed = 0;
@@ -58,25 +57,6 @@ assert(reportRescueHtml.includes('id="success-reference-num"'), 'Success referen
 assert(reportRescueHtml.includes('pb-28'), 'Mobile bottom clearance pb-28 preserved');
 assert(!reportRescueHtml.match(/[\u{1F300}-\u{1F9FF}]/u), 'No emojis found in report-rescue.html');
 
-// 3. Family Safety Tracker Checks
-console.log('\n3. Checking Family Safety Tracker (family.html):');
-const familyHtml = fs.readFileSync('family.html', 'utf8');
-assert(familyHtml.includes('id="family-map"'), 'Interactive family map element #family-map exists');
-assert(familyHtml.includes('id="family-map-empty"'), 'Map empty status pill #family-map-empty exists');
-assert(familyHtml.includes('No shared family locations available.'), 'Exact map empty string preserved');
-assert(familyHtml.includes('id="stat-total-members"'), 'Total members metric exists');
-assert(familyHtml.includes('id="stat-sharing-location"'), 'Sharing location metric exists');
-assert(familyHtml.includes('id="stat-not-sharing"'), 'Not sharing metric exists');
-assert(familyHtml.includes('id="stat-last-update"'), 'Last update metric exists');
-assert(familyHtml.includes('id="family-empty"'), 'Empty state #family-empty exists');
-assert(familyHtml.includes('No family members added yet.'), 'Exact member empty state string preserved');
-assert(familyHtml.includes('id="family-cards-list"'), 'Family cards list container exists');
-assert(familyHtml.includes('id="add-member-modal"'), 'Add member modal exists');
-assert(familyHtml.includes('id="member-detail-modal"'), 'Member detail modal exists');
-assert(familyHtml.includes('id="family-consent-modal"'), 'Consent modal exists');
-assert(familyHtml.includes('pb-28'), 'Mobile bottom clearance pb-28 preserved');
-assert(!familyHtml.match(/[\u{1F300}-\u{1F9FF}]/u), 'No emojis found in family.html');
-
 console.log('\n================================================================');
 if (failed === 0) {
   console.log(` ALL ${passed} MINIMAL REDESIGN CHECKS PASSED WITH 0 FAILURES!`);
@@ -86,4 +66,3 @@ if (failed === 0) {
 console.log('================================================================\n');
 
 process.exit(failed > 0 ? 1 : 0);
-

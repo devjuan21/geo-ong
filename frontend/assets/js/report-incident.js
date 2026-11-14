@@ -41,10 +41,17 @@ function initMap() {
 
   try {
     reportMap = L.map('report-map').setView([DEFAULT_COORDS.lat, DEFAULT_COORDS.lng], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors | GeoSafe Bayanan'
-    }).addTo(reportMap);
+    if (window.GeoSafeMapping && typeof window.GeoSafeMapping.addBaseTileLayer === 'function') {
+      window.GeoSafeMapping.addBaseTileLayer(reportMap);
+      if (typeof window.GeoSafeMapping.addBayananBoundary === 'function') {
+        window.GeoSafeMapping.addBayananBoundary(reportMap, { fitBounds: true });
+      }
+    } else {
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors | GeoSafe Bayanan'
+      }).addTo(reportMap);
+    }
 
     // Draggable marker
     reportMarker = L.marker([DEFAULT_COORDS.lat, DEFAULT_COORDS.lng], {
@@ -77,17 +84,25 @@ function updateCoordinatesDisplay(lat, lng) {
   if (display) {
     display.textContent = `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
   }
+
+  if (window.GeoSafeMapping && typeof window.GeoSafeMapping.isPointInsideBayanan === 'function') {
+    const inside = window.GeoSafeMapping.isPointInsideBayanan(lat, lng);
+    if (inside === false) {
+      const statusEl = document.getElementById('gps-status-indicator');
+      if (statusEl) {
+        statusEl.textContent = 'Selected pin is outside Barangay Bayanan boundary.';
+      }
+      if (window.GeoSafeUI && typeof window.GeoSafeUI.showToast === 'function') {
+        window.GeoSafeUI.showToast('Selected location is outside the official Barangay Bayanan boundary.', 'warning');
+      }
+    }
+  }
 }
 
-// Browser Geolocation API
-window.getCurrentLocation = function () {
+// Browser Geolocation API (with LAN HTTP fallback via GeoSafeMapping)
+window.getCurrentLocation = async function () {
   const btn = document.getElementById('btn-get-gps');
   const statusEl = document.getElementById('gps-status-indicator');
-
-  if (!navigator.geolocation) {
-    GeoSafeUI.showToast('Geolocation is not supported by your browser.', 'warning');
-    return;
-  }
 
   if (btn) {
     btn.disabled = true;
@@ -95,39 +110,33 @@ window.getCurrentLocation = function () {
   }
   if (statusEl) statusEl.textContent = 'Acquiring GPS fix...';
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const { latitude, longitude } = position.coords;
-      updateCoordinatesDisplay(latitude, longitude);
+  try {
+    const pos = await window.GeoSafeMapping.getCurrentLocation();
+    updateCoordinatesDisplay(pos.lat, pos.lng);
 
-      if (reportMap && reportMarker) {
-        reportMap.setView([latitude, longitude], 17);
-        reportMarker.setLatLng([latitude, longitude]);
-      }
+    if (reportMap && reportMarker) {
+      reportMap.setView([pos.lat, pos.lng], 17);
+      reportMarker.setLatLng([pos.lat, pos.lng]);
+    }
 
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `${GeoSafeUI.getIcon('crosshair', 'w-4 h-4')} <span>Use My GPS</span>`;
-      }
-      if (statusEl) statusEl.textContent = `GPS Fix Acquired (Accuracy: ±${Math.round(position.coords.accuracy)}m)`;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `${GeoSafeUI.getIcon('crosshair', 'w-4 h-4')} <span>Use My GPS</span>`;
+    }
+    if (statusEl) statusEl.textContent = `GPS Fix Acquired (Accuracy: ±${Math.round(pos.accuracy || 15)}m)`;
 
-      GeoSafeUI.showToast('Location coordinates acquired successfully.', 'success');
-    },
-    (error) => {
-      console.warn('Geolocation error:', error);
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = `${GeoSafeUI.getIcon('crosshair', 'w-4 h-4')} <span>Use My GPS</span>`;
-      }
-      let msg = 'Unable to retrieve location. Please adjust the pin on the map manually.';
-      if (error.code === error.PERMISSION_DENIED) {
-        msg = 'Location permission denied. Please enable GPS permissions or drag the map pin.';
-      }
-      if (statusEl) statusEl.textContent = 'GPS Unavailable (manual selection active)';
-      GeoSafeUI.showToast(msg, 'warning');
-    },
-    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-  );
+    GeoSafeUI.showToast('Location coordinates acquired successfully.', 'success');
+  } catch (error) {
+    console.warn('Geolocation error:', error);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `${GeoSafeUI.getIcon('crosshair', 'w-4 h-4')} <span>Use My GPS</span>`;
+    }
+    if (statusEl) statusEl.textContent = 'GPS Unavailable (drag or click map pin manually)';
+    if (error && error.code !== 'INSECURE_CONTEXT_LAN') {
+      GeoSafeUI.showToast(error.message || 'Unable to retrieve location. Please adjust the pin on the map manually.', 'warning');
+    }
+  }
 };
 
 // Photo attachment handling

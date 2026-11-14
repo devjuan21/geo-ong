@@ -108,27 +108,27 @@ async function runTests() {
 
     // 2. Manually enter Resident dashboard URL without logging in -> redirected to login
     const res2a = await fetch(`${BASE_URL}/index.html`, { redirect: 'manual' });
-    const res2b = await fetch(`${BASE_URL}/family.html`, { redirect: 'manual' });
+    const res2b = await fetch(`${BASE_URL}/evacuation-routes.html`, { redirect: 'manual' });
     const res2c = await fetch(`${BASE_URL}/report-rescue.html`, { redirect: 'manual' });
     record(
       2,
-      'Manually enter Resident dashboard URLs (/index.html, /family.html, /report-rescue.html) unauthenticated',
+      'Manually enter Resident dashboard URLs (/index.html, /evacuation-routes.html, /report-rescue.html) unauthenticated',
       res2a.status === 302 && res2a.headers.get('location') === '/login.html' &&
       res2b.status === 302 && res2b.headers.get('location') === '/login.html' &&
       res2c.status === 302 && res2c.headers.get('location') === '/login.html',
-      `/index.html->${res2a.status} (${res2a.headers.get('location')}), /family.html->${res2b.status}, /report-rescue.html->${res2c.status}`
+      `/index.html->${res2a.status} (${res2a.headers.get('location')}), /evacuation-routes.html->${res2b.status}, /report-rescue.html->${res2c.status}`
     );
 
     // 3. Call a Resident API endpoint without logging in -> returns HTTP 401
     const res3a = await fetch(`${BASE_URL}/api/reports`);
     const res3b = await fetch(`${BASE_URL}/api/dashboard/summary`);
     const res3c = await fetch(`${BASE_URL}/api/profile`);
-    const res3d = await fetch(`${BASE_URL}/api/family`);
+    const res3d = await fetch(`${BASE_URL}/api/alerts`);
     record(
       3,
       'Call Resident API endpoints without logging in',
       res3a.status === 401 && res3b.status === 401 && res3c.status === 401 && res3d.status === 401,
-      `/api/reports->${res3a.status}, /api/dashboard/summary->${res3b.status}, /api/profile->${res3c.status}, /api/family->${res3d.status}`
+      `/api/reports->${res3a.status}, /api/dashboard/summary->${res3b.status}, /api/profile->${res3c.status}, /api/alerts->${res3d.status}`
     );
 
     // 4. Register a new Resident account -> saved in MySQL with Resident role

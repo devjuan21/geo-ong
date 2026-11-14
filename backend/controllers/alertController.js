@@ -1,6 +1,40 @@
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
-const { emitAlertBroadcast } = require('../socket');
+const { emitAlertBroadcast } = require('../services/socketService');
+
+function mapAlertSeverity(raw) {
+  const s = String(raw || 'Moderate').trim().toLowerCase();
+  if (s === 'critical' || s === 'critical evacuation') {
+    return {
+      alertSeverity: 'critical',
+      broadcastSeverity: 'Critical Evacuation',
+      notificationSeverity: 'Critical',
+      label: 'Critical',
+    };
+  }
+  if (s === 'high' || s === 'warning') {
+    return {
+      alertSeverity: 'high',
+      broadcastSeverity: 'Warning',
+      notificationSeverity: 'High',
+      label: 'High',
+    };
+  }
+  if (s === 'low' || s === 'advisory') {
+    return {
+      alertSeverity: 'low',
+      broadcastSeverity: 'Advisory',
+      notificationSeverity: 'High',
+      label: 'Low',
+    };
+  }
+  return {
+    alertSeverity: 'medium',
+    broadcastSeverity: 'Watch',
+    notificationSeverity: 'High',
+    label: 'Moderate',
+  };
+}
 
 async function createAlert(req, res) {
   const errors = validationResult(req);
@@ -8,14 +42,9 @@ async function createAlert(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { message, severity } = req.body;
-  const normalizedSeverity = (severity || 'medium').toLowerCase();
-  const broadcastSeverityMap = {
-    low: 'Advisory',
-    medium: 'Watch',
-    high: 'Warning',
-    critical: 'Critical Evacuation',
-  };
+  const { title, message, severity, level, targetScope } = req.body;
+  const mapped = mapAlertSeverity(severity || level || 'Moderate');
+  const alertTitle = String(title || `Emergency Alert (${mapped.label})`).trim().slice(0, 150);
 
   const connection = await pool.getConnection();
   try {
@@ -23,21 +52,46 @@ async function createAlert(req, res) {
 
     const [result] = await connection.query(
       'INSERT INTO alerts (message, severity, created_by) VALUES (?, ?, ?)',
-      [message, normalizedSeverity, req.user.id]
+      [message, mapped.alertSeverity, req.user.id]
+    );
+
+    const [activeUsers] = await connection.query(
+      "SELECT id FROM users WHERE LOWER(account_status) = 'active'"
     );
 
     // Record immutable emergency broadcast audit trail
     await connection.query(
       `INSERT INTO emergency_broadcast_logs
-         (title, message, severity, target_scope, authorized_by)
-       VALUES (?, ?, ?, 'All Barangay Bayanan', ?)`,
+         (title, message, severity, target_scope, recipients_count, authorized_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
-        `Emergency Alert (${broadcastSeverityMap[normalizedSeverity] || 'Watch'})`,
+        alertTitle,
         message,
-        broadcastSeverityMap[normalizedSeverity] || 'Watch',
+        mapped.broadcastSeverity,
+        targetScope ? String(targetScope).slice(0, 100) : 'All Barangay Bayanan',
+        activeUsers.length,
         req.user.id,
       ]
     );
+
+    // Save notification for residents and responders
+    try {
+      const [notifRes] = await connection.query(
+        `INSERT INTO notifications (title, message, severity, category, created_by)
+         VALUES (?, ?, ?, 'Alert', ?)`,
+        [alertTitle, message, mapped.notificationSeverity, req.user.id]
+      );
+      if (notifRes.insertId && activeUsers.length > 0) {
+        const placeholders = activeUsers.map(() => '(?, ?, ?)').join(', ');
+        const params = activeUsers.flatMap((u) => [notifRes.insertId, u.id, false]);
+        await connection.query(
+          `INSERT IGNORE INTO notification_recipients (notification_id, user_id, is_read) VALUES ${placeholders}`,
+          params
+        );
+      }
+    } catch (notifErr) {
+      console.warn('[Alerts API] Notification fan-out warning:', notifErr.message);
+    }
 
     const [rows] = await connection.query(
       `SELECT a.*, u.name AS created_by_name
@@ -46,7 +100,11 @@ async function createAlert(req, res) {
     );
 
     await connection.commit();
-    const alert = rows[0];
+    const alert = {
+      ...rows[0],
+      title: alertTitle,
+      level: mapped.label,
+    };
     emitAlertBroadcast(alert);
     return res.status(201).json({ message: 'Alert broadcast', alert });
   } catch (err) {

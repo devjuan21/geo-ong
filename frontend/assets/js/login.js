@@ -77,7 +77,7 @@ window.switchAuthTab = function (mode) {
     }
     if (titleEl) titleEl.textContent = 'Create Resident Account';
     if (subEl) {
-      subEl.textContent = 'Register as a Barangay Bayanan resident to submit incident reports, request emergency rescue, and manage family safety.';
+      subEl.textContent = 'Register as a Barangay Bayanan resident to submit incident reports, request emergency rescue, and receive real-time hazard alerts.';
     }
     if (headerSwitchBtn) {
       headerSwitchBtn.innerHTML = '<span>Back to Sign In</span>';

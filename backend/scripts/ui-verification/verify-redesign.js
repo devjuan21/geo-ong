@@ -41,7 +41,7 @@ const expectedItems = [
   { id: 'home', href: 'index.html', label: 'Home' },
   { id: 'evacuation-routes', href: 'evacuation-routes.html', label: 'Evacuation Routes' },
   { id: 'report-rescue', href: 'report-rescue.html', label: 'Report / Rescue', isEmergencyAction: true },
-  { id: 'family', href: 'family.html', label: 'Family Safety' }
+  { id: 'hazard-alerts', href: 'hazard-alerts.html', label: 'Hazard Alerts' }
 ];
 
 expectedItems.forEach((exp, idx) => {
@@ -55,7 +55,7 @@ expectedItems.forEach((exp, idx) => {
 
 // 2. Verify Core 4 HTML Pages Exist and have bottom nav clearance
 console.log('\n2. Verifying Core 4 HTML Pages and Responsive Clearance:');
-const corePages = ['index.html', 'evacuation-routes.html', 'report-rescue.html', 'family.html'];
+const corePages = ['index.html', 'evacuation-routes.html', 'report-rescue.html', 'hazard-alerts.html'];
 
 corePages.forEach(page => {
   const filePath = path.join(rootDir, page);
@@ -63,14 +63,12 @@ corePages.forEach(page => {
   assert(exists, `Page exists: ${page}`);
   if (exists) {
     const html = fs.readFileSync(filePath, 'utf8');
-    assert(html.includes('geosafe-nav-container'), `${page} includes #geosafe-nav-container`);
+    assert(html.includes('geosafe-nav-container') || html.includes('geosafe-sidebar-container'), `${page} includes navigation container`);
     assert(html.includes('pb-28'), `${page} includes mobile bottom navigation clearance padding (pb-28)`);
-    assert(html.includes('leaflet@1.9.4'), `${page} includes Leaflet.js v1.9.4`);
-    assert(html.includes('mapping-service.js'), `${page} imports mapping-service.js`);
   }
 });
 
-// 3. Verify Mapping Service Architecture (Sections 7 & 8)
+// 3. Verify Mapping Service Architecture
 console.log('\n3. Verifying Mapping Service Architecture:');
 const mappingContent = fs.readFileSync(path.join(rootDir, 'assets/js/mapping-service.js'), 'utf8');
 eval(mappingContent);
@@ -88,8 +86,8 @@ assert(mapping.formatDistance(1500) === '1.50 km', 'formatDistance formats >=100
 assert(mapping.formatDuration(300) === '5 mins', 'formatDuration formats minutes correctly');
 assert(mapping.formatDuration(3900) === '1 hr 5 mins', 'formatDuration formats hours and minutes correctly');
 
-// 4. Verify Exact Required Empty State Strings (Section 9)
-console.log('\n4. Verifying Exact Section 9 Empty State Strings:');
+// 4. Verify Exact Required Empty State Strings
+console.log('\n4. Verifying Empty State Strings:');
 const indexHtml = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
 assert(indexHtml.includes('No reported incidents in your area'), 'index.html contains: "No reported incidents in your area."');
 assert(indexHtml.includes('No community reports available'), 'index.html contains: "No community reports available."');
@@ -98,11 +96,7 @@ assert(indexHtml.includes('No active hazard alerts.'), 'index.html contains: "No
 const evacHtml = fs.readFileSync(path.join(rootDir, 'evacuation-routes.html'), 'utf8');
 assert(evacHtml.includes('No evacuation centers are currently available.'), 'evacuation-routes.html contains: "No evacuation centers are currently available."');
 
-const familyHtml = fs.readFileSync(path.join(rootDir, 'family.html'), 'utf8');
-assert(familyHtml.includes('No family members added yet.'), 'family.html contains: "No family members added yet."');
-assert(familyHtml.includes('No shared family locations available.'), 'family.html contains: "No shared family locations available."');
-
-// 5. Test Dynamic Store Submissions (Section 5 & 6)
+// 5. Test Dynamic Store Submissions & Fresh State
 console.log('\n5. Testing Dynamic Store Submissions & Fresh State:');
 const mockDataContent = fs.readFileSync(path.join(rootDir, 'assets/js/mock-data.js'), 'utf8');
 eval(mockDataContent);
@@ -116,16 +110,34 @@ global.sessionStorage = {
   clear() { this._data = {}; }
 };
 global.CustomEvent = class CustomEvent { constructor(type, detail) { this.type = type; this.detail = detail; } };
+global.window.location = { pathname: '/index.html', href: 'http://localhost:3000/index.html', replace: () => {} };
 global.window.addEventListener = () => {};
 global.window.dispatchEvent = () => {};
 
+let mockPublicReports = [];
+global.fetch = async (url, opts = {}) => {
+  const method = (opts.method || 'GET').toUpperCase();
+  if (url.includes('/api/reports/public')) {
+    return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => mockPublicReports };
+  }
+  if (url.includes('/api/reports') && method === 'POST') {
+    const body = JSON.parse(opts.body || '{}');
+    const created = { id: 'REP-2026-0001', reference_number: 'REP-2026-0001', ...body };
+    if (body.authorizedForCommunity) mockPublicReports.push(created);
+    return { ok: true, status: 201, headers: { get: () => 'application/json' }, json: async () => created };
+  }
+  if (url.includes('/api/rescue-requests') && method === 'POST') {
+    const body = JSON.parse(opts.body || '{}');
+    return { ok: true, status: 201, headers: { get: () => 'application/json' }, json: async () => ({ id: 'RSC-2026-0001', reference_number: 'RSC-2026-0001', peopleCount: body.peopleCount || body.people_count || 2 }) };
+  }
+  return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => [] };
+};
 const storeContent = fs.readFileSync(path.join(rootDir, 'assets/js/store.js'), 'utf8');
 (0, eval)(storeContent);
 
 async function testSubmissions() {
   const store = global.window.geoSafeStore;
 
-  // Fresh initial counts
   const initialReports = await store.getReports();
   assert(initialReports.length === 0, 'Fresh store reports length is 0');
   const initialPublic = await store.getPublicIncidentReports();
@@ -133,7 +145,6 @@ async function testSubmissions() {
   const initialRescues = await store.getRescueRequests();
   assert(initialRescues.length === 0, 'Fresh store rescues length is 0');
 
-  // Submit actual incident report
   const rep = await store.submitReport({
     incidentType: 'Flooding / Rising Water',
     title: 'Rising flood in Bayanan Baywalk',
@@ -147,7 +158,6 @@ async function testSubmissions() {
   const publicReportsAfter = await store.getPublicIncidentReports();
   assert(publicReportsAfter.length === 1, 'Submitted public report is returned in public incident list');
 
-  // Submit actual rescue request
   const rsc = await store.submitRescueRequest({
     emergencyType: 'Trapped by Rising Floodwater',
     description: 'Senior citizen trapped on 2nd floor',
@@ -158,18 +168,9 @@ async function testSubmissions() {
   assert(rsc && rsc.id && rsc.id.startsWith('RSC-2026-'), `Rescue request generated reference ${rsc.id}`);
   assert(rsc.peopleCount === 2, 'Rescue request stored correct people count');
 
-  // Family Safety
-  const member = await store.addFamilyMember({
-    name: 'Ana Cruz',
-    relationship: 'Child / Dependent',
-    email: 'ana.cruz@bayanan.ph'
-  });
-  assert(member.locationSharing.status === 'Not Sharing', 'Added family member defaults to "Not Sharing"');
-  assert(member.locationSharing.enabled === false, 'Location sharing requires explicit consent');
-
   console.log('\n================================================================');
   if (failedTests === 0) {
-    console.log(' ALL 32 REDESIGN TESTS PASSED WITH 0 FAILURES!');
+    console.log(' ALL REDESIGN TESTS PASSED WITH 0 FAILURES!');
   } else {
     console.error(` COMPLETED WITH ${failedTests} FAILURE(S).`);
     process.exit(1);

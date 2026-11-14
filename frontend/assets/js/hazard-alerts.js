@@ -5,9 +5,13 @@
 let activeSeverityFilter = 'All';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  GeoSafeUI.init('hazard-alerts', 'Hazard Alerts');
+  GeoSafeUI.init('hazard-alerts', 'Alerts');
   setupSeverityTabs();
   await loadHazardAlerts();
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadHazardAlerts();
+  });
 });
 
 function setupSeverityTabs() {
@@ -15,11 +19,11 @@ function setupSeverityTabs() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => {
-        t.classList.remove('bg-brand-900', 'text-white', 'font-semibold', 'shadow-sm');
-        t.classList.add('bg-white', 'text-slate-600', 'hover:bg-slate-100');
+        t.classList.remove('bg-[#F5B900]', 'text-[#202020]', 'border-[#F5B900]', 'font-bold', 'shadow-subtle');
+        t.classList.add('bg-white', 'text-[#555555]', 'border-[#EEEEEE]', 'font-semibold');
       });
-      tab.classList.remove('bg-white', 'text-slate-600', 'hover:bg-slate-100');
-      tab.classList.add('bg-brand-900', 'text-white', 'font-semibold', 'shadow-sm');
+      tab.classList.remove('bg-white', 'text-[#555555]', 'border-[#EEEEEE]', 'font-semibold');
+      tab.classList.add('bg-[#F5B900]', 'text-[#202020]', 'border-[#F5B900]', 'font-bold', 'shadow-subtle');
 
       activeSeverityFilter = tab.getAttribute('data-severity');
       loadHazardAlerts();
@@ -59,11 +63,20 @@ async function loadHazardAlerts() {
       const msg = document.getElementById('alerts-error-text');
       if (msg) {
         msg.textContent = err.isOffline
-          ? 'Network offline. An active internet connection is required to receive verified hazard alerts.'
-          : 'Unable to retrieve alert feed. Please retry.';
+          ? 'Network offline. Connect to load alerts.'
+          : 'Unable to retrieve alerts. Please retry.';
       }
     }
   }
+}
+
+function getSeverityAccent(severity) {
+  const s = String(severity || '').toLowerCase();
+  if (s === 'critical') return 'border-[#D93636]';
+  if (s === 'high') return 'border-rose-400';
+  if (s === 'moderate' || s === 'medium') return 'border-amber-400';
+  if (s === 'low') return 'border-blue-400';
+  return 'border-[#EEEEEE]';
 }
 
 function renderAlerts(alerts) {
@@ -71,57 +84,44 @@ function renderAlerts(alerts) {
   if (!container) return;
 
   container.innerHTML = alerts.map(alert => {
-    const isCritical = alert.severity === 'Critical';
-    const borderCls = isCritical ? 'border-emergency-300 ring-1 ring-emergency-200' : 'border-slate-200';
-    const bgHeader = isCritical ? 'bg-emergency-50/70' : 'bg-slate-50/60';
+    const isCritical = String(alert.severity || '').toLowerCase() === 'critical';
+    const borderCls = getSeverityAccent(alert.severity);
+    const instructions = Array.isArray(alert.safetyInstructions) ? alert.safetyInstructions : [];
 
     return `
-      <div class="bg-white rounded-2xl border ${borderCls} shadow-card overflow-hidden transition-all hover:shadow-card-hover">
-        <div class="p-5 sm:p-6 ${bgHeader} border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-2 mb-1.5">
+      <div class="bg-white rounded-2xl border-l-4 border ${borderCls} shadow-card overflow-hidden">
+        <div class="p-3.5 sm:p-4 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               ${GeoSafeUI.renderSeverityBadge(alert.severity)}
-              <span class="text-xs font-semibold text-slate-600">${alert.category}</span>
-              <span class="w-1 h-1 rounded-full bg-slate-300 inline-block"></span>
-              <span class="text-xs text-slate-500">${GeoSafeUI.formatDate(alert.publishedAt)}</span>
+              <span class="text-[11px] font-semibold text-[#555555]">${alert.category || 'Alert'}</span>
+              <span class="text-[11px] text-[#777777]">${GeoSafeUI.formatDate(alert.publishedAt)}</span>
             </div>
-            <h3 class="text-base sm:text-lg font-bold text-slate-900 leading-snug">${alert.title}</h3>
+            <div class="text-[11px] text-[#555555] inline-flex items-center gap-1">
+              ${GeoSafeUI.getIcon('map-pin', 'w-3.5 h-3.5 text-[#8A6800]')}
+              <span class="font-semibold text-[#202020]">${alert.affectedLocation || 'Barangay Bayanan'}</span>
+            </div>
           </div>
-          <div class="text-xs text-slate-500 flex items-center gap-1.5 flex-shrink-0">
-            ${GeoSafeUI.getIcon('map-pin', 'w-4 h-4 text-slate-400')}
-            <span class="font-medium text-slate-700">${alert.affectedLocation}</span>
-          </div>
-        </div>
 
-        <div class="p-5 sm:p-6 space-y-4 text-xs sm:text-sm">
           <div>
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Alert Advisory</span>
-            <p class="text-slate-700 leading-relaxed">${alert.description}</p>
+            <h2 class="text-sm sm:text-base font-bold text-[#202020] leading-snug">${alert.title || 'Safety Alert'}</h2>
+            ${alert.description ? `<p class="text-xs text-[#555555] mt-1 leading-relaxed">${alert.description}</p>` : ''}
           </div>
 
-          <!-- Official Safety Directives -->
-          <div class="p-4 rounded-xl ${isCritical ? 'bg-emergency-50/50 border border-emergency-100 text-emergency-950' : 'bg-amber-50/60 border border-amber-100 text-amber-950'}">
-            <h4 class="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              ${GeoSafeUI.getIcon('shield-check', 'w-4 h-4')}
-              Actionable Safety Instructions
-            </h4>
-            <ul class="list-disc list-inside space-y-1 text-xs leading-relaxed">
-              ${alert.safetyInstructions.map(instr => `<li>${instr}</li>`).join('')}
-            </ul>
-          </div>
+          ${instructions.length > 0 ? `
+            <div class="p-2.5 rounded-xl ${isCritical ? 'bg-[#FFF1F1] border border-[#FFC2C2] text-[#202020]' : 'bg-[#FFF9E8] border border-[#FFE872] text-[#202020]'}">
+              <ul class="list-disc list-inside space-y-0.5 text-[11px] leading-snug">
+                ${instructions.map(instr => `<li>${instr}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
 
-          <!-- Issuing Authority -->
-          <div class="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100">
-            <div>
-              <span class="font-medium">Issuing Authority:</span>
-              <strong class="text-slate-700 ml-1">${alert.issuingAuthority}</strong>
-            </div>
-            <div class="flex items-center gap-2">
-              <a href="evacuation-centers.html" class="inline-flex items-center gap-1 text-brand-600 hover:text-brand-800 font-semibold">
-                <span>Evacuation Centers</span>
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-              </a>
-            </div>
+          <div class="pt-2 flex items-center justify-between gap-2 text-[11px] text-[#777777] border-t border-[#F3F4F6]">
+            <span>${alert.issuingAuthority || 'BDRRMC Barangay Bayanan'}</span>
+            <a href="evacuation-routes.html" class="inline-flex items-center gap-1 text-[#8A6800] hover:text-[#202020] font-bold">
+              <span>Evacuation Routes</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
           </div>
         </div>
       </div>
@@ -130,4 +130,3 @@ function renderAlerts(alerts) {
 }
 
 window.loadHazardAlerts = loadHazardAlerts;
-

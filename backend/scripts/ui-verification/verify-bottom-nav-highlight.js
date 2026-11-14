@@ -1,6 +1,5 @@
 process.chdir(require('path').join(__dirname, '../../../frontend'));
 const fs = require('fs');
-const path = require('path');
 
 console.log('================================================================');
 console.log(' GeoSafe Bottom Navigation Highlighted Active State Verification');
@@ -42,7 +41,7 @@ function setupSimulatedEnv(pathname = '/') {
   return { GeoSafeUI, container };
 }
 
-const navPageIds = ['home', 'evacuation-routes', 'report-rescue', 'family'];
+const navPageIds = ['home', 'evacuation-routes', 'report-rescue', 'hazard-alerts'];
 
 console.log('1. Testing Soft Yellow Highlight for Each Navigation Item:');
 
@@ -51,33 +50,22 @@ navPageIds.forEach(activeId => {
   GeoSafeUI.renderMobileBottomNav(activeId);
   const html = container.innerHTML;
 
-  // 1. Soft yellow background #FFF1BF on active item
   const bgMatches = html.match(/bg-\[#FFF1BF\]/g);
   assert(bgMatches && bgMatches.length === 1, `[${activeId}] Exactly ONE highlighted active container with bg-[#FFF1BF]`);
 
-  // 2. Icon color #B88600
   const iconColorMatches = html.match(/text-\[#B88600\]/g);
   assert(iconColorMatches && iconColorMatches.length === 1, `[${activeId}] Active icon has golden-yellow color text-[#B88600]`);
 
-  // 3. Label color #202020 and font-bold
   assert(html.includes('font-bold text-[#202020]'), `[${activeId}] Active label has text-[#202020] and font-bold`);
-
-  // 4. Highlighted background contains both icon and label inside rounded container
   assert(html.includes('rounded-2xl transition-all duration-200 bg-[#FFF1BF] shadow-sm'), `[${activeId}] Container is rounded pill with transition and shadow`);
-
-  // 5. Completely removed yellow dot
   assert(!html.includes('bg-[#F5B900]'), `[${activeId}] Previous yellow dot indicator completely removed`);
-
-  // 6. Completely removed red oversized circle
   assert(!html.includes('w-10 h-10'), `[${activeId}] No oversized w-10 h-10 circle`);
   assert(!html.includes('-mt-4'), `[${activeId}] No protruding -mt-4 circle`);
   assert(!html.includes('bg-[#D93636]'), `[${activeId}] No red active background`);
 
-  // 7. Transparent background for inactive items
   const transparentMatches = html.match(/bg-transparent/g);
   assert(transparentMatches && transparentMatches.length === 3, `[${activeId}] Exactly 3 inactive items have bg-transparent`);
 
-  // 8. Neutral gray for inactive icons and labels
   const grayMatches = html.match(/text-\[#777777\]/g);
   assert(grayMatches && grayMatches.length === 6, `[${activeId}] Inactive items use neutral gray text-[#777777] (3 icons + 3 labels)`);
 });
@@ -89,7 +77,7 @@ console.log('\n2. Testing Dynamic Route Synchronization & Refresh:');
     { path: '/', expected: 'home' },
     { path: '/evacuation-routes.html', expected: 'evacuation-routes' },
     { path: '/report-rescue.html', expected: 'report-rescue' },
-    { path: '/family.html', expected: 'family' }
+    { path: '/hazard-alerts.html', expected: 'hazard-alerts' }
   ];
 
   testRoutes.forEach(tr => {
@@ -112,4 +100,3 @@ if (failed === 0) {
 console.log('================================================================\n');
 
 process.exit(failed > 0 ? 1 : 0);
-

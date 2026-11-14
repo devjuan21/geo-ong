@@ -77,7 +77,7 @@ async function createUser(req, res) {
     });
   } catch (err) {
     await connection.rollback().catch(() => {});
-    if (err.code === 'ER_DUP_ENTRY') {
+    if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
       return res.status(409).json({ error: 'Email already registered' });
     }
     console.error('[Users API] createUser failed:', err.message);
@@ -90,7 +90,7 @@ async function createUser(req, res) {
 /**
  * Administrator-only account status transition (PATCH/PUT /api/users/:id/status).
  * Uses soft deactivation/suspension ('active' | 'inactive' | 'suspended') instead of
- * physical account deletion so historical emergency, incident, family, and audit records
+ * physical account deletion so historical emergency, incident, and audit records
  * remain intact and attributable.
  */
 async function updateUserStatus(req, res) {
@@ -159,17 +159,6 @@ async function updateUserStatus(req, res) {
           JSON.stringify({ previous_status: previousStatus, new_status: newStatus, changed_by: adminUserId, reason }).slice(0, 255),
         ]
       );
-
-      // If deactivated or suspended, revoke any active location sharing consent
-      if (newStatus !== 'active') {
-        await connection.query(
-          `UPDATE family_location_sharing_consents flc
-           JOIN family_members fm ON fm.id = flc.family_member_id
-           SET flc.sharing_enabled = 0, flc.revoked_at = COALESCE(flc.revoked_at, NOW())
-           WHERE fm.user_id = ? AND flc.sharing_enabled = 1`,
-          [targetUserId]
-        );
-      }
     }
 
     await connection.commit();
@@ -197,7 +186,7 @@ async function updateUserStatus(req, res) {
 /**
  * Safe handler for DELETE /api/users/:id.
  * Physical deletion of user accounts is prohibited to protect emergency, incident,
- * responder assignment, family membership, and security audit history.
+ * responder assignment, and security audit history.
  * Deactivates the account (status = 'inactive') instead of deleting the row.
  */
 async function deactivateUserAccount(req, res) {

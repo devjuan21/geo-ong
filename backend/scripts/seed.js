@@ -7,7 +7,7 @@ const { ROLE_IDS } = require('../config/roles');
  * Zero hardcoded user accounts, zero test passwords, zero fabricated records.
  */
 const CANONICAL_ROLES = [
-  { id: ROLE_IDS.ADMIN, name: 'Administrator', description: 'Full emergency operations command, user governance, and disaster dispatch oversight' },
+  { id: ROLE_IDS.ADMINISTRATOR, name: 'Administrator', description: 'Full emergency operations command, user governance, and disaster dispatch oversight' },
   { id: ROLE_IDS.RESPONDER, name: 'Responder', description: 'Field responder unit handling active incident verification and rescue missions' },
   { id: ROLE_IDS.RESIDENT, name: 'Resident', description: 'Community member reporting incidents, requesting rescue, and monitoring alerts' },
 ];

@@ -1,7 +1,7 @@
 /**
  * GeoSafe Administrator Portal Controller
  * ============================================================================
- * Connects the GeoSafe Administrator UI to live Node.js/Express + MySQL endpoints:
+ * Connects the GeoSafe Administrator UI to live Node.js/Express + PostgreSQL endpoints:
  * - GET   /api/admin/overview
  * - GET   /api/admin/reports
  * - GET   /api/admin/reports/:type/:id
@@ -518,8 +518,15 @@
       bounds.extend([evac.latitude, evac.longitude]);
     });
 
-    if (visibleItems.length > 0 && bounds.isValid()) {
-      state.mapInstance.fitBounds(bounds, { padding: [30, 30], maxZoom: 16 });
+    const bayananBounds = window.GeoSafeMapping && typeof window.GeoSafeMapping.getBayananBounds === 'function'
+      ? window.GeoSafeMapping.getBayananBounds()
+      : null;
+    if (bayananBounds && bayananBounds.isValid()) {
+      bounds.extend(bayananBounds);
+    }
+
+    if (bounds.isValid()) {
+      state.mapInstance.fitBounds(bounds, { padding: [24, 24] });
     }
   }
 
@@ -779,10 +786,17 @@
           scrollWheelZoom: false,
         }).setView([lat, lng], 16);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '© OpenStreetMap contributors | GeoSafe'
-        }).addTo(modalLeafletMap);
+        if (window.GeoSafeMapping && typeof window.GeoSafeMapping.addBaseTileLayer === 'function') {
+          window.GeoSafeMapping.addBaseTileLayer(modalLeafletMap);
+          if (typeof window.GeoSafeMapping.addBayananBoundary === 'function') {
+            window.GeoSafeMapping.addBayananBoundary(modalLeafletMap, { fitBounds: false });
+          }
+        } else {
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors | GeoSafe'
+          }).addTo(modalLeafletMap);
+        }
 
         modalLeafletMarker = L.marker([lat, lng]).addTo(modalLeafletMap);
       } else {
@@ -928,24 +942,11 @@
         `;
       }
 
-      // Section E: Triage & Severity Details
-      const det = data.severityDetection || {};
+      // Section E: Manual Triage & Priority Tier Display
       const prio = data.priorityDetails || {};
       const tierEl = document.getElementById('modal-report-priority-tier');
       if (tierEl) {
-        tierEl.textContent = prio.tier || (data.severity === 'Critical' ? 'Immediate' : 'Standard');
-      }
-      const scoreEl = document.getElementById('modal-report-urgency-score');
-      if (scoreEl) {
-        const scoreVal = prio.score !== undefined ? prio.score : (det.urgencyScore !== undefined ? det.urgencyScore : 50);
-        scoreEl.textContent = `${scoreVal} / 100`;
-      }
-      const kwEl = document.getElementById('modal-report-keywords');
-      if (kwEl) {
-        const keywords = (det.matchedKeywords && det.matchedKeywords.length > 0)
-          ? det.matchedKeywords.join(', ')
-          : (det.recommendation || 'Standard automated rules');
-        kwEl.textContent = keywords;
+        tierEl.textContent = prio.tier || (data.severity === 'Critical' ? 'Immediate' : (data.severity === 'High' ? 'Urgent' : 'Standard'));
       }
 
       // Section F: Media Attachments
@@ -2284,8 +2285,8 @@
       state.adminUser = check.user;
       const adminDisplayName = check.user.name || check.user.email || 'Administrator';
       const adminRoleName = check.user.role || 'Administrator';
-      const adminUserCode = check.user.userCode || check.user.user_code || 'ADM-0001';
-      const adminEmail = check.user.email || 'admin@geosafe.org';
+      const adminUserCode = check.user.userCode || check.user.user_code || '—';
+      const adminEmail = check.user.email || '—';
 
       if (headerName && check.user) {
         headerName.textContent = adminDisplayName;
@@ -2333,6 +2334,18 @@
       bindEvents();
       startLiveClock();
       switchAdminSection('dashboard');
+
+      window.addEventListener('geosafe:realtime-update', () => {
+        if (state.currentSection === 'dashboard') {
+          loadDashboardOverview();
+        } else if (state.currentSection === 'reports') {
+          loadReportsList();
+        } else if (state.currentSection === 'responders') {
+          loadRespondersList();
+        } else if (state.currentSection === 'alerts') {
+          loadBroadcastsList();
+        }
+      });
     } catch (err) {
       console.error('[Admin] Session authorization verification failed:', err);
       if (loadingEl) loadingEl.classList.add('hidden');

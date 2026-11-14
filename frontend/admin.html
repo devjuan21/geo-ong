@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Administrator Portal - GeoSafe</title>
   <link rel="stylesheet" href="./assets/css/style.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -714,10 +714,9 @@
               <div>
                 <label for="broadcast-severity-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Severity / Urgency *</label>
                 <select id="broadcast-severity-select" class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-bold text-[#202020]">
-                  <option value="Advisory">Advisory</option>
-                  <option value="Watch">Watch</option>
-                  <option value="Warning">Warning</option>
-                  <option value="Critical Evacuation">Critical Evacuation</option>
+                  <option value="Moderate">Moderate</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
                 </select>
               </div>
             </div>
@@ -919,7 +918,7 @@
               <h3 class="text-xs font-black text-[#202020] uppercase tracking-wider">Database &amp; Server Health</h3>
               <div class="space-y-2 text-xs">
                 <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
-                  <span class="text-[#777777]">MySQL Server</span>
+                  <span class="text-[#777777]">PostgreSQL Server</span>
                   <span id="health-db-status" class="font-bold text-emerald-600">Operational</span>
                 </div>
                 <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
@@ -1201,21 +1200,14 @@
               </div>
             </div>
 
-            <!-- Triage & Automated Severity Detection -->
+            <!-- Manual Triage & Severity Assessment -->
             <div class="p-3.5 rounded-2xl bg-[#FFF9E8]/40 border border-[#FFE872] space-y-1.5 text-xs">
               <span class="text-[10px] font-bold text-[#8A6800] uppercase tracking-wider block">Triage &amp; Severity Assessment</span>
               <div class="flex items-center justify-between">
-                <span class="text-[11px] text-[#555555]">Calculated Priority Tier:</span>
+                <span class="text-[11px] text-[#555555]">Response Priority Tier:</span>
                 <span id="modal-report-priority-tier" class="font-bold text-[#202020] bg-white px-2 py-0.5 rounded border border-[#EEEEEE]">-</span>
               </div>
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] text-[#555555]">Urgency Score:</span>
-                <span id="modal-report-urgency-score" class="font-bold text-[#202020]">-</span>
-              </div>
-              <div id="modal-report-keywords-wrapper" class="pt-1 text-[11px]">
-                <span class="text-[10px] text-[#777777] font-bold uppercase block">Keywords / Clues Detected:</span>
-                <span id="modal-report-keywords" class="text-[#202020] font-medium">-</span>
-              </div>
+              <p class="text-[11px] text-[#555555] pt-0.5">Administrator manually assigns official severity and dispatch priority below.</p>
             </div>
           </div>
         </div>
@@ -1562,8 +1554,8 @@
           </div>
           <div class="min-w-0 flex-1">
             <span id="admin-modal-name" class="font-bold text-[#202020] block truncate">Administrator</span>
-            <span id="admin-modal-email" class="text-[11px] text-[#777777] block truncate">admin@geosafe.org</span>
-            <span id="admin-modal-user-id" class="inline-block mt-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">ADM-0001</span>
+            <span id="admin-modal-email" class="text-[11px] text-[#777777] block truncate">—</span>
+            <span id="admin-modal-user-id" class="inline-block mt-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">—</span>
           </div>
         </div>
 
@@ -1594,7 +1586,7 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="./assets/vendor/leaflet/leaflet.js"></script>
   <script src="./assets/js/mapping-service.js"></script>
   <script src="./assets/js/mock-data.js"></script>
   <script src="./assets/js/store.js"></script>

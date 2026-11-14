@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const { getBayananBounds } = require('../utils/bayananBoundary');
 const {
   createReport,
   getReports,
@@ -55,16 +56,22 @@ function normalizeReportPayload(req, _res, next) {
     req.body.longitude = req.body.lng;
   }
 
-  // Fallback to Barangay Bayanan center coordinates if missing or invalid
+  // Fallback to verified Barangay Bayanan polygon center if missing or invalid
+  const bayananBounds = getBayananBounds();
   if (req.body.latitude === undefined || req.body.latitude === null || isNaN(Number(req.body.latitude))) {
-    req.body.latitude = 14.4081;
+    req.body.latitude = bayananBounds.centerLat;
   } else {
     req.body.latitude = Number(req.body.latitude);
   }
   if (req.body.longitude === undefined || req.body.longitude === null || isNaN(Number(req.body.longitude))) {
-    req.body.longitude = 121.0415;
+    req.body.longitude = bayananBounds.centerLng;
   } else {
     req.body.longitude = Number(req.body.longitude);
+  }
+
+  // Normalize single photo into photos array
+  if (!Array.isArray(req.body.photos) && typeof req.body.photo === 'string' && req.body.photo.trim()) {
+    req.body.photos = [req.body.photo.trim()];
   }
 
   // Normalize severity
@@ -79,7 +86,7 @@ function normalizeReportPayload(req, _res, next) {
 
 router.post(
   '/',
-  requireRole('resident'),
+  requireRole('resident', 'admin'),
   normalizeReportPayload,
   [
     body('incident_type').trim().isLength({ min: 2, max: 100 }).withMessage('Incident type is required (2-100 characters).'),
@@ -94,15 +101,17 @@ router.get('/', getReports);
 
 router.get('/:id(\\d+)', getReportById);
 
-router.put(
-  '/:id/status',
+const statusUpdateMiddleware = [
   requireRole('admin', 'responder'),
   [
-    body('status').optional().isIn(['pending', 'verified', 'responding', 'on_site', 'resolved', 'dismissed']),
+    body('status').optional().isIn(['pending', 'verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved', 'false_alarm', 'dismissed']),
     body('severity').optional().isIn(['low', 'medium', 'high', 'critical']),
     body('assigned_to').optional().isInt({ min: 1 }),
   ],
-  updateReportStatus
-);
+  updateReportStatus,
+];
+
+router.put('/:id/status', ...statusUpdateMiddleware);
+router.patch('/:id/status', ...statusUpdateMiddleware);
 
 module.exports = router;

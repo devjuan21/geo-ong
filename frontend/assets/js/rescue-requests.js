@@ -6,6 +6,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   GeoSafeUI.init('rescue-requests', 'Rescue Requests');
   setupRescueForm();
   await loadRescueRequests();
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadRescueRequests();
+  });
 });
 
 async function loadRescueRequests() {

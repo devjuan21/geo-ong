@@ -35,6 +35,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (targetId) {
     setTimeout(() => openAssignmentDetails(targetId), 250);
   }
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadAssignments();
+  });
 });
 
 async function loadAssignments() {

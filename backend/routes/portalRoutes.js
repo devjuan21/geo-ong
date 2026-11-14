@@ -1,14 +1,129 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const pool = require('../models/db');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const {
+  emitNewRescueRequest,
+  emitStatusUpdate,
+  emitAssignmentUpdate,
+} = require('../services/socketService');
 
 const router = express.Router();
+
+const ALLOWED_IMAGE_MIME_TYPES = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10MB
+
+function parseAndSaveBase64Photo(rawPhoto, subDir, prefix) {
+  if (!rawPhoto) return null;
+  const dataUrl = typeof rawPhoto === 'string' ? rawPhoto.trim() : String(rawPhoto.dataUrl || rawPhoto.url || '').trim();
+  if (!dataUrl) return null;
+
+  if (dataUrl.startsWith('/assets/uploads/')) {
+    return {
+      fileName: path.basename(dataUrl),
+      publicUrl: dataUrl,
+      mimeType: 'image/jpeg',
+      byteLength: 0,
+    };
+  }
+
+  const match = dataUrl.match(/^data:([^;]+);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) {
+    const err = new Error('Invalid photo format. Expected a Base64 data URL (image/jpeg, image/png, or image/webp).');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const mimeType = match[1].toLowerCase().trim();
+  const ext = ALLOWED_IMAGE_MIME_TYPES[mimeType];
+  if (!ext) {
+    const err = new Error(`Unsupported photo MIME type "${mimeType}". Allowed: image/jpeg, image/png, image/webp.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+  if (!buffer.length || buffer.length > MAX_PHOTO_BYTES) {
+    const err = new Error('Photo size must be between 1 byte and 10MB.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const uploadDir = path.join(__dirname, '..', '..', 'frontend', 'assets', 'uploads', subDir);
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const fullPath = path.join(uploadDir, fileName);
+  fs.writeFileSync(fullPath, buffer);
+
+  return {
+    fileName,
+    publicUrl: `/assets/uploads/${subDir}/${fileName}`,
+    mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
+    byteLength: buffer.length,
+  };
+}
+
+/**
+ * Builds SQL IN (?, ?, ...) placeholders and flat parameters for non-empty ID lists.
+ * Returns null when no valid IDs exist so callers skip the query instead of emitting IN ().
+ */
+function buildInClause(ids) {
+  const validIds = Array.isArray(ids)
+    ? ids.filter((id) => id !== null && id !== undefined)
+    : [];
+  if (validIds.length === 0) return null;
+  return {
+    placeholders: validIds.map(() => '?').join(', '),
+    params: validIds,
+  };
+}
+
+async function createNotificationForUsers(conn, { title, message, severity = 'High', category = 'Alert', createdBy = null, userIds = [] }) {
+  const uniqueIds = [...new Set(userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  if (!uniqueIds.length) return null;
+
+  const validSev = ['Low', 'Medium', 'High', 'Critical'].includes(severity) ? severity : 'High';
+  const validCat = ['Alert', 'Dispatch', 'General'].includes(category) ? category : 'Alert';
+
+  const [notifRes] = await conn.query(
+    `INSERT INTO notifications (title, message, severity, category, created_by)
+     VALUES (?, ?, ?, ?, ?)`,
+    [String(title).slice(0, 150), String(message), validSev, validCat, createdBy]
+  );
+
+  if (notifRes.insertId && uniqueIds.length > 0) {
+    const placeholders = uniqueIds.map(() => '(?, ?, ?)').join(', ');
+    const params = uniqueIds.flatMap((uid) => [notifRes.insertId, uid, false]);
+    await conn.query(
+      `INSERT IGNORE INTO notification_recipients (notification_id, user_id, is_read) VALUES ${placeholders}`,
+      params
+    );
+  }
+  return notifRes.insertId;
+}
+
+async function getActiveAdminIds(conn) {
+  const [rows] = await conn.query(
+    `SELECT u.id
+     FROM users u
+     LEFT JOIN roles r ON u.role_id = r.id
+     WHERE (u.role = 'admin' OR r.name = 'Administrator')
+       AND LOWER(u.account_status) = 'active'`
+  );
+  return rows.map((r) => r.id);
+}
 
 // Every portal route requires authentication
 router.use(authenticate);
 
-function formatReportForPortal(r) {
+function formatReportForPortal(r, photos = [], timeline = []) {
   const statusMap = {
     pending: 'Pending Verification',
     verified: 'Verified',
@@ -40,12 +155,12 @@ function formatReportForPortal(r) {
     submittedAt: r.created_at,
     severity: sevMap[r.severity] || 'Moderate',
     status: statusMap[r.status] || 'Pending Verification',
-    photos: [],
-    timeline: [],
+    photos,
+    timeline,
   };
 }
 
-function formatRescueForPortal(r) {
+function formatRescueForPortal(r, updates = [], photos = []) {
   return {
     id: r.reference_number || `RES-${r.id}`,
     dbId: r.id,
@@ -64,7 +179,8 @@ function formatRescueForPortal(r) {
     status: r.status || 'Pending Dispatch',
     requestDate: r.created_at,
     submittedAt: r.created_at,
-    updates: [],
+    photos,
+    updates,
   };
 }
 
@@ -77,7 +193,7 @@ router.get('/dashboard/summary', requireRole('resident', 'admin'), async (req, r
       'SELECT * FROM reports WHERE user_id = ? ORDER BY created_at DESC',
       [req.user.id]
     );
-    const reports = reportRows.map(formatReportForPortal);
+    const reports = reportRows.map((r) => formatReportForPortal(r));
 
     const counts = {
       total: reports.length,
@@ -155,7 +271,7 @@ router.get('/reports/public', async (req, res) => {
     const [rows] = await pool.query(
       'SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, severity, status, created_at FROM reports WHERE is_public = 1 ORDER BY created_at DESC LIMIT 50'
     );
-    return res.json(rows.map(formatReportForPortal));
+    return res.json(rows.map((r) => formatReportForPortal(r)));
   } catch (err) {
     console.error('[Portal API] /reports/public failed:', err.message);
     return res.status(503).json({ error: 'Unable to load public incident reports' });
@@ -305,7 +421,54 @@ router.get('/rescue-requests', async (req, res) => {
     }
     query += ' ORDER BY created_at DESC';
     const [rows] = await pool.query(query, params);
-    return res.json(rows.map(formatRescueForPortal));
+
+    const photosByRescue = new Map();
+    const updatesByRescue = new Map();
+    if (rows.length > 0) {
+      const inClause = buildInClause(rows.map((r) => r.id));
+      if (inClause) {
+        try {
+          const [attRows] = await pool.query(
+            `SELECT rescue_id, file_url FROM rescue_attachments WHERE rescue_id IN (${inClause.placeholders}) ORDER BY created_at ASC`,
+            inClause.params
+          );
+          for (const a of attRows) {
+            if (!photosByRescue.has(a.rescue_id)) photosByRescue.set(a.rescue_id, []);
+            photosByRescue.get(a.rescue_id).push(a.file_url);
+          }
+        } catch {
+          // Ignore if table empty
+        }
+
+        try {
+          const [histRows] = await pool.query(
+            `SELECT h.rescue_id, h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
+             FROM rescue_status_history h
+             LEFT JOIN users u ON h.changed_by = u.id
+             WHERE h.rescue_id IN (${inClause.placeholders})
+             ORDER BY h.created_at ASC`,
+            inClause.params
+          );
+          for (const h of histRows) {
+            if (!updatesByRescue.has(h.rescue_id)) updatesByRescue.set(h.rescue_id, []);
+            updatesByRescue.get(h.rescue_id).push({
+              status: h.status,
+              note: h.note || '',
+              author: h.author || 'Command Center',
+              timestamp: h.timestamp,
+            });
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    }
+
+    return res.json(
+      rows.map((r) =>
+        formatRescueForPortal(r, updatesByRescue.get(r.id) || [], photosByRescue.get(r.id) || [])
+      )
+    );
   } catch (err) {
     console.error('[Portal API] GET /rescue-requests failed:', err.message);
     return res.status(503).json({ error: 'Unable to load rescue requests' });
@@ -324,7 +487,39 @@ router.get('/rescue-requests/:id', async (req, res) => {
     if (req.user.role === 'resident' && row.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    return res.json(formatRescueForPortal(row));
+
+    let photos = [];
+    let updates = [];
+    try {
+      const [attRows] = await pool.query(
+        'SELECT file_url FROM rescue_attachments WHERE rescue_id = ? ORDER BY created_at ASC',
+        [row.id]
+      );
+      photos = attRows.map((a) => a.file_url);
+    } catch {
+      photos = [];
+    }
+
+    try {
+      const [histRows] = await pool.query(
+        `SELECT h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
+         FROM rescue_status_history h
+         LEFT JOIN users u ON h.changed_by = u.id
+         WHERE h.rescue_id = ?
+         ORDER BY h.created_at ASC`,
+        [row.id]
+      );
+      updates = histRows.map((h) => ({
+        status: h.status,
+        note: h.note || '',
+        author: h.author || 'Command Center',
+        timestamp: h.timestamp,
+      }));
+    } catch {
+      updates = [];
+    }
+
+    return res.json(formatRescueForPortal(row, updates, photos));
   } catch (err) {
     console.error('[Portal API] GET /rescue-requests/:id failed:', err.message);
     return res.status(503).json({ error: 'Unable to load rescue request' });
@@ -341,12 +536,55 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     landmark,
     coordinates,
     priority,
+    photo,
+    photos,
   } = req.body || {};
 
-  const lat = coordinates && coordinates.lat !== undefined ? Number(coordinates.lat) : 14.4075;
-  const lng = coordinates && coordinates.lng !== undefined ? Number(coordinates.lng) : 121.0475;
+  const lat =
+    coordinates && coordinates.lat !== undefined
+      ? Number(coordinates.lat)
+      : req.body && req.body.latitude !== undefined
+      ? Number(req.body.latitude)
+      : 14.4075;
+  const lng =
+    coordinates && coordinates.lng !== undefined
+      ? Number(coordinates.lng)
+      : req.body && req.body.longitude !== undefined
+      ? Number(req.body.longitude)
+      : 121.0475;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required' });
+  }
+
+  const { isPointInsideBayanan } = require('../utils/bayananBoundary');
+  if (!isPointInsideBayanan(lat, lng)) {
+    return res.status(400).json({
+      error: 'Rescue location is outside the official administrative boundary of Barangay Bayanan, Muntinlupa City.'
+    });
+  }
+
   const validPriorities = ['Critical', 'High', 'Medium', 'Low'];
   const prio = validPriorities.includes(priority) ? priority : 'High';
+
+  // Validate and parse any Base64 evidence photos upfront before starting DB transaction
+  const rawPhotoList = [];
+  if (Array.isArray(photos)) {
+    rawPhotoList.push(...photos);
+  }
+  if (photo && !rawPhotoList.includes(photo)) {
+    rawPhotoList.push(photo);
+  }
+
+  const savedPhotos = [];
+  try {
+    for (let i = 0; i < Math.min(rawPhotoList.length, 5); i++) {
+      const parsed = parseAndSaveBase64Photo(rawPhotoList[i], 'rescues', `RES-${req.user.id}-${i}`);
+      if (parsed) savedPhotos.push(parsed);
+    }
+  } catch (photoErr) {
+    return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
+  }
 
   const conn = await pool.getConnection();
   try {
@@ -372,6 +610,10 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     }
 
     const tempRef = `RES-TMP-${Date.now()}`;
+    const emergencyLabel = String(emergencyType || 'Flood Evacuation').slice(0, 100);
+    const descText = String(description || 'Immediate rescue requested');
+    const addrText = String(location || 'Barangay Bayanan, Muntinlupa City').slice(0, 255);
+
     const [result] = await conn.query(
       `INSERT INTO rescue_requests
          (reference_number, user_id, emergency_type, description, people_count, vulnerable_details,
@@ -380,13 +622,13 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
       [
         tempRef,
         req.user.id,
-        String(emergencyType || 'Flood Evacuation').slice(0, 100),
-        String(description || 'Immediate rescue requested'),
+        emergencyLabel,
+        descText,
         Math.max(1, parseInt(peopleCount, 10) || 1),
         vulnerableDetails ? String(vulnerableDetails).slice(0, 255) : null,
         lat,
         lng,
-        String(location || 'Barangay Bayanan, Muntinlupa City').slice(0, 255),
+        addrText,
         landmark ? String(landmark).slice(0, 180) : null,
         prio,
       ]
@@ -401,9 +643,52 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
       [result.insertId, req.user.id]
     );
 
+    for (const sp of savedPhotos) {
+      await conn.query(
+        `INSERT INTO rescue_attachments
+           (rescue_id, file_url, file_name, file_type, file_size, uploaded_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [result.insertId, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+      );
+    }
+
+    // Notify all active Administrators
+    try {
+      const adminIds = await getActiveAdminIds(conn);
+      await createNotificationForUsers(conn, {
+        title: `Emergency Rescue Request: ${refNum}`,
+        message: `${emergencyLabel} rescue requested at ${addrText} (${Math.max(1, parseInt(peopleCount, 10) || 1)} person/s).`,
+        severity: prio === 'Critical' ? 'Critical' : 'High',
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: adminIds,
+      });
+    } catch (notifErr) {
+      console.warn('[Portal API] Admin notification warning on rescue request:', notifErr.message);
+    }
+
     await conn.commit();
     const [rows] = await pool.query('SELECT * FROM rescue_requests WHERE id = ?', [result.insertId]);
-    return res.status(201).json(formatRescueForPortal(rows[0]));
+    const formatted = formatRescueForPortal(
+      rows[0],
+      [
+        {
+          status: 'Pending Dispatch',
+          note: 'Emergency rescue request submitted by resident',
+          author: req.user.name || 'Resident',
+          timestamp: rows[0].created_at,
+        },
+      ],
+      savedPhotos.map((sp) => sp.publicUrl)
+    );
+
+    emitNewRescueRequest({
+      ...formatted,
+      residentId: req.user.id,
+      residentName: req.user.name || 'Resident',
+    });
+
+    return res.status(201).json(formatted);
   } catch (err) {
     await conn.rollback().catch(() => {});
     console.error('[Portal API] POST /rescue-requests failed:', err.message);
@@ -431,6 +716,7 @@ router.get('/notifications', async (req, res) => {
       id: String(r.id),
       title: r.title,
       description: r.description,
+      severity: r.severity,
       category: String(r.category || 'alert').toLowerCase(),
       timestamp: r.timestamp,
       read: Boolean(r.is_read),
@@ -487,31 +773,111 @@ router.get('/hazard-alerts', async (req, res) => {
   }
 });
 
-router.get('/tropical-cyclone', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM tropical_cyclone_bulletins WHERE is_active = 1 ORDER BY bulletin_issued_at DESC LIMIT 1'
-    );
-    return res.json(rows[0] || null);
-  } catch (err) {
-    return res.status(503).json({ error: 'Unable to load tropical cyclone bulletin' });
-  }
-});
-
 router.get('/evacuation-routes', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM evacuation_routes ORDER BY is_primary DESC, name ASC');
-    return res.json(rows);
+    const [rows] = await pool.query(
+      'SELECT * FROM evacuation_routes ORDER BY is_official_approved DESC, route_name ASC'
+    );
+    const normalized = rows.map((r) => {
+      let pathCoordinates = [];
+      const rawGeo = r.path_coordinates || r.encoded_geometry;
+      if (Array.isArray(rawGeo)) {
+        pathCoordinates = rawGeo;
+      } else if (typeof rawGeo === 'string' && rawGeo.trim()) {
+        try {
+          pathCoordinates = JSON.parse(rawGeo);
+        } catch {
+          pathCoordinates = [];
+        }
+      }
+      if (!Array.isArray(pathCoordinates) || pathCoordinates.length === 0) {
+        if (r.origin_latitude && r.origin_longitude) {
+          pathCoordinates = [[Number(r.origin_latitude), Number(r.origin_longitude)]];
+        }
+      }
+
+      const distanceKm =
+        r.estimated_distance_km !== undefined && r.estimated_distance_km !== null
+          ? Number(r.estimated_distance_km)
+          : r.distance_meters !== undefined && r.distance_meters !== null
+          ? Number((Number(r.distance_meters) / 1000).toFixed(2))
+          : 0;
+
+      const estimatedMinutes =
+        r.estimated_walk_minutes !== undefined && r.estimated_walk_minutes !== null
+          ? Number(r.estimated_walk_minutes)
+          : r.estimated_duration_seconds !== undefined && r.estimated_duration_seconds !== null
+          ? Math.max(1, Math.round(Number(r.estimated_duration_seconds) / 60))
+          : 10;
+
+      return {
+        ...r,
+        id: r.id,
+        name: r.route_name || r.name || 'Evacuation Route',
+        description: r.route_description || r.description || '',
+        distanceKm,
+        estimatedMinutes,
+        pathCoordinates,
+        isPrimary: Boolean(r.is_official_approved),
+      };
+    });
+    return res.json(normalized);
   } catch (err) {
+    console.error('[Portal API] GET /evacuation-routes failed:', err.message);
     return res.status(503).json({ error: 'Unable to load evacuation routes' });
   }
 });
 
 router.get('/emergency-facilities', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM emergency_facilities WHERE is_operational = 1 ORDER BY name ASC');
-    return res.json(rows);
+    const [hospitalRows] = await pool.query('SELECT * FROM hospitals ORDER BY name ASC');
+    const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
+
+    const { isPointInsideBayanan } = require('../utils/bayananBoundary');
+    const facilities = [
+      ...hospitalRows.map((h) => ({
+        ...h,
+        id: `HOSP-${h.id}`,
+        dbId: h.id,
+        name: h.name,
+        type: h.facility_type || h.hospital_type || 'Hospital',
+        category: 'Hospital',
+        address: h.address || 'Muntinlupa City',
+        phone: h.contact_phone || h.emergency_hotline || h.contact_number || '',
+        latitude: Number(h.latitude),
+        longitude: Number(h.longitude),
+        coordinates: {
+          lat: Number(h.latitude),
+          lng: Number(h.longitude),
+        },
+        is_operational: 1,
+        isOperational: true,
+      })),
+      ...evacRows
+        .filter((e) => String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude))
+        .map((e) => ({
+        ...e,
+        id: `EVAC-${e.id}`,
+        dbId: e.id,
+        name: e.name,
+        type: 'Evacuation Center',
+        category: 'Evacuation Center',
+        address: e.address || 'Barangay Bayanan, Muntinlupa City',
+        phone: e.contact_phone || e.contact_number || '',
+        latitude: Number(e.latitude),
+        longitude: Number(e.longitude),
+        coordinates: {
+          lat: Number(e.latitude),
+          lng: Number(e.longitude),
+        },
+        is_operational: e.status === 'Full / Closed' ? 0 : 1,
+        isOperational: e.status !== 'Full / Closed',
+      })),
+    ];
+
+    return res.json(facilities);
   } catch (err) {
+    console.error('[Portal API] GET /emergency-facilities failed:', err.message);
     return res.status(503).json({ error: 'Unable to load emergency facilities' });
   }
 });
@@ -582,73 +948,200 @@ router.patch('/responder/availability', requireRole('responder', 'admin'), async
   }
 });
 
+async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
+  const [reportRows] = await pool.query(
+    isAdmin
+      ? `SELECT r.*, u.name AS reporter_name, up.phone_number AS reporter_phone
+         FROM reports r
+         LEFT JOIN users u ON r.user_id = u.id
+         LEFT JOIN user_profiles up ON r.user_id = up.user_id
+         WHERE r.assigned_to = ? OR r.assigned_to IS NOT NULL
+         ORDER BY r.created_at DESC`
+      : `SELECT r.*, u.name AS reporter_name, up.phone_number AS reporter_phone
+         FROM reports r
+         LEFT JOIN users u ON r.user_id = u.id
+         LEFT JOIN user_profiles up ON r.user_id = up.user_id
+         WHERE r.assigned_to = ?
+         ORDER BY r.created_at DESC`,
+    [userId]
+  );
+
+  const [rescueRows] = await pool.query(
+    isAdmin
+      ? `SELECT rr.*, ra.id AS assignment_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                u.name AS resident_name, up.phone_number AS resident_phone
+         FROM rescue_assignments ra
+         JOIN rescue_requests rr ON rr.id = ra.rescue_id
+         LEFT JOIN users u ON rr.user_id = u.id
+         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+         ORDER BY ra.assigned_at DESC`
+      : `SELECT rr.*, ra.id AS assignment_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                u.name AS resident_name, up.phone_number AS resident_phone
+         FROM rescue_assignments ra
+         JOIN rescue_requests rr ON rr.id = ra.rescue_id
+         LEFT JOIN users u ON rr.user_id = u.id
+         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+         WHERE ra.responder_user_id = ?
+         ORDER BY ra.assigned_at DESC`,
+    isAdmin ? [] : [userId]
+  );
+
+  const rescuePhotosMap = new Map();
+  const rescueTimelineMap = new Map();
+  if (rescueRows.length > 0) {
+    const rescueIn = buildInClause([...new Set(rescueRows.map((r) => r.id))]);
+    if (rescueIn) {
+      try {
+        const [attRows] = await pool.query(
+          `SELECT rescue_id, file_url FROM rescue_attachments WHERE rescue_id IN (${rescueIn.placeholders}) ORDER BY created_at ASC`,
+          rescueIn.params
+        );
+        for (const a of attRows) {
+          if (!rescuePhotosMap.has(a.rescue_id)) rescuePhotosMap.set(a.rescue_id, []);
+          rescuePhotosMap.get(a.rescue_id).push(a.file_url);
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [histRows] = await pool.query(
+          `SELECT h.rescue_id, h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
+           FROM rescue_status_history h
+           LEFT JOIN users u ON h.changed_by = u.id
+           WHERE h.rescue_id IN (${rescueIn.placeholders})
+           ORDER BY h.created_at ASC`,
+          rescueIn.params
+        );
+        for (const h of histRows) {
+          if (!rescueTimelineMap.has(h.rescue_id)) rescueTimelineMap.set(h.rescue_id, []);
+          rescueTimelineMap.get(h.rescue_id).push({
+            status: h.status,
+            note: h.note || '',
+            author: h.author || 'Responder',
+            timestamp: h.timestamp,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const reportPhotosMap = new Map();
+  const reportTimelineMap = new Map();
+  if (reportRows.length > 0) {
+    const reportIn = buildInClause([...new Set(reportRows.map((r) => r.id))]);
+    if (reportIn) {
+      try {
+        const [attRows] = await pool.query(
+          `SELECT incident_id, file_url FROM incident_attachments WHERE incident_id IN (${reportIn.placeholders}) ORDER BY created_at ASC`,
+          reportIn.params
+        );
+        for (const a of attRows) {
+          if (!reportPhotosMap.has(a.incident_id)) reportPhotosMap.set(a.incident_id, []);
+          reportPhotosMap.get(a.incident_id).push(a.file_url);
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [histRows] = await pool.query(
+          `SELECT h.incident_id, h.new_status AS status, h.remarks AS note, h.created_at AS timestamp, u.name AS author
+           FROM incident_status_history h
+           LEFT JOIN users u ON h.changed_by = u.id
+           WHERE h.incident_id IN (${reportIn.placeholders})
+           ORDER BY h.created_at ASC`,
+          reportIn.params
+        );
+        for (const h of histRows) {
+          if (!reportTimelineMap.has(h.incident_id)) reportTimelineMap.set(h.incident_id, []);
+          reportTimelineMap.get(h.incident_id).push({
+            status: h.status,
+            note: h.note || '',
+            author: h.author || 'Responder',
+            timestamp: h.timestamp,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return [
+    ...rescueRows.map((r) => ({
+      id: r.reference_number || `RES-${r.id}`,
+      dbId: r.id,
+      assignmentId: r.assignment_id,
+      assignmentType: 'rescue',
+      referenceNumber: r.reference_number || `RES-${r.id}`,
+      title: r.emergency_type || 'Rescue Request',
+      category: r.emergency_type,
+      description: r.description,
+      location: r.address || 'Barangay Bayanan, Muntinlupa City',
+      landmark: r.landmark || '',
+      coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
+      priority: r.priority || 'High',
+      status:
+        r.status === 'Completed' || r.assignment_status === 'Completed'
+          ? 'Completed'
+          : r.status === 'In Progress'
+          ? 'In Progress'
+          : r.assignment_status || r.status || 'Assigned',
+      peopleCount: r.people_count || 1,
+      vulnerableDetails: r.vulnerable_details || 'None specified',
+      residentName: r.resident_name || 'Resident',
+      residentPhone: r.resident_phone || '',
+      assignedAt: r.assigned_at || r.created_at,
+      timeline: rescueTimelineMap.get(r.id) || [],
+      photos: rescuePhotosMap.get(r.id) || [],
+      dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to EOC.',
+    })),
+    ...reportRows.map((r) => ({
+      id: r.reference_number || `REP-${r.id}`,
+      dbId: r.id,
+      assignmentType: 'incident',
+      referenceNumber: r.reference_number || `REP-${r.id}`,
+      title: r.title || `${r.incident_type} Incident`,
+      category: r.incident_type,
+      description: r.description,
+      location: r.address || 'Barangay Bayanan, Muntinlupa City',
+      coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
+      priority:
+        r.severity === 'critical'
+          ? 'Critical'
+          : r.severity === 'high'
+          ? 'High'
+          : r.severity === 'medium'
+          ? 'Medium'
+          : 'Low',
+      status:
+        r.status === 'resolved'
+          ? 'Completed'
+          : r.status === 'in_progress'
+          ? 'In Progress'
+          : r.status === 'on_site'
+          ? 'On Scene'
+          : r.status === 'responding'
+          ? 'En Route'
+          : r.status === 'dispatched'
+          ? 'Assigned'
+          : 'Pending',
+      residentName: r.reporter_name || 'Resident',
+      residentPhone: r.reporter_phone || '',
+      assignedAt: r.created_at,
+      timeline: reportTimelineMap.get(r.id) || [],
+      photos: reportPhotosMap.get(r.id) || [],
+      dispatchInstructions: 'Assess hazard scope and report status to Barangay Bayanan EOC.',
+    })),
+  ];
+}
+
 router.get('/responder/assignments', requireRole('responder', 'admin'), async (req, res) => {
   try {
-    const [reportRows] = await pool.query(
-      'SELECT * FROM reports WHERE assigned_to = ? ORDER BY created_at DESC',
-      [req.user.id]
-    );
-    const [rescueRows] = await pool.query(
-      `SELECT rr.*, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at
-       FROM rescue_assignments ra
-       JOIN rescue_requests rr ON rr.id = ra.rescue_id
-       WHERE ra.responder_user_id = ?
-       ORDER BY ra.assigned_at DESC`,
-      [req.user.id]
-    );
-
-    const assignments = [
-      ...rescueRows.map((r) => ({
-        id: r.reference_number || `RES-${r.id}`,
-        assignmentType: 'rescue',
-        referenceNumber: r.reference_number || `RES-${r.id}`,
-        title: r.emergency_type || 'Rescue Request',
-        category: r.emergency_type,
-        description: r.description,
-        location: r.address,
-        landmark: r.landmark || '',
-        coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-        priority: r.priority || 'High',
-        status: r.assignment_status || r.status || 'Pending',
-        peopleCount: r.people_count || 1,
-        vulnerableDetails: r.vulnerable_details || 'None specified',
-        assignedAt: r.assigned_at || r.created_at,
-        timeline: [],
-        photos: [],
-        dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to EOC.',
-      })),
-      ...reportRows.map((r) => ({
-        id: r.reference_number || `REP-${r.id}`,
-        assignmentType: 'incident',
-        referenceNumber: r.reference_number || `REP-${r.id}`,
-        title: r.title || `${r.incident_type} Incident`,
-        category: r.incident_type,
-        description: r.description,
-        location: r.address || 'Barangay Bayanan',
-        coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-        priority:
-          r.severity === 'critical'
-            ? 'Critical'
-            : r.severity === 'high'
-            ? 'High'
-            : r.severity === 'medium'
-            ? 'Medium'
-            : 'Low',
-        status:
-          r.status === 'resolved'
-            ? 'Completed'
-            : r.status === 'responding'
-            ? 'En Route'
-            : r.status === 'on_site'
-            ? 'On Scene'
-            : 'Pending',
-        assignedAt: r.created_at,
-        timeline: [],
-        photos: [],
-        dispatchInstructions: 'Assess hazard scope and report status to Barangay Bayanan EOC.',
-      })),
-    ];
-
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
     return res.json(assignments);
   } catch (err) {
     console.error('[Portal API] GET /responder/assignments failed:', err.message);
@@ -656,22 +1149,440 @@ router.get('/responder/assignments', requireRole('responder', 'admin'), async (r
   }
 });
 
+router.get('/responder/assignments/:id', requireRole('responder', 'admin'), async (req, res) => {
+  try {
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, true);
+    const paramId = String(req.params.id || '').trim();
+    const match = assignments.find(
+      (a) =>
+        a.id === paramId ||
+        a.referenceNumber === paramId ||
+        String(a.dbId) === paramId ||
+        String(a.assignmentId) === paramId
+    );
+    if (!match) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+    return res.json(match);
+  } catch (err) {
+    console.error('[Portal API] GET /responder/assignments/:id failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load assignment detail' });
+  }
+});
+
+async function handleResponderAssignmentUpdate(req, res) {
+  const paramId = String(req.params.id || '').trim();
+  const {
+    status,
+    note,
+    notes,
+    work_notes,
+    workNotes,
+    photo,
+    photos,
+    assignmentType,
+    type,
+  } = req.body || {};
+
+  const fieldNotes = String(
+    note !== undefined
+      ? note
+      : notes !== undefined
+      ? notes
+      : workNotes !== undefined
+      ? workNotes
+      : work_notes !== undefined
+      ? work_notes
+      : ''
+  ).trim();
+
+  const rawStatus = String(status || 'In Progress').trim();
+  const statusLower = rawStatus.toLowerCase().replace(/_/g, ' ');
+
+  const validStatusKeywords = [
+    'accepted',
+    'en route',
+    'responding',
+    'on scene',
+    'on site',
+    'in progress',
+    'completed',
+    'resolved',
+    'assigned',
+    'dispatched',
+    'pending',
+    'escalated',
+  ];
+  if (status && !validStatusKeywords.includes(statusLower)) {
+    return res.status(400).json({
+      error: `Invalid assignment status "${rawStatus}". Allowed: Accepted, En Route, On Scene, In Progress, Completed / Resolved.`,
+    });
+  }
+
+  // Parse optional Base64 evidence photo(s)
+  const rawPhotoList = [];
+  if (Array.isArray(photos)) rawPhotoList.push(...photos);
+  if (photo && !rawPhotoList.includes(photo)) rawPhotoList.push(photo);
+
+  const hintType = String(assignmentType || type || '').toLowerCase();
+  const isRescuePrefix = paramId.toUpperCase().startsWith('RES-');
+  const isIncidentPrefix = paramId.toUpperCase().startsWith('REP-') || paramId.toUpperCase().startsWith('INC-');
+  const numericId = /^\d+$/.test(paramId) ? parseInt(paramId, 10) : -1;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    let targetKind = null; // 'rescue' | 'incident'
+    let rescueRow = null;
+    let reportRow = null;
+
+    if (isRescuePrefix || hintType === 'rescue') {
+      const [rRows] = await conn.query(
+        'SELECT * FROM rescue_requests WHERE reference_number = ? OR id = ? LIMIT 1',
+        [paramId, numericId]
+      );
+      if (rRows.length) {
+        targetKind = 'rescue';
+        rescueRow = rRows[0];
+      }
+    } else if (isIncidentPrefix || hintType === 'incident' || hintType === 'report') {
+      const [repRows] = await conn.query(
+        'SELECT * FROM reports WHERE reference_number = ? OR id = ? LIMIT 1',
+        [paramId, numericId]
+      );
+      if (repRows.length) {
+        targetKind = 'incident';
+        reportRow = repRows[0];
+      }
+    }
+
+    if (!targetKind) {
+      // Check rescue_requests by reference or ID or rescue_assignments.id
+      const [rRows] = await conn.query(
+        `SELECT rr.*
+         FROM rescue_requests rr
+         LEFT JOIN rescue_assignments ra ON ra.rescue_id = rr.id
+         WHERE rr.reference_number = ? OR rr.id = ? OR ra.id = ?
+         LIMIT 1`,
+        [paramId, numericId, numericId]
+      );
+      if (rRows.length) {
+        targetKind = 'rescue';
+        rescueRow = rRows[0];
+      } else {
+        const [repRows] = await conn.query(
+          'SELECT * FROM reports WHERE reference_number = ? OR id = ? LIMIT 1',
+          [paramId, numericId]
+        );
+        if (repRows.length) {
+          targetKind = 'incident';
+          reportRow = repRows[0];
+        }
+      }
+    }
+
+    if (!targetKind) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Assigned rescue request or incident report not found' });
+    }
+
+    // Save uploaded photos to appropriate folder
+    const subDir = targetKind === 'rescue' ? 'rescues' : 'incidents';
+    const prefix = targetKind === 'rescue' ? `RES-UPD-${req.user.id}` : `INC-UPD-${req.user.id}`;
+    const savedPhotos = [];
+    try {
+      for (let i = 0; i < Math.min(rawPhotoList.length, 5); i++) {
+        const parsed = parseAndSaveBase64Photo(rawPhotoList[i], subDir, `${prefix}-${i}`);
+        if (parsed) savedPhotos.push(parsed);
+      }
+    } catch (photoErr) {
+      await conn.rollback();
+      return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
+    }
+    const primaryPhotoUrl = savedPhotos[0] ? savedPhotos[0].publicUrl : null;
+
+    if (targetKind === 'rescue') {
+      let nextRescueStatus = 'On Scene';
+      let nextAssignmentStatus = 'On Scene';
+      let nextUpdateStatus = 'In Progress';
+      let displayRescueStatus = 'In Progress';
+
+      if (statusLower === 'accepted' || statusLower === 'assigned' || statusLower === 'dispatched') {
+        nextRescueStatus = 'Accepted';
+        nextAssignmentStatus = 'Accepted';
+        nextUpdateStatus = 'Accepted';
+        displayRescueStatus = 'Accepted';
+      } else if (statusLower === 'en route' || statusLower === 'responding') {
+        nextRescueStatus = 'En Route';
+        nextAssignmentStatus = 'En Route';
+        nextUpdateStatus = 'En Route';
+        displayRescueStatus = 'En Route';
+      } else if (statusLower === 'on scene' || statusLower === 'on site') {
+        nextRescueStatus = 'On Scene';
+        nextAssignmentStatus = 'On Scene';
+        nextUpdateStatus = 'On Scene';
+        displayRescueStatus = 'On Scene';
+      } else if (statusLower === 'in progress') {
+        nextRescueStatus = 'On Scene';
+        nextAssignmentStatus = 'On Scene';
+        nextUpdateStatus = 'In Progress';
+        displayRescueStatus = 'In Progress';
+      } else if (statusLower === 'completed' || statusLower === 'resolved') {
+        nextRescueStatus = 'Completed';
+        nextAssignmentStatus = 'Completed';
+        nextUpdateStatus = 'Completed';
+        displayRescueStatus = 'Completed';
+      }
+
+      const oldStatus = rescueRow.status;
+      await conn.query(
+        `UPDATE rescue_requests
+         SET status = ?,
+             resolved_at = CASE WHEN ? = 'Completed' THEN CURRENT_TIMESTAMP ELSE resolved_at END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [nextRescueStatus, nextRescueStatus, rescueRow.id]
+      );
+
+      await conn.query(
+        `UPDATE rescue_assignments
+         SET assignment_status = ?,
+             accepted_at = CASE WHEN ? = 'Accepted' AND accepted_at IS NULL THEN CURRENT_TIMESTAMP ELSE accepted_at END,
+             en_route_at = CASE WHEN ? = 'En Route' AND en_route_at IS NULL THEN CURRENT_TIMESTAMP ELSE en_route_at END,
+             on_scene_at = CASE WHEN ? = 'On Scene' AND on_scene_at IS NULL THEN CURRENT_TIMESTAMP ELSE on_scene_at END,
+             completed_at = CASE WHEN ? = 'Completed' AND completed_at IS NULL THEN CURRENT_TIMESTAMP ELSE completed_at END
+         WHERE rescue_id = ?`,
+        [
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          rescueRow.id,
+        ]
+      );
+
+      const noteToSave = fieldNotes || `Responder updated status to ${displayRescueStatus}`;
+      await conn.query(
+        `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
+         VALUES (?, ?, ?, ?, ?, 0)`,
+        [rescueRow.id, req.user.id, nextUpdateStatus, noteToSave, primaryPhotoUrl]
+      );
+
+      await conn.query(
+        `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes, photo_url)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [rescueRow.id, oldStatus, nextRescueStatus, req.user.id, noteToSave, primaryPhotoUrl]
+      );
+
+      for (const sp of savedPhotos) {
+        await conn.query(
+          `INSERT INTO rescue_attachments (rescue_id, file_url, file_name, file_type, file_size, uploaded_by)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [rescueRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+        );
+      }
+
+      const refNumber = rescueRow.reference_number || `RES-${rescueRow.id}`;
+      try {
+        const adminIds = await getActiveAdminIds(conn);
+        const recipientIds = [...adminIds];
+        if (rescueRow.user_id) recipientIds.push(rescueRow.user_id);
+
+        await createNotificationForUsers(conn, {
+          title: `Rescue Status Update (${refNumber}): ${displayRescueStatus}`,
+          message: noteToSave,
+          severity: rescueRow.priority === 'Critical' ? 'Critical' : 'High',
+          category: 'Dispatch',
+          createdBy: req.user.id,
+          userIds: recipientIds,
+        });
+      } catch (notifErr) {
+        console.warn('[Portal API] Notification warning on rescue status update:', notifErr.message);
+      }
+
+      await conn.commit();
+
+      const updatePayload = {
+        id: refNumber,
+        dbId: rescueRow.id,
+        referenceNumber: refNumber,
+        entityType: 'rescue',
+        status: displayRescueStatus,
+        rawStatus: nextRescueStatus,
+        oldStatus,
+        note: noteToSave,
+        photoUrl: primaryPhotoUrl,
+        residentId: rescueRow.user_id,
+        responderId: req.user.id,
+        responderName: req.user.name || 'Responder',
+        updatedAt: new Date().toISOString(),
+      };
+
+      emitStatusUpdate(updatePayload);
+      emitAssignmentUpdate(updatePayload);
+
+      return res.json({
+        message: 'Rescue assignment status updated',
+        assignment: updatePayload,
+      });
+    }
+
+    // Incident report update path
+    let nextReportStatus = 'in_progress';
+    let nextAssignmentStatus = 'On Scene';
+    let nextIncidentUpdateStatus = 'In Progress';
+    let displayStatus = 'In Progress';
+
+    if (statusLower === 'accepted' || statusLower === 'assigned' || statusLower === 'dispatched') {
+      nextReportStatus = 'dispatched';
+      nextAssignmentStatus = 'Accepted';
+      nextIncidentUpdateStatus = 'Accepted';
+      displayStatus = 'Accepted';
+    } else if (statusLower === 'en route' || statusLower === 'responding') {
+      nextReportStatus = 'responding';
+      nextAssignmentStatus = 'En Route';
+      nextIncidentUpdateStatus = 'En Route';
+      displayStatus = 'En Route';
+    } else if (statusLower === 'on scene' || statusLower === 'on site') {
+      nextReportStatus = 'on_site';
+      nextAssignmentStatus = 'On Scene';
+      nextIncidentUpdateStatus = 'On Scene';
+      displayStatus = 'On Scene';
+    } else if (statusLower === 'in progress') {
+      nextReportStatus = 'in_progress';
+      nextAssignmentStatus = 'On Scene';
+      nextIncidentUpdateStatus = 'In Progress';
+      displayStatus = 'In Progress';
+    } else if (statusLower === 'completed' || statusLower === 'resolved') {
+      nextReportStatus = 'resolved';
+      nextAssignmentStatus = 'Completed';
+      nextIncidentUpdateStatus = 'Resolved';
+      displayStatus = 'Completed';
+    }
+
+    const oldStatus = reportRow.status;
+    await conn.query(
+      `UPDATE reports
+       SET status = ?,
+           resolved_at = CASE WHEN ? = 'resolved' THEN CURRENT_TIMESTAMP ELSE resolved_at END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [nextReportStatus, nextReportStatus, reportRow.id]
+    );
+
+    await conn
+      .query(
+        `UPDATE incident_assignments
+         SET assignment_status = ?,
+             accepted_at = CASE WHEN ? = 'Accepted' AND accepted_at IS NULL THEN CURRENT_TIMESTAMP ELSE accepted_at END,
+             en_route_at = CASE WHEN ? = 'En Route' AND en_route_at IS NULL THEN CURRENT_TIMESTAMP ELSE en_route_at END,
+             on_scene_at = CASE WHEN ? = 'On Scene' AND on_scene_at IS NULL THEN CURRENT_TIMESTAMP ELSE on_scene_at END,
+             completed_at = CASE WHEN ? = 'Completed' AND completed_at IS NULL THEN CURRENT_TIMESTAMP ELSE completed_at END
+         WHERE report_id = ?`,
+        [
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          reportRow.id,
+        ]
+      )
+      .catch(() => {});
+
+    const noteToSave = fieldNotes || `Responder updated incident status to ${displayStatus}`;
+    await conn.query(
+      `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [reportRow.id, req.user.id, nextIncidentUpdateStatus, noteToSave, primaryPhotoUrl]
+    );
+
+    await conn.query(
+      `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+       VALUES (?, ?, ?, ?, ?)`,
+      [reportRow.id, oldStatus, nextReportStatus, req.user.id, noteToSave]
+    );
+
+    for (const sp of savedPhotos) {
+      await conn.query(
+        `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [reportRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+      );
+    }
+
+    const refNumber = reportRow.reference_number || `REP-${reportRow.id}`;
+    try {
+      const adminIds = await getActiveAdminIds(conn);
+      const recipientIds = [...adminIds];
+      if (reportRow.user_id) recipientIds.push(reportRow.user_id);
+
+      await createNotificationForUsers(conn, {
+        title: `Incident Status Update (${refNumber}): ${displayStatus}`,
+        message: noteToSave,
+        severity: reportRow.severity === 'critical' ? 'Critical' : 'High',
+        category: 'Dispatch',
+        createdBy: req.user.id,
+        userIds: recipientIds,
+      });
+    } catch (notifErr) {
+      console.warn('[Portal API] Notification warning on incident status update:', notifErr.message);
+    }
+
+    await conn.commit();
+
+    const updatePayload = {
+      id: refNumber,
+      dbId: reportRow.id,
+      referenceNumber: refNumber,
+      entityType: 'incident',
+      status: displayStatus,
+      rawStatus: nextReportStatus,
+      oldStatus,
+      note: noteToSave,
+      photoUrl: primaryPhotoUrl,
+      residentId: reportRow.user_id,
+      responderId: req.user.id,
+      responderName: req.user.name || 'Responder',
+      updatedAt: new Date().toISOString(),
+    };
+
+    emitStatusUpdate(updatePayload);
+    emitAssignmentUpdate(updatePayload);
+
+    return res.json({
+      message: 'Incident assignment status updated',
+      assignment: updatePayload,
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Portal API] Responder assignment status update failed:', err.message);
+    return res.status(503).json({ error: 'Unable to update assignment status' });
+  } finally {
+    conn.release();
+  }
+}
+
+router.patch('/responder/assignments/:id/status', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
+router.put('/responder/assignments/:id/status', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
+router.post('/responder/assignments/:id/updates', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
+
 router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), async (req, res) => {
   try {
-    const [reportRows] = await pool.query(
-      'SELECT * FROM reports WHERE assigned_to = ? ORDER BY created_at DESC',
-      [req.user.id]
-    );
-    const active = reportRows.filter((r) => r.status !== 'resolved').length;
-    const pending = reportRows.filter((r) => ['pending', 'verified', 'dispatched'].includes(r.status)).length;
-    const inProgress = reportRows.filter((r) => ['responding', 'on_site', 'in_progress'].includes(r.status)).length;
-    const completed = reportRows.filter((r) => r.status === 'resolved').length;
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
+
+    const active = assignments.filter((a) => a.status !== 'Completed').length;
+    const pending = assignments.filter((a) => ['Pending', 'Assigned', 'Accepted'].includes(a.status)).length;
+    const inProgress = assignments.filter((a) => ['En Route', 'On Scene', 'In Progress'].includes(a.status)).length;
+    const completed = assignments.filter((a) => a.status === 'Completed').length;
 
     const priorityCounts = {
-      critical: reportRows.filter((r) => r.severity === 'critical').length,
-      high: reportRows.filter((r) => r.severity === 'high').length,
-      medium: reportRows.filter((r) => r.severity === 'medium').length,
-      low: reportRows.filter((r) => r.severity === 'low').length,
+      critical: assignments.filter((a) => String(a.priority).toLowerCase() === 'critical').length,
+      high: assignments.filter((a) => String(a.priority).toLowerCase() === 'high').length,
+      medium: assignments.filter((a) => ['medium', 'moderate'].includes(String(a.priority).toLowerCase())).length,
+      low: assignments.filter((a) => String(a.priority).toLowerCase() === 'low').length,
     };
 
     const [rRows] = await pool.query(
@@ -684,7 +1595,7 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
     return res.json({
       stats: { active, pending, inProgress, completed },
       priorityCounts,
-      recentAssignments: reportRows.slice(0, 5).map(formatReportForPortal),
+      recentAssignments: assignments.slice(0, 5),
       responder: {
         id: req.user.id,
         firstName: parts[0] || 'Responder',
@@ -705,17 +1616,36 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
 router.get('/responder/map-data', requireRole('responder', 'admin'), async (req, res) => {
   try {
     const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
-    const [facRows] = await pool.query('SELECT * FROM emergency_facilities WHERE is_operational = 1 ORDER BY name ASC');
+    const [hospitalRows] = await pool.query('SELECT * FROM hospitals ORDER BY name ASC');
+    const [profRows] = await pool.query(
+      'SELECT current_latitude, current_longitude FROM responder_profiles WHERE user_id = ? LIMIT 1',
+      [req.user.id]
+    );
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
+    const prof = profRows[0];
+
     return res.json({
-      assignments: [],
-      evacuationCenters: evacRows,
-      barangayFacilities: facRows,
-      responderLocation: null,
+      assignments,
+      evacuationCenters: evacRows
+        .filter((e) => String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude))
+        .map((e) => ({
+          ...e,
+          coordinates: { lat: Number(e.latitude), lng: Number(e.longitude) },
+        })),
+      barangayFacilities: hospitalRows.map((h) => ({
+        ...h,
+        type: h.facility_type || h.hospital_type || 'Hospital',
+        coordinates: { lat: Number(h.latitude), lng: Number(h.longitude) },
+      })),
+      responderLocation:
+        prof && prof.current_latitude && prof.current_longitude
+          ? { lat: Number(prof.current_latitude), lng: Number(prof.current_longitude) }
+          : { lat: 14.4068, lng: 121.0462 },
     });
   } catch (err) {
+    console.error('[Portal API] GET /responder/map-data failed:', err.message);
     return res.status(503).json({ error: 'Unable to load responder map data' });
   }
 });
 
 module.exports = router;
-

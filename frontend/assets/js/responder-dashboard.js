@@ -22,6 +22,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Initialize Mini Map Preview
   initMiniMapPreview();
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadDashboardData();
+  });
 });
 
 async function loadDashboardData() {

@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   GeoSafeUI.init('my-reports', 'My Reports');
   setupFilterControls();
   await loadReports();
+
+  window.addEventListener('geosafe:realtime-update', () => {
+    loadReports();
+  });
 });
 
 function setupFilterControls() {

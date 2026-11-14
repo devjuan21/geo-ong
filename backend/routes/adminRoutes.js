@@ -97,7 +97,22 @@ router.post(
   [
     body('title').trim().notEmpty().withMessage('Broadcast title is required'),
     body('message').trim().notEmpty().withMessage('Broadcast message is required'),
-    body('severity').isIn(['Advisory', 'Watch', 'Warning', 'Critical Evacuation']).withMessage('Invalid broadcast severity'),
+    body('severity')
+      .isIn([
+        'Critical',
+        'High',
+        'Moderate',
+        'Low',
+        'critical',
+        'high',
+        'moderate',
+        'low',
+        'Advisory',
+        'Watch',
+        'Warning',
+        'Critical Evacuation',
+      ])
+      .withMessage('Invalid broadcast severity'),
   ],
   createEmergencyBroadcast
 );

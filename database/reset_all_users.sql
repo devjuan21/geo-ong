@@ -72,8 +72,7 @@ SELECT
     (SELECT COUNT(*) FROM audit_logs) AS preserved_audit_logs_count,
     (SELECT COUNT(*) FROM auth_security_logs) AS preserved_auth_logs_count,
     (SELECT COUNT(*) FROM reports) AS reports_count,
-    (SELECT COUNT(*) FROM rescue_requests) AS rescue_requests_count,
-    (SELECT COUNT(*) FROM family_groups) AS family_groups_count;
+    (SELECT COUNT(*) FROM rescue_requests) AS rescue_requests_count;
 
 
 -- ============================================================================
@@ -93,7 +92,6 @@ UPDATE alerts SET created_by = NULL WHERE created_by IS NOT NULL;
 UPDATE evacuation_routes SET created_by = NULL WHERE created_by IS NOT NULL;
 UPDATE notifications SET created_by = NULL WHERE created_by IS NOT NULL;
 UPDATE system_settings SET updated_by = NULL WHERE updated_by IS NOT NULL;
-UPDATE tropical_cyclone_bulletins SET published_by = NULL WHERE published_by IS NOT NULL;
 UPDATE emergency_broadcast_logs SET authorized_by = NULL WHERE authorized_by IS NOT NULL;
 UPDATE reports SET assigned_to = NULL, verified_by = NULL WHERE assigned_to IS NOT NULL OR verified_by IS NOT NULL;
 UPDATE rescue_requests SET confirmed_by = NULL WHERE confirmed_by IS NOT NULL;

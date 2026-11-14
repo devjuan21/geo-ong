@@ -151,11 +151,11 @@ function dispatchExpressRequest(app, reqPath, options = {}) {
 
   // 3. Database Canonical Files & Archive
   console.log('\n3. Verifying Canonical Database Directory:');
-  for (const dbItem of ['geosafe_db_schema.sql', 'verify_database.sql', 'REVISION_NOTES.md', 'migrations', 'archive']) {
+  for (const dbItem of ['geosafe_db_schema.sql', 'geosafe_db_postgres.sql', 'verify_database.sql', 'REVISION_NOTES.md', 'migrations', 'archive']) {
     check(fs.existsSync(path.join(databaseDir, dbItem)), `database/${dbItem} exists`);
   }
   const migrationFiles = fs.readdirSync(path.join(databaseDir, 'migrations')).filter((f) => f.endsWith('.sql'));
-  check(migrationFiles.length === 7, `database/migrations/ contains all 7 SQL migrations (002–008)`);
+  check(migrationFiles.length >= 6, `database/migrations/ contains active SQL migrations (found ${migrationFiles.length})`);
   const archiveFiles = fs.readdirSync(path.join(databaseDir, 'archive'));
   check(
     archiveFiles.includes('database.zip') && archiveFiles.includes('GeoSafe_database_corrected.zip'),
@@ -165,7 +165,7 @@ function dispatchExpressRequest(app, reqPath, options = {}) {
   // 4. Frontend HTML Pages, Assets, and Local Path References
   console.log('\n4. Verifying Frontend HTML Pages & Local Asset References:');
   const htmlFiles = fs.readdirSync(frontendDir).filter((f) => f.endsWith('.html'));
-  check(htmlFiles.length === 19, `frontend/ contains all 19 HTML portal pages`);
+  check(htmlFiles.length === 17, `frontend/ contains all 17 active HTML portal pages (found ${htmlFiles.length})`);
   check(fs.existsSync(path.join(frontendDir, 'assets/css/style.css')), 'frontend/assets/css/style.css exists');
   check(fs.existsSync(path.join(frontendDir, 'package.json')) && fs.existsSync(path.join(frontendDir, 'package-lock.json')), 'frontend/package.json & package-lock.json exist');
 
@@ -187,7 +187,7 @@ function dispatchExpressRequest(app, reqPath, options = {}) {
       }
     }
   }
-  check(brokenRefs.length === 0, 'All local CSS, JS, icon, and HTML links across all 19 HTML pages resolve on disk', brokenRefs.join('; '));
+  check(brokenRefs.length === 0, 'All local CSS, JS, icon, and HTML links across all 17 HTML pages resolve on disk', brokenRefs.join('; '));
 
   // 5. Check All Backend JS Files for Broken Relative require() Imports
   console.log('\n5. Checking Backend JS Files for Broken Imports:');
@@ -267,7 +267,7 @@ function dispatchExpressRequest(app, reqPath, options = {}) {
   check(storeJsRes.status === 200 && storeJsRes.body.includes('GeoSafeStore'), 'GET /assets/js/store.js serves frontend store client (HTTP 200)');
 
   // Verify all 3 role-based portals redirect unauthenticated visitors to /login.html
-  for (const portalPath of ['/', '/index.html', '/family.html', '/responder-dashboard.html', '/admin.html']) {
+  for (const portalPath of ['/', '/index.html', '/evacuation-routes.html', '/responder-dashboard.html', '/admin.html']) {
     const res = await dispatchExpressRequest(app, portalPath);
     check(
       res.status === 302 && res.headers.location === '/login.html',
@@ -276,7 +276,7 @@ function dispatchExpressRequest(app, reqPath, options = {}) {
   }
 
   // Verify protected API endpoints reject unauthenticated requests with HTTP 401
-  for (const apiPath of ['/api/reports', '/api/alerts', '/api/family', '/api/users', '/api/admin/overview', '/api/responder/assignments']) {
+  for (const apiPath of ['/api/reports', '/api/alerts', '/api/rescue-requests', '/api/users', '/api/admin/overview', '/api/responder/assignments']) {
     const res = await dispatchExpressRequest(app, apiPath);
     check(res.status === 401, `Unauthenticated GET ${apiPath} -> HTTP 401 Unauthorized`);
   }

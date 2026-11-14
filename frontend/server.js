@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
   // Proxy API requests to backend Express server if target starts with /api
   if (req.url.startsWith('/api')) {
     const backendHost = process.env.BACKEND_HOST || 'localhost';
-    const backendPort = process.env.BACKEND_PORT || 5000;
+    const backendPort = process.env.BACKEND_PORT || 3000;
     
     const proxyOptions = {
       hostname: backendHost,
@@ -45,7 +45,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(503, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         error: 'Backend API service unavailable',
-        message: 'The GeoSafe Express + MySQL backend service is currently unreachable. Please ensure the backend server is running.',
+        message: 'The GeoSafe Express + PostgreSQL backend service is currently unreachable. Please ensure the backend server is running.',
         target: `http://${backendHost}:${backendPort}${req.url}`
       }));
     });

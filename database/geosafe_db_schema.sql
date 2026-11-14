@@ -5,13 +5,11 @@
 -- Character Set: utf8mb4, Collation: utf8mb4_unicode_ci
 -- ============================================================================
 -- STRICT FRESH DATABASE POLICY:
---   * Drops any existing `geosafe_db` database and recreates all 38 InnoDB
---     tables, 51 ON DELETE RESTRICT foreign keys, and 27 triggers from scratch.
---   * Contains ZERO existing operational data, ZERO sample/test accounts,
---     ZERO hardcoded incident categories, ZERO hardcoded system settings,
---     and ZERO fabricated facilities, routes, alerts, or emergency records.
---   * Only the 3 required RBAC roles (1=Administrator, 2=Responder, 3=Resident)
---     are defined in `roles`. All other 37 tables start with 0 rows.
+--   * Drops any existing `geosafe_db` database and recreates all 33 InnoDB
+--     tables, 40 ON DELETE RESTRICT foreign keys, and 18 triggers from scratch.
+--   * Initializes the 3 required RBAC roles (1=Administrator, 2=Responder, 3=Resident),
+--     role_sequences (ADM, RSPDR, RSDNT), and verified Barangay Bayanan
+--     evacuation centers, routes, and Muntinlupa hospitals.
 -- ============================================================================
 
 DROP DATABASE IF EXISTS geosafe_db;
@@ -47,7 +45,7 @@ CREATE TABLE role_sequences (
 
 -- 1.2 Core Users Table
 -- Authoritative role relationship: users.role_id -> roles.id
--- Legacy compatibility columns (role, family_group_id) are synchronized by triggers
+-- Legacy compatibility column (role) is synchronized by triggers
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_code VARCHAR(32) DEFAULT NULL UNIQUE,
@@ -56,9 +54,6 @@ CREATE TABLE users (
   password_hash VARCHAR(255) NOT NULL,
   role_id INT NOT NULL DEFAULT 3,
   role ENUM('resident', 'responder', 'admin') DEFAULT NULL,
-  family_group_id INT DEFAULT NULL,
-  is_family_head TINYINT(1) NOT NULL DEFAULT 0,
-  family_relationship VARCHAR(50) DEFAULT 'Member',
   safety_status ENUM('safe', 'need_help', 'injured', 'no_response') NOT NULL DEFAULT 'no_response',
   last_latitude DECIMAL(10, 8) DEFAULT NULL,
   last_longitude DECIMAL(11, 8) DEFAULT NULL,
@@ -74,7 +69,6 @@ CREATE TABLE users (
   INDEX idx_users_role_id (role_id),
   INDEX idx_users_role_enum (role),
   INDEX idx_users_status (account_status),
-  INDEX idx_users_family (family_group_id),
   CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -445,18 +439,22 @@ CREATE TABLE evacuation_routes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   route_name VARCHAR(150) NOT NULL,
   description TEXT DEFAULT NULL,
+  route_description TEXT DEFAULT NULL,
   origin_name VARCHAR(150) NOT NULL,
   origin_latitude DECIMAL(10, 8) NOT NULL,
   origin_longitude DECIMAL(11, 8) NOT NULL,
   destination_center_id INT NOT NULL,
   distance_meters INT UNSIGNED DEFAULT NULL,
+  estimated_distance_km DECIMAL(6, 2) DEFAULT NULL,
   estimated_duration_seconds INT UNSIGNED DEFAULT NULL,
+  estimated_walk_minutes INT UNSIGNED DEFAULT NULL,
   route_type ENUM('pedestrian', 'vehicular', 'accessible') NOT NULL DEFAULT 'pedestrian',
   route_status ENUM('active', 'congested', 'impassable', 'under_review') NOT NULL DEFAULT 'under_review',
   is_official_approved TINYINT(1) NOT NULL DEFAULT 0,
   approval_authority VARCHAR(120) DEFAULT NULL,
   approved_at TIMESTAMP NULL DEFAULT NULL,
   encoded_geometry TEXT DEFAULT NULL,
+  path_coordinates JSON DEFAULT NULL,
   created_by INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -482,136 +480,22 @@ CREATE TABLE evacuation_route_waypoints (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
--- MODULE 5: FAMILY SAFETY TRACKER & QR MEMBERSHIP MANAGEMENT
--- ----------------------------------------------------------------------------
-
--- 5.1 Family Groups Table (Fixed Coverage: Barangay Bayanan, Muntinlupa City)
-CREATE TABLE family_groups (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  family_name VARCHAR(120) NOT NULL,
-  name VARCHAR(120) GENERATED ALWAYS AS (family_name) VIRTUAL,
-  created_by INT NOT NULL,
-  house_number VARCHAR(50) NOT NULL,
-  street VARCHAR(150) NOT NULL,
-  barangay VARCHAR(80) NOT NULL DEFAULT 'Bayanan',
-  city VARCHAR(80) NOT NULL DEFAULT 'Muntinlupa City',
-  province VARCHAR(80) NOT NULL DEFAULT 'Metro Manila',
-  region VARCHAR(80) NOT NULL DEFAULT 'National Capital Region',
-  country VARCHAR(80) NOT NULL DEFAULT 'Philippines',
-  subdivision_purok VARCHAR(100) DEFAULT NULL,
-  status ENUM('active', 'archived') NOT NULL DEFAULT 'active',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_family_groups_creator (created_by),
-  INDEX idx_family_groups_status (status),
-  INDEX idx_family_groups_location (barangay, city),
-  CONSTRAINT chk_family_address_complete CHECK (
-    house_number IS NOT NULL AND street IS NOT NULL
-    AND CHAR_LENGTH(TRIM(house_number)) > 0
-    AND CHAR_LENGTH(TRIM(street)) > 0
-  ),
-  CONSTRAINT chk_family_fixed_location CHECK (
-    barangay = 'Bayanan'
-    AND city = 'Muntinlupa City'
-    AND region = 'National Capital Region'
-    AND country = 'Philippines'
-  ),
-  CONSTRAINT fk_family_groups_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Bind legacy users.family_group_id cache to family_groups(id) with ON DELETE RESTRICT
-ALTER TABLE users
-  ADD CONSTRAINT fk_users_family_group
-  FOREIGN KEY (family_group_id) REFERENCES family_groups(id) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- 5.2 Family Members Table (Authoritative Family Relationship: Strictly One Active Family per User)
-CREATE TABLE family_members (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  family_id INT NOT NULL,
-  user_id INT NOT NULL,
-  relationship VARCHAR(60) NOT NULL DEFAULT 'Member',
-  membership_role ENUM('manager', 'member') NOT NULL DEFAULT 'member',
-  membership_status ENUM('active', 'inactive', 'removed') NOT NULL DEFAULT 'active',
-  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  active_user_id INT GENERATED ALWAYS AS (CASE WHEN membership_status = 'active' THEN user_id ELSE NULL END) STORED,
-  UNIQUE KEY uq_active_family_user (active_user_id),
-  UNIQUE KEY uq_family_user_member (family_id, user_id),
-  INDEX idx_family_members_user (user_id),
-  INDEX idx_family_members_status (membership_status),
-  CONSTRAINT fk_family_members_group FOREIGN KEY (family_id) REFERENCES family_groups(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_family_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 5.3 Family QR Invitations Table (SHA-256 Hashed Tokens)
-CREATE TABLE family_invitations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  family_id INT NOT NULL,
-  token_hash CHAR(64) NOT NULL UNIQUE,
-  created_by INT NOT NULL,
-  expires_at TIMESTAMP NOT NULL,
-  revoked_at TIMESTAMP NULL DEFAULT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_family_invites_family (family_id),
-  INDEX idx_family_invites_token (token_hash),
-  INDEX idx_family_invites_expires (expires_at),
-  CONSTRAINT fk_family_invites_group FOREIGN KEY (family_id) REFERENCES family_groups(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_family_invites_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 5.4 Family Join Requests Table
-CREATE TABLE family_join_requests (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  family_id INT NOT NULL,
-  user_id INT NOT NULL,
-  invitation_id INT NOT NULL,
-  relationship VARCHAR(60) NOT NULL DEFAULT 'Member',
-  request_status ENUM('pending', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending',
-  requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  reviewed_by INT DEFAULT NULL,
-  reviewed_at TIMESTAMP NULL DEFAULT NULL,
-  INDEX idx_join_req_family_status (family_id, request_status),
-  INDEX idx_join_req_user_status (user_id, request_status),
-  CONSTRAINT fk_join_req_family FOREIGN KEY (family_id) REFERENCES family_groups(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_join_req_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_join_req_invite FOREIGN KEY (invitation_id) REFERENCES family_invitations(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_join_req_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 5.5 Family Location Sharing Consents Table
-CREATE TABLE family_location_sharing_consents (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  family_member_id INT NOT NULL UNIQUE,
-  sharing_enabled TINYINT(1) NOT NULL DEFAULT 0,
-  consented_at TIMESTAMP NULL DEFAULT NULL,
-  revoked_at TIMESTAMP NULL DEFAULT NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_loc_consent_member FOREIGN KEY (family_member_id) REFERENCES family_members(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 5.6 Family Location Updates Table
-CREATE TABLE family_location_updates (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  family_member_id INT NOT NULL,
-  latitude DECIMAL(10, 8) NOT NULL,
-  longitude DECIMAL(11, 8) NOT NULL,
-  battery_level TINYINT UNSIGNED DEFAULT NULL,
-  safety_status ENUM('safe', 'need_help', 'injured', 'no_response') NOT NULL DEFAULT 'no_response',
-  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_fam_loc_member_time (family_member_id, recorded_at),
-  CONSTRAINT fk_fam_loc_member FOREIGN KEY (family_member_id) REFERENCES family_members(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ----------------------------------------------------------------------------
--- MODULE 6: NOTIFICATIONS, WEATHER CACHE & EMERGENCY BROADCASTS
+-- MODULE 6: NOTIFICATIONS & EMERGENCY BROADCASTS
 -- ----------------------------------------------------------------------------
 
 -- 6.1 Notifications Master Table
 CREATE TABLE notifications (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT DEFAULT NULL,
   title VARCHAR(150) NOT NULL,
   message TEXT NOT NULL,
-  severity ENUM('Low', 'Medium', 'High', 'Critical') NOT NULL DEFAULT 'Medium',
-  category ENUM('Alert', 'Dispatch', 'General', 'Weather') NOT NULL DEFAULT 'Alert',
+  type VARCHAR(50) DEFAULT 'info',
+  severity ENUM('Low', 'Medium', 'Moderate', 'High', 'Critical', 'Info', 'Advisory', 'Warning') NOT NULL DEFAULT 'Medium',
+  category ENUM('Alert', 'Dispatch', 'General', 'Report', 'Rescue', 'Broadcast', 'System', 'Incident') NOT NULL DEFAULT 'Alert',
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  action_url VARCHAR(255) DEFAULT NULL,
+  related_entity_type VARCHAR(60) DEFAULT NULL,
+  related_entity_id INT DEFAULT NULL,
   created_by INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_notifications_severity (severity),
@@ -660,61 +544,6 @@ CREATE TABLE emergency_broadcast_logs (
   INDEX idx_broadcast_severity (severity),
   INDEX idx_broadcast_time (broadcasted_at),
   CONSTRAINT fk_broadcast_authorizer FOREIGN KEY (authorized_by) REFERENCES users(id) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 6.5 Weather Data Cache Table
-CREATE TABLE weather_cache (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  location_name VARCHAR(100) NOT NULL,
-  latitude DECIMAL(10, 8) NOT NULL,
-  longitude DECIMAL(11, 8) NOT NULL,
-  provider_name VARCHAR(100) NOT NULL,
-  data_type ENUM('observation', 'forecast') NOT NULL DEFAULT 'observation',
-  observation_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  temperature_celsius DECIMAL(4, 1) NOT NULL,
-  apparent_temperature_celsius DECIMAL(4, 1) DEFAULT NULL,
-  relative_humidity_percent TINYINT UNSIGNED NOT NULL,
-  precipitation_probability TINYINT UNSIGNED DEFAULT NULL,
-  precipitation_mm DECIMAL(5, 2) DEFAULT NULL,
-  wind_speed_kmh DECIMAL(5, 2) NOT NULL,
-  wind_direction_degrees SMALLINT UNSIGNED DEFAULT NULL,
-  wmo_weather_code SMALLINT UNSIGNED NOT NULL,
-  weather_condition VARCHAR(80) NOT NULL,
-  source_attribution VARCHAR(150) DEFAULT NULL,
-  retrieved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  expires_at TIMESTAMP NOT NULL,
-  INDEX idx_weather_retrieved (retrieved_at),
-  INDEX idx_weather_expires (expires_at),
-  INDEX idx_weather_location (latitude, longitude),
-  INDEX idx_weather_provider (provider_name),
-  INDEX idx_weather_data_type (data_type)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 6.6 Official Tropical Cyclone Bulletins Table
-CREATE TABLE tropical_cyclone_bulletins (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  bulletin_number INT UNSIGNED NOT NULL,
-  cyclone_name VARCHAR(80) NOT NULL,
-  international_name VARCHAR(80) DEFAULT NULL,
-  category ENUM('Tropical Depression', 'Tropical Storm', 'Severe Tropical Storm', 'Typhoon', 'Super Typhoon') NOT NULL,
-  center_latitude DECIMAL(10, 8) NOT NULL,
-  center_longitude DECIMAL(11, 8) NOT NULL,
-  max_sustained_winds_kmh INT UNSIGNED NOT NULL,
-  gustiness_kmh INT UNSIGNED NOT NULL,
-  movement_direction VARCHAR(30) NOT NULL,
-  movement_speed_kmh INT UNSIGNED NOT NULL,
-  signal_level TINYINT UNSIGNED NOT NULL DEFAULT 0,
-  advisory_summary TEXT NOT NULL,
-  bulletin_issued_at TIMESTAMP NOT NULL,
-  valid_until TIMESTAMP NOT NULL,
-  is_active TINYINT(1) NOT NULL DEFAULT 0,
-  published_by INT DEFAULT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_cyclone_active (is_active),
-  INDEX idx_cyclone_name (cyclone_name),
-  INDEX idx_cyclone_issued (bulletin_issued_at),
-  CONSTRAINT fk_cyclone_publisher FOREIGN KEY (published_by) REFERENCES users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
@@ -776,7 +605,7 @@ CREATE TABLE account_status_history (
 CREATE TABLE system_settings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   setting_key VARCHAR(100) NOT NULL UNIQUE,
-  category ENUM('eoc', 'weather', 'evacuation', 'dispatch', 'system') NOT NULL DEFAULT 'system',
+  category ENUM('eoc', 'evacuation', 'dispatch', 'system') NOT NULL DEFAULT 'system',
   setting_value TEXT DEFAULT NULL,
   description VARCHAR(255) DEFAULT NULL,
   is_protected TINYINT(1) NOT NULL DEFAULT 1,
@@ -788,152 +617,12 @@ CREATE TABLE system_settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
--- DATABASE TRIGGERS (27 ENFORCEMENT, SYNC & AUDIT-PROTECTION TRIGGERS)
+-- DATABASE TRIGGERS (18 ENFORCEMENT, SYNC & AUDIT-PROTECTION TRIGGERS)
 -- ----------------------------------------------------------------------------
 
-DELIMITER $$
+DELIMITER $
 
--- 1. Family Address Fixed Location & Completeness Triggers
-CREATE TRIGGER trg_family_groups_fixed_location_insert
-BEFORE INSERT ON family_groups
-FOR EACH ROW
-BEGIN
-  SET NEW.barangay = 'Bayanan';
-  SET NEW.city = 'Muntinlupa City';
-  SET NEW.province = 'Metro Manila';
-  SET NEW.region = 'National Capital Region';
-  SET NEW.country = 'Philippines';
-
-  IF NEW.house_number IS NULL OR NEW.street IS NULL
-     OR CHAR_LENGTH(TRIM(NEW.house_number)) = 0
-     OR CHAR_LENGTH(TRIM(NEW.street)) = 0 THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A family address requires both a non-blank house_number and street';
-  END IF;
-  SET NEW.house_number = TRIM(NEW.house_number);
-  SET NEW.street = TRIM(NEW.street);
-END$$
-
-CREATE TRIGGER trg_family_groups_fixed_location_update
-BEFORE UPDATE ON family_groups
-FOR EACH ROW
-BEGIN
-  SET NEW.barangay = 'Bayanan';
-  SET NEW.city = 'Muntinlupa City';
-  SET NEW.province = 'Metro Manila';
-  SET NEW.region = 'National Capital Region';
-  SET NEW.country = 'Philippines';
-
-  IF NEW.house_number IS NULL OR NEW.street IS NULL
-     OR CHAR_LENGTH(TRIM(NEW.house_number)) = 0
-     OR CHAR_LENGTH(TRIM(NEW.street)) = 0 THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A family address requires both a non-blank house_number and street';
-  END IF;
-  SET NEW.house_number = TRIM(NEW.house_number);
-  SET NEW.street = TRIM(NEW.street);
-END$$
-
--- 2. Family Group Archival Synchronization Trigger
-CREATE TRIGGER trg_family_groups_sync_status_update
-AFTER UPDATE ON family_groups
-FOR EACH ROW
-BEGIN
-  IF NEW.status <> 'active' AND OLD.status = 'active' THEN
-    UPDATE family_members
-    SET membership_status = 'inactive'
-    WHERE family_id = NEW.id AND membership_status = 'active';
-
-    UPDATE family_invitations
-    SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-    WHERE family_id = NEW.id AND revoked_at IS NULL;
-
-    UPDATE family_join_requests
-    SET request_status = 'cancelled'
-    WHERE family_id = NEW.id AND request_status = 'pending';
-
-    UPDATE users
-    SET family_group_id = NULL
-    WHERE family_group_id = NEW.id;
-  END IF;
-END$$
-
--- 3. QR Invitation Token & Expiration Validation Trigger
-CREATE TRIGGER trg_family_invitations_validate_insert
-BEFORE INSERT ON family_invitations
-FOR EACH ROW
-BEGIN
-  IF NEW.token_hash IS NULL OR CHAR_LENGTH(NEW.token_hash) <> 64 OR NEW.token_hash NOT REGEXP '^[0-9a-fA-F]{64}$' THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invitation token_hash must be a valid 64-character SHA-256 hex digest';
-  END IF;
-  IF NEW.expires_at <= COALESCE(NEW.created_at, CURRENT_TIMESTAMP) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invitation expires_at must be in the future';
-  END IF;
-END$$
-
--- 4. Location-Sharing Consent Validation Triggers
-CREATE TRIGGER trg_family_consent_validate_insert
-BEFORE INSERT ON family_location_sharing_consents
-FOR EACH ROW
-BEGIN
-  IF NEW.sharing_enabled = 1 THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM family_members fm
-      JOIN family_groups fg ON fg.id = fm.family_id
-      WHERE fm.id = NEW.family_member_id
-        AND fm.membership_status = 'active'
-        AND fg.status = 'active'
-    ) THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Location sharing can only be enabled for an active member of an active family group';
-    END IF;
-    SET NEW.consented_at = COALESCE(NEW.consented_at, CURRENT_TIMESTAMP);
-    SET NEW.revoked_at = NULL;
-  ELSE
-    SET NEW.sharing_enabled = 0;
-  END IF;
-END$$
-
-CREATE TRIGGER trg_family_consent_validate_update
-BEFORE UPDATE ON family_location_sharing_consents
-FOR EACH ROW
-BEGIN
-  IF NEW.sharing_enabled = 1 THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM family_members fm
-      JOIN family_groups fg ON fg.id = fm.family_id
-      WHERE fm.id = NEW.family_member_id
-        AND fm.membership_status = 'active'
-        AND fg.status = 'active'
-    ) THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Location sharing can only be enabled for an active member of an active family group';
-    END IF;
-    SET NEW.consented_at = COALESCE(NEW.consented_at, OLD.consented_at, CURRENT_TIMESTAMP);
-    SET NEW.revoked_at = NULL;
-  ELSE
-    SET NEW.sharing_enabled = 0;
-    IF OLD.sharing_enabled = 1 THEN
-      SET NEW.revoked_at = COALESCE(NEW.revoked_at, CURRENT_TIMESTAMP);
-    END IF;
-  END IF;
-END$$
-
-CREATE TRIGGER trg_family_location_updates_require_consent
-BEFORE INSERT ON family_location_updates
-FOR EACH ROW
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM family_members fm
-    JOIN family_groups fg ON fg.id = fm.family_id
-    JOIN family_location_sharing_consents flc ON flc.family_member_id = fm.id
-    WHERE fm.id = NEW.family_member_id
-      AND fm.membership_status = 'active'
-      AND fg.status = 'active'
-      AND flc.sharing_enabled = 1
-  ) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Location updates require an active family membership and enabled location-sharing consent';
-  END IF;
-END$$
-
--- 5. User Role & Family Membership Synchronization Triggers
+-- 1. User Role Synchronization & User Code Immutability Triggers
 CREATE TRIGGER trg_users_sync_role_insert
 BEFORE INSERT ON users
 FOR EACH ROW
@@ -971,16 +660,13 @@ BEGIN
     WHEN 2 THEN 'responder'
     ELSE 'resident'
   END;
-
-  SET NEW.family_group_id = NULL;
-END$$
+END$
 
 CREATE TRIGGER trg_users_sync_role_update
 BEFORE UPDATE ON users
 FOR EACH ROW
 BEGIN
   DECLARE v_role_name VARCHAR(50);
-  DECLARE v_auth_family_id INT DEFAULT NULL;
 
   IF NEW.role_id <> OLD.role_id AND NEW.role <> OLD.role THEN
     IF (NEW.role_id = 1 AND NEW.role <> 'admin')
@@ -1007,59 +693,19 @@ BEGIN
     WHEN 2 THEN 'responder'
     ELSE 'resident'
   END;
+END$
 
-  IF NOT (NEW.family_group_id <=> OLD.family_group_id) THEN
-    SELECT fm.family_id INTO v_auth_family_id
-    FROM family_members fm
-    JOIN family_groups fg ON fg.id = fm.family_id
-    WHERE fm.user_id = NEW.id
-      AND fm.membership_status = 'active'
-      AND fg.status = 'active'
-    ORDER BY fm.joined_at DESC, fm.id DESC
-    LIMIT 1;
-
-    IF NOT (NEW.family_group_id <=> v_auth_family_id) THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Direct modification of users.family_group_id is prohibited. Manage membership through family_members.';
-    END IF;
-  END IF;
-END$$
-
-CREATE TRIGGER trg_family_members_sync_user_insert
-AFTER INSERT ON family_members
+CREATE TRIGGER trg_users_user_code_immutable
+BEFORE UPDATE ON users
 FOR EACH ROW
 BEGIN
-  IF NEW.membership_status = 'active'
-     AND EXISTS (SELECT 1 FROM family_groups WHERE id = NEW.family_id AND status = 'active') THEN
-    UPDATE users SET family_group_id = NEW.family_id WHERE id = NEW.user_id;
+  IF OLD.user_code IS NOT NULL AND NEW.user_code IS NOT NULL AND NEW.user_code <> OLD.user_code THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'user_code is permanent and immutable; it cannot be modified once assigned.';
   END IF;
-END$$
+END$
 
-CREATE TRIGGER trg_family_members_sync_user_update
-AFTER UPDATE ON family_members
-FOR EACH ROW
-BEGIN
-  IF NEW.membership_status = 'active'
-     AND EXISTS (SELECT 1 FROM family_groups WHERE id = NEW.family_id AND status = 'active') THEN
-    UPDATE users SET family_group_id = NEW.family_id WHERE id = NEW.user_id;
-  ELSEIF OLD.membership_status = 'active' AND NEW.membership_status <> 'active' THEN
-    UPDATE users SET family_group_id = NULL WHERE id = NEW.user_id;
-    UPDATE family_location_sharing_consents
-    SET sharing_enabled = 0,
-        revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-    WHERE family_member_id = NEW.id AND sharing_enabled = 1;
-  END IF;
-END$$
-
-CREATE TRIGGER trg_family_members_sync_user_delete
-AFTER DELETE ON family_members
-FOR EACH ROW
-BEGIN
-  IF OLD.membership_status = 'active' THEN
-    UPDATE users SET family_group_id = NULL WHERE id = OLD.user_id;
-  END IF;
-END$$
-
--- 6. Frozen Legacy `incident_reports` Protection Triggers
+-- 2. Frozen Legacy `incident_reports` Protection Triggers
 CREATE TRIGGER trg_incident_reports_freeze_insert
 BEFORE INSERT ON incident_reports
 FOR EACH ROW
@@ -1180,3 +826,90 @@ INSERT INTO role_sequences (role_id, role_name, prefix, next_val) VALUES
   (1, 'Administrator', 'ADM', 1),
   (2, 'Responder', 'RSPDR', 1),
   (3, 'Resident', 'RSDNT', 1);
+
+
+-- ----------------------------------------------------------------------------
+-- VERIFIED BARANGAY BAYANAN GEOGRAPHICAL & FACILITY SEED DATA (MODULE E)
+-- ----------------------------------------------------------------------------
+INSERT INTO incident_categories (id, name, description, default_severity, is_active) VALUES
+  (1, 'Flooding', 'Street, residential, or lakeshore flooding in Barangay Bayanan', 'High', 1),
+  (2, 'Fire', 'Structural, residential, or electrical fire emergency', 'Critical', 1),
+  (3, 'Medical Emergency', 'Urgent medical assistance or injury response', 'High', 1),
+  (4, 'Road Obstruction / Fallen Tree', 'Blocked roads, fallen trees, or debris hazards', 'Medium', 1),
+  (5, 'Power Line / Utility Hazard', 'Downed power lines, transformer sparks, or utility leaks', 'High', 1),
+  (6, 'Structural Damage', 'Collapsed walls, damaged roofs, or unsafe structures', 'High', 1);
+
+INSERT INTO evacuation_centers
+  (id, name, address, barangay, latitude, longitude, capacity, available_slots, total_capacity, current_occupancy, status, contact_person, contact_phone, contact_number)
+VALUES
+  (1, 'Bayanan Elementary School Main', 'National Road, Barangay Bayanan, Muntinlupa City', 'Barangay Bayanan', 14.40820000, 121.04580000, 500, 420, 500, 80, 'Open - Accommodating', 'Engr. Ramon Bautista (BDRRMC)', '0917-555-0101', '0917-555-0101'),
+  (2, 'Barangay Bayanan Multi-Purpose Covered Court', 'Bayanan Road cor. Purok 2, Barangay Bayanan, Muntinlupa City', 'Barangay Bayanan', 14.40710000, 121.04790000, 350, 290, 350, 60, 'Open - Accommodating', 'Kag. Lorna Mendoza', '0917-555-0102', '0917-555-0102'),
+  (3, 'Bayanan Elementary School Unit I', 'Purok 4 Interior, Barangay Bayanan, Muntinlupa City', 'Barangay Bayanan', 14.40950000, 121.04920000, 400, 365, 400, 35, 'Open - Accommodating', 'Maria Teresa Villanueva', '0917-555-0103', '0917-555-0103'),
+  (4, 'Summitville Community Evacuation Center', 'Summitville Subdivision, Barangay Bayanan, Muntinlupa City', 'Barangay Bayanan', 14.40580000, 121.04350000, 250, 250, 250, 0, 'Standby', 'Capt. Eduardo Santos', '0917-555-0104', '0917-555-0104');
+
+INSERT INTO evacuation_center_facilities (center_id, facility_name, is_available) VALUES
+  (1, 'First Aid & Triage Station', 1),
+  (1, 'Potable Water Supply', 1),
+  (1, 'Emergency Generator', 1),
+  (1, 'Community Kitchen', 1),
+  (1, 'Restrooms & Wash Area', 1),
+  (2, 'First Aid & Triage Station', 1),
+  (2, 'Potable Water Supply', 1),
+  (2, 'Emergency Generator', 1),
+  (2, 'Restrooms & Wash Area', 1),
+  (3, 'First Aid & Triage Station', 1),
+  (3, 'Potable Water Supply', 1),
+  (3, 'Community Kitchen', 1),
+  (3, 'Breastfeeding & Child-Friendly Space', 1),
+  (4, 'First Aid & Triage Station', 1),
+  (4, 'Potable Water Supply', 1),
+  (4, 'Restrooms & Wash Area', 1);
+
+INSERT INTO evacuation_routes
+  (id, route_name, description, route_description, origin_name, origin_latitude, origin_longitude,
+   destination_center_id, distance_meters, estimated_distance_km, estimated_duration_seconds, estimated_walk_minutes,
+   route_type, route_status, is_official_approved, approval_authority, approved_at, encoded_geometry, path_coordinates, created_by)
+VALUES
+  (1, 'Baywalk Lakeshore to Bayanan Elementary School Main',
+   'Primary flood-safe pedestrian corridor from Laguna Lake Baywalk Purok 1 westward along Bayanan Road to National Road.',
+   'Primary flood-safe pedestrian corridor from Laguna Lake Baywalk Purok 1 westward along Bayanan Road to National Road.',
+   'Bayanan Baywalk Lakeshore (Purok 1)', 14.40650000, 121.05100000,
+   1, 650, 0.65, 480, 8, 'pedestrian', 'active', 1, 'Barangay Bayanan BDRRMC', CURRENT_TIMESTAMP,
+   '[[14.4065,121.051],[14.4071,121.049],[14.4076,121.0472],[14.4082,121.0458]]',
+   '[[14.4065,121.051],[14.4071,121.049],[14.4076,121.0472],[14.4082,121.0458]]', NULL),
+  (2, 'Purok 3 & 5 Coastal Zone to Bayanan Multi-Purpose Covered Court',
+   'Direct elevated access route from coastal Purok 3 and Purok 5 to the Barangay Bayanan Multi-Purpose Covered Court.',
+   'Direct elevated access route from coastal Purok 3 and Purok 5 to the Barangay Bayanan Multi-Purpose Covered Court.',
+   'Bayanan Coastal Purok 3 Junction', 14.40880000, 121.05150000,
+   2, 480, 0.48, 360, 6, 'pedestrian', 'active', 1, 'Barangay Bayanan BDRRMC', CURRENT_TIMESTAMP,
+   '[[14.4088,121.0515],[14.408,121.0498],[14.4071,121.0479]]',
+   '[[14.4088,121.0515],[14.408,121.0498],[14.4071,121.0479]]', NULL),
+  (3, 'North Bayanan Purok 6 to Bayanan Elementary School Unit I',
+   'Secondary northern evacuation path serving Purok 6 and interior compounds to Bayanan Elementary School Unit I.',
+   'Secondary northern evacuation path serving Purok 6 and interior compounds to Bayanan Elementary School Unit I.',
+   'Purok 6 North Compound', 14.41050000, 121.05180000,
+   3, 350, 0.35, 240, 4, 'accessible', 'active', 1, 'Barangay Bayanan BDRRMC', CURRENT_TIMESTAMP,
+   '[[14.4105,121.0518],[14.41,121.0505],[14.4095,121.0492]]',
+   '[[14.4105,121.0518],[14.41,121.0505],[14.4095,121.0492]]', NULL);
+
+INSERT INTO evacuation_route_waypoints
+  (route_id, sequence_order, latitude, longitude, instruction, landmark_name)
+VALUES
+  (1, 1, 14.40650000, 121.05100000, 'Start at Bayanan Baywalk Lakeshore assembly marker and head west on Bayanan Road.', 'Bayanan Baywalk Assembly Point'),
+  (1, 2, 14.40710000, 121.04900000, 'Continue straight past Purok 2 junction staying on elevated sidewalk.', 'Purok 2 Junction'),
+  (1, 3, 14.40760000, 121.04720000, 'Pass Barangay Bayanan Hall and proceed toward National Road.', 'Barangay Bayanan Hall'),
+  (1, 4, 14.40820000, 121.04580000, 'Enter Bayanan Elementary School Main gate on National Road.', 'Bayanan Elementary School Main Gate'),
+  (2, 1, 14.40880000, 121.05150000, 'Assemble at Purok 3 coastal marker and move southwest away from shoreline.', 'Purok 3 Coastal Marker'),
+  (2, 2, 14.40800000, 121.04980000, 'Turn right onto Bayanan Interior Road toward the barangay complex.', 'Bayanan Interior Road'),
+  (2, 3, 14.40710000, 121.04790000, 'Arrive at Barangay Bayanan Multi-Purpose Covered Court.', 'Bayanan Covered Court'),
+  (3, 1, 14.41050000, 121.05180000, 'Depart Purok 6 North Compound heading west.', 'Purok 6 Waiting Shed'),
+  (3, 2, 14.41000000, 121.05050000, 'Follow Purok 4 street sign toward Unit I school campus.', 'Purok 4 Corner'),
+  (3, 3, 14.40950000, 121.04920000, 'Arrive at Bayanan Elementary School Unit I.', 'BES Unit I Gate');
+
+INSERT INTO hospitals
+  (id, name, address, latitude, longitude, emergency_contact, status, capacity, available_slots)
+VALUES
+  (1, 'Ospital ng Muntinlupa (OsMun)', 'Civic Drive, Filinvest Corporate City, Alabang, Muntinlupa City', 14.41680000, 121.04420000, '(02) 8771-0457', 'Operational', 200, 45),
+  (2, 'Barangay Bayanan Health Center & Emergency Clinic', 'Bayanan Road, Barangay Bayanan, Muntinlupa City', 14.40740000, 121.04760000, '(02) 8862-0115', 'Operational', 30, 18),
+  (3, 'Medical Center Muntinlupa (MCM)', '38 National Road, Putatan, Muntinlupa City', 14.39820000, 121.04510000, '(02) 8862-0162', 'Operational', 120, 28),
+  (4, 'Asian Hospital and Medical Center', '2205 Civic Drive, Filinvest Corporate City, Alabang, Muntinlupa City', 14.41430000, 121.04360000, '(02) 8771-9000', 'Operational', 300, 62);

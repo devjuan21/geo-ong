@@ -93,7 +93,10 @@ function renderNotifications(notifs) {
 
         <div class="flex-1 min-w-0">
           <div class="flex items-start justify-between gap-2">
-            <h4 class="text-sm font-bold text-slate-900 leading-snug">${n.title}</h4>
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+              ${n.advisoryType && window.GeoSafeAdvisories ? window.GeoSafeAdvisories.renderBadge(n.advisoryType, { compact: true }) : ''}
+              <h4 class="text-sm font-bold text-slate-900 leading-snug">${n.title}</h4>
+            </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span class="text-xs text-slate-400">${GeoSafeUI.formatRelative(n.timestamp)}</span>
               ${isUnread ? `<span class="w-2.5 h-2.5 rounded-full bg-brand-600" title="Unread"></span>` : ''}

@@ -8,7 +8,10 @@ const {
   emitNewRescueRequest,
   emitStatusUpdate,
   emitAssignmentUpdate,
+  emitIncidentResolved,
 } = require('../services/socketService');
+const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
+const { getEocLocation } = require('../config/eocConfig');
 
 const router = express.Router();
 
@@ -85,17 +88,16 @@ function buildInClause(ids) {
   };
 }
 
-async function createNotificationForUsers(conn, { title, message, severity = 'High', category = 'Alert', createdBy = null, userIds = [] }) {
+async function createNotificationForUsers(conn, { title, message, category = 'Alert', createdBy = null, userIds = [] }) {
   const uniqueIds = [...new Set(userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
   if (!uniqueIds.length) return null;
 
-  const validSev = ['Low', 'Medium', 'High', 'Critical'].includes(severity) ? severity : 'High';
   const validCat = ['Alert', 'Dispatch', 'General'].includes(category) ? category : 'Alert';
 
   const [notifRes] = await conn.query(
-    `INSERT INTO notifications (title, message, severity, category, created_by)
-     VALUES (?, ?, ?, ?, ?)`,
-    [String(title).slice(0, 150), String(message), validSev, validCat, createdBy]
+    `INSERT INTO notifications (title, message, category, created_by)
+     VALUES (?, ?, ?, ?)`,
+    [String(title).slice(0, 150), String(message), validCat, createdBy]
   );
 
   if (notifRes.insertId && uniqueIds.length > 0) {
@@ -132,13 +134,8 @@ function formatReportForPortal(r, photos = [], timeline = []) {
     on_site: 'On Scene',
     in_progress: 'In Progress',
     resolved: 'Resolved',
-    false_alarm: 'Dismissed',
-  };
-  const sevMap = {
-    low: 'Low',
-    medium: 'Moderate',
-    high: 'High',
-    critical: 'Critical',
+    false_alarm: 'Rejected',
+    dismissed: 'Rejected',
   };
   return {
     id: r.reference_number || `REP-${r.id}`,
@@ -153,7 +150,6 @@ function formatReportForPortal(r, photos = [], timeline = []) {
       lng: Number(r.longitude),
     },
     submittedAt: r.created_at,
-    severity: sevMap[r.severity] || 'Moderate',
     status: statusMap[r.status] || 'Pending Verification',
     photos,
     timeline,
@@ -175,7 +171,6 @@ function formatRescueForPortal(r, updates = [], photos = []) {
       lat: Number(r.latitude),
       lng: Number(r.longitude),
     },
-    priority: r.priority || 'High',
     status: r.status || 'Pending Dispatch',
     requestDate: r.created_at,
     submittedAt: r.created_at,
@@ -207,9 +202,8 @@ router.get('/dashboard/summary', requireRole('resident', 'admin'), async (req, r
     );
     const latestAlerts = alertRows.map((a) => ({
       id: `ALT-${a.id}`,
-      title: `Emergency Advisory (${String(a.severity || 'medium').toUpperCase()})`,
+      title: a.title || 'Emergency Advisory',
       description: a.message,
-      severity: a.severity === 'critical' ? 'Critical' : a.severity === 'high' ? 'Warning' : 'Advisory',
       publishedAt: a.created_at,
       affectedAreas: ['Barangay Bayanan'],
     }));
@@ -269,7 +263,7 @@ router.get('/dashboard/summary', requireRole('resident', 'admin'), async (req, r
 router.get('/reports/public', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, severity, status, created_at FROM reports WHERE is_public = 1 ORDER BY created_at DESC LIMIT 50'
+      "SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, status, created_at FROM reports WHERE is_public = 1 AND status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress') ORDER BY created_at DESC LIMIT 50"
     );
     return res.json(rows.map((r) => formatReportForPortal(r)));
   } catch (err) {
@@ -531,6 +525,9 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     emergencyType,
     description,
     peopleCount,
+    peopleTrapped,
+    patientCount,
+    assistanceCount,
     vulnerableDetails,
     location,
     landmark,
@@ -540,22 +537,87 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     photos,
   } = req.body || {};
 
-  const lat =
-    coordinates && coordinates.lat !== undefined
-      ? Number(coordinates.lat)
-      : req.body && req.body.latitude !== undefined
-      ? Number(req.body.latitude)
-      : 14.4075;
-  const lng =
-    coordinates && coordinates.lng !== undefined
-      ? Number(coordinates.lng)
-      : req.body && req.body.longitude !== undefined
-      ? Number(req.body.longitude)
-      : 121.0475;
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required' });
+  const emergencyLabel = String(emergencyType || '').trim().slice(0, 100);
+  if (!emergencyLabel) {
+    return res.status(400).json({ error: 'Emergency condition is required.' });
   }
+
+  const parsePositiveWhole = (val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const num = Number(val);
+    if (!Number.isInteger(num) || num < 1 || num > 50) return NaN;
+    return num;
+  };
+
+  const lowerType = emergencyLabel.toLowerCase();
+  const isMedical = lowerType.includes('medical');
+  const isVulnerability = lowerType.includes('vulnerability') || lowerType.includes('bedridden') || lowerType.includes('senior') || lowerType.includes('infant');
+
+  let validatedCount;
+  let storedVulnerableDetails = vulnerableDetails ? String(vulnerableDetails).trim() : '';
+
+  if (isMedical) {
+    const rawPatient = patientCount !== undefined ? patientCount : peopleCount;
+    validatedCount = parsePositiveWhole(rawPatient);
+    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+      return res.status(400).json({ error: 'Number of patients needing evacuation must be a positive whole number (1-50).' });
+    }
+    const prefix = `Patients Needing Evacuation: ${validatedCount}`;
+    storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
+  } else if (isVulnerability) {
+    const rawAssist = assistanceCount !== undefined ? assistanceCount : peopleCount;
+    validatedCount = parsePositiveWhole(rawAssist);
+    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+      return res.status(400).json({ error: 'Number of individuals needing assistance must be a positive whole number (1-50).' });
+    }
+    const prefix = `Individuals Needing Assistance: ${validatedCount}`;
+    storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
+  } else {
+    const rawTrapped = peopleTrapped !== undefined ? peopleTrapped : peopleCount;
+    validatedCount = parsePositiveWhole(rawTrapped);
+    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+      return res.status(400).json({ error: 'Number of people trapped must be a positive whole number (1-50).' });
+    }
+  }
+
+  const rawLat =
+    coordinates && coordinates.lat !== undefined && coordinates.lat !== null && coordinates.lat !== ''
+      ? coordinates.lat
+      : req.body && req.body.latitude !== undefined && req.body.latitude !== null && req.body.latitude !== ''
+      ? req.body.latitude
+      : null;
+  const rawLng =
+    coordinates && coordinates.lng !== undefined && coordinates.lng !== null && coordinates.lng !== ''
+      ? coordinates.lng
+      : req.body && req.body.longitude !== undefined && req.body.longitude !== null && req.body.longitude !== ''
+      ? req.body.longitude
+      : null;
+
+  if (rawLat === null || rawLng === null) {
+    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
+  }
+
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: 'Valid numeric latitude and longitude coordinates are required.' });
+  }
+  if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) {
+    return res.status(400).json({ error: 'Invalid or swapped latitude/longitude coordinates.' });
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) {
+    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
+  }
+
+  const rawAccuracy = req.body && req.body.gpsAccuracy !== undefined && req.body.gpsAccuracy !== null
+    ? Number(req.body.gpsAccuracy)
+    : null;
+  const gpsAccuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 ? Math.round(rawAccuracy) : null;
+  const locationSource = req.body && req.body.locationSource === 'gps' ? 'gps' : 'manual';
+  const rawCapturedAt = req.body && req.body.locationCapturedAt ? new Date(req.body.locationCapturedAt) : null;
+  const locationCapturedAt =
+    rawCapturedAt && !Number.isNaN(rawCapturedAt.getTime()) ? rawCapturedAt.toISOString() : null;
 
   const { isPointInsideBayanan } = require('../utils/bayananBoundary');
   if (!isPointInsideBayanan(lat, lng)) {
@@ -564,8 +626,7 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     });
   }
 
-  const validPriorities = ['Critical', 'High', 'Medium', 'Low'];
-  const prio = validPriorities.includes(priority) ? priority : 'High';
+  const prio = 'Medium';
 
   // Validate and parse any Base64 evidence photos upfront before starting DB transaction
   const rawPhotoList = [];
@@ -610,7 +671,6 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     }
 
     const tempRef = `RES-TMP-${Date.now()}`;
-    const emergencyLabel = String(emergencyType || 'Flood Evacuation').slice(0, 100);
     const descText = String(description || 'Immediate rescue requested');
     const addrText = String(location || 'Barangay Bayanan, Muntinlupa City').slice(0, 255);
 
@@ -624,8 +684,8 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
         req.user.id,
         emergencyLabel,
         descText,
-        Math.max(1, parseInt(peopleCount, 10) || 1),
-        vulnerableDetails ? String(vulnerableDetails).slice(0, 255) : null,
+        validatedCount,
+        storedVulnerableDetails ? storedVulnerableDetails.slice(0, 255) : null,
         lat,
         lng,
         addrText,
@@ -637,10 +697,15 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     const refNum = `RES-${new Date().getFullYear()}-${String(result.insertId).padStart(6, '0')}`;
     await conn.query('UPDATE rescue_requests SET reference_number = ? WHERE id = ?', [refNum, result.insertId]);
 
+    const provenanceParts = [`source:${locationSource}`];
+    if (gpsAccuracy !== null) provenanceParts.push(`accuracy:${gpsAccuracy}m`);
+    if (locationCapturedAt) provenanceParts.push(`captured:${locationCapturedAt}`);
+    const initialHistoryNote = `Emergency rescue request submitted by resident [${provenanceParts.join(' | ')}]`;
+
     await conn.query(
       `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
-       VALUES (?, NULL, 'Pending Dispatch', ?, 'Emergency rescue request submitted by resident')`,
-      [result.insertId, req.user.id]
+       VALUES (?, NULL, 'Pending Dispatch', ?, ?)`,
+      [result.insertId, req.user.id, initialHistoryNote]
     );
 
     for (const sp of savedPhotos) {
@@ -658,7 +723,6 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
       await createNotificationForUsers(conn, {
         title: `Emergency Rescue Request: ${refNum}`,
         message: `${emergencyLabel} rescue requested at ${addrText} (${Math.max(1, parseInt(peopleCount, 10) || 1)} person/s).`,
-        severity: prio === 'Critical' ? 'Critical' : 'High',
         category: 'Alert',
         createdBy: req.user.id,
         userIds: adminIds,
@@ -674,16 +738,21 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
       [
         {
           status: 'Pending Dispatch',
-          note: 'Emergency rescue request submitted by resident',
+          note: initialHistoryNote,
           author: req.user.name || 'Resident',
           timestamp: rows[0].created_at,
         },
       ],
       savedPhotos.map((sp) => sp.publicUrl)
     );
+    formatted.gpsAccuracy = gpsAccuracy;
+    formatted.locationSource = locationSource;
+    formatted.locationCapturedAt = locationCapturedAt;
 
     emitNewRescueRequest({
       ...formatted,
+      latitude: Number(rows[0].latitude),
+      longitude: Number(rows[0].longitude),
       residentId: req.user.id,
       residentName: req.user.name || 'Resident',
     });
@@ -704,7 +773,7 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
 router.get('/notifications', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT n.id, n.title, n.message AS description, n.severity, n.category, n.created_at AS timestamp,
+      `SELECT n.id, n.title, n.message AS description, n.category, n.advisory_type, n.created_at AS timestamp,
               nr.is_read
        FROM notification_recipients nr
        JOIN notifications n ON n.id = nr.notification_id
@@ -716,8 +785,8 @@ router.get('/notifications', async (req, res) => {
       id: String(r.id),
       title: r.title,
       description: r.description,
-      severity: r.severity,
       category: String(r.category || 'alert').toLowerCase(),
+      advisoryType: r.advisory_type || null,
       timestamp: r.timestamp,
       read: Boolean(r.is_read),
     }));
@@ -734,7 +803,7 @@ router.get('/notifications', async (req, res) => {
 router.patch('/notifications/:id/read', async (req, res) => {
   try {
     await pool.query(
-      'UPDATE notification_recipients SET is_read = 1, read_at = CURRENT_TIMESTAMP WHERE notification_id = ? AND user_id = ?',
+      'UPDATE notification_recipients SET is_read = TRUE, read_at = CURRENT_TIMESTAMP WHERE notification_id = ? AND user_id = ?',
       [req.params.id, req.user.id]
     );
     return res.json({ success: true });
@@ -746,7 +815,7 @@ router.patch('/notifications/:id/read', async (req, res) => {
 router.post('/notifications/mark-all-read', async (req, res) => {
   try {
     await pool.query(
-      'UPDATE notification_recipients SET is_read = 1, read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND is_read = 0',
+      'UPDATE notification_recipients SET is_read = TRUE, read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND is_read = FALSE',
       [req.user.id]
     );
     return res.json({ success: true });
@@ -755,20 +824,122 @@ router.post('/notifications/mark-all-read', async (req, res) => {
   }
 });
 
+router.get('/broadcast-categories', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, slug, badge_color, priority, description
+       FROM broadcast_categories
+       WHERE is_active = TRUE
+       ORDER BY priority ASC, name ASC`
+    );
+    return res.json({ categories: rows });
+  } catch (err) {
+    console.error('[Portal API] GET /broadcast-categories failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load broadcast categories' });
+  }
+});
+
 router.get('/hazard-alerts', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50');
-    return res.json(
-      rows.map((a) => ({
-        id: `ALT-${a.id}`,
-        title: `Barangay Bayanan Advisory (${String(a.severity || 'medium').toUpperCase()})`,
-        description: a.message,
-        severity: a.severity === 'critical' ? 'Critical' : a.severity === 'high' ? 'Warning' : 'Advisory',
-        publishedAt: a.created_at,
-        affectedAreas: ['Barangay Bayanan'],
-      }))
+    const { defaultColorForName } = require('../config/advisoryCategories');
+    const isResident = String(req.user && req.user.role || '').toLowerCase() === 'resident';
+    const includeInactive = String(req.query.includeArchived || '').toLowerCase() === 'true';
+    const [broadcastRows] = await pool.query(
+      `SELECT ebl.id, ebl.title, ebl.message, ebl.category_id, ebl.advisory_type, ebl.severity,
+              ebl.target_scope, ebl.target_zones, ebl.broadcasted_at, ebl.expires_at, ebl.is_active,
+              bc.name AS category_name, bc.badge_color AS category_color, bc.priority AS category_priority,
+              u.name AS author_name, u.email AS author_email,
+              up.first_name AS author_first_name, up.last_name AS author_last_name
+       FROM emergency_broadcast_logs ebl
+       LEFT JOIN broadcast_categories bc ON ebl.category_id = bc.id
+       LEFT JOIN users u ON ebl.authorized_by = u.id
+       LEFT JOIN user_profiles up ON u.id = up.user_id
+       WHERE 1=1
+         ${includeInactive ? '' : 'AND ebl.is_active = TRUE'}
+         ${isResident ? "AND ebl.target_scope <> 'Responders Only'" : ''}
+       ORDER BY ebl.broadcasted_at DESC
+       LIMIT 100`
     );
+    const [alertRows] = await pool.query(
+      `SELECT a.*, u.name AS author_name, u.email AS author_email
+       FROM alerts a
+       LEFT JOIN users u ON a.created_by = u.id
+       ORDER BY a.created_at DESC LIMIT 50`
+    );
+
+    const broadcastCombinedMessages = new Set(
+      broadcastRows.map((b) => `${b.title}: ${b.message}`)
+    );
+
+    const mappedBroadcasts = broadcastRows.map((b) => {
+      const categoryName = b.category_name || b.advisory_type || 'Other';
+      const badgeColor = b.category_color || defaultColorForName(categoryName);
+      const priority = Number(b.category_priority || 5);
+      const zoneList = b.target_zones
+        ? String(b.target_zones).split(/[,;/]+/).map((z) => z.trim()).filter(Boolean)
+        : [];
+      const affectedLocation = zoneList.length > 0
+        ? `${b.target_scope} (${zoneList.join(', ')})`
+        : (b.target_scope || 'Barangay Bayanan');
+      const author = [b.author_first_name, b.author_last_name].filter(Boolean).join(' ')
+        || b.author_name
+        || b.author_email
+        || 'BDRRMC Barangay Bayanan';
+      const isExpired = Boolean(b.expires_at && new Date(b.expires_at).getTime() < Date.now());
+      const status = !b.is_active ? 'Archived' : (isExpired ? 'Expired' : 'Active');
+      return {
+        id: `BRD-${String(b.id).padStart(4, '0')}`,
+        title: b.title,
+        description: b.message,
+        categoryId: b.category_id || null,
+        categoryName,
+        advisoryType: categoryName,
+        category: categoryName,
+        badgeColor,
+        priority,
+        isEmergency: priority <= 2,
+        severity: b.severity || 'medium',
+        publishedAt: b.broadcasted_at,
+        expiresAt: b.expires_at || null,
+        targetScope: b.target_scope || 'All Barangay Bayanan',
+        targetZones: b.target_zones || '',
+        affectedAreas: zoneList.length > 0 ? zoneList : [b.target_scope || 'Barangay Bayanan'],
+        affectedLocation,
+        issuingAuthority: author,
+        status,
+      };
+    });
+
+    const mappedAlerts = alertRows
+      .filter((a) => !broadcastCombinedMessages.has(String(a.message || '')))
+      .map((a) => ({
+        id: `ALT-${a.id}`,
+        title: a.title || 'Barangay Bayanan Advisory',
+        description: a.message,
+        categoryId: null,
+        categoryName: 'Other',
+        advisoryType: 'Other',
+        category: 'Other',
+        badgeColor: 'gray',
+        priority: 5,
+        isEmergency: false,
+        severity: a.severity || 'low',
+        publishedAt: a.created_at,
+        expiresAt: null,
+        targetScope: 'All Barangay Bayanan',
+        targetZones: '',
+        affectedAreas: ['Barangay Bayanan'],
+        affectedLocation: 'Barangay Bayanan',
+        issuingAuthority: a.author_name || a.author_email || 'BDRRMC Barangay Bayanan',
+        status: 'Active',
+      }));
+
+    const combined = [...mappedBroadcasts, ...mappedAlerts].sort(
+      (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    );
+    return res.json(combined.slice(0, 100));
   } catch (err) {
+    console.error('[Portal API] GET /hazard-alerts failed:', err.message);
     return res.status(503).json({ error: 'Unable to load hazard alerts' });
   }
 });
@@ -833,7 +1004,7 @@ router.get('/emergency-facilities', async (req, res) => {
     const [hospitalRows] = await pool.query('SELECT * FROM hospitals ORDER BY name ASC');
     const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
 
-    const { isPointInsideBayanan } = require('../utils/bayananBoundary');
+    const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
     const facilities = [
       ...hospitalRows.map((h) => ({
         ...h,
@@ -854,7 +1025,7 @@ router.get('/emergency-facilities', async (req, res) => {
         isOperational: true,
       })),
       ...evacRows
-        .filter((e) => String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude))
+        .filter((e) => !isExcludedEvacuationCenter(e) && (String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude)))
         .map((e) => ({
         ...e,
         id: `EVAC-${e.id}`,
@@ -955,34 +1126,42 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          FROM reports r
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.assigned_to = ? OR r.assigned_to IS NOT NULL
+         WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND (r.assigned_to = ? OR r.assigned_to IS NOT NULL)
          ORDER BY r.created_at DESC`
       : `SELECT r.*, u.name AS reporter_name, up.phone_number AS reporter_phone
          FROM reports r
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.assigned_to = ?
+         WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND r.assigned_to = ?
          ORDER BY r.created_at DESC`,
     [userId]
   );
 
   const [rescueRows] = await pool.query(
     isAdmin
-      ? `SELECT rr.*, ra.id AS assignment_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
-                u.name AS resident_name, up.phone_number AS resident_phone
-         FROM rescue_assignments ra
-         JOIN rescue_requests rr ON rr.id = ra.rescue_id
-         LEFT JOIN users u ON rr.user_id = u.id
-         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
-         ORDER BY ra.assigned_at DESC`
-      : `SELECT rr.*, ra.id AS assignment_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
-                u.name AS resident_name, up.phone_number AS resident_phone
-         FROM rescue_assignments ra
-         JOIN rescue_requests rr ON rr.id = ra.rescue_id
-         LEFT JOIN users u ON rr.user_id = u.id
-         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
-         WHERE ra.responder_user_id = ?
-         ORDER BY ra.assigned_at DESC`,
+      ? `SELECT * FROM (
+           SELECT DISTINCT ON (ra.rescue_id)
+                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                  u.name AS resident_name, up.phone_number AS resident_phone
+           FROM rescue_assignments ra
+           JOIN rescue_requests rr ON rr.id = ra.rescue_id
+           LEFT JOIN users u ON rr.user_id = u.id
+           LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
+         ) latest
+         ORDER BY latest.assigned_at DESC`
+      : `SELECT * FROM (
+           SELECT DISTINCT ON (ra.rescue_id)
+                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                  u.name AS resident_name, up.phone_number AS resident_phone
+           FROM rescue_assignments ra
+           JOIN rescue_requests rr ON rr.id = ra.rescue_id
+           LEFT JOIN users u ON rr.user_id = u.id
+           LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
+         ) latest
+         WHERE latest.responder_user_id = ?
+         ORDER BY latest.assigned_at DESC`,
     isAdmin ? [] : [userId]
   );
 
@@ -1083,7 +1262,6 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       location: r.address || 'Barangay Bayanan, Muntinlupa City',
       landmark: r.landmark || '',
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-      priority: r.priority || 'High',
       status:
         r.status === 'Completed' || r.assignment_status === 'Completed'
           ? 'Completed'
@@ -1109,14 +1287,6 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       description: r.description,
       location: r.address || 'Barangay Bayanan, Muntinlupa City',
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-      priority:
-        r.severity === 'critical'
-          ? 'Critical'
-          : r.severity === 'high'
-          ? 'High'
-          : r.severity === 'medium'
-          ? 'Medium'
-          : 'Low',
       status:
         r.status === 'resolved'
           ? 'Completed'
@@ -1170,6 +1340,16 @@ router.get('/responder/assignments/:id', requireRole('responder', 'admin'), asyn
   }
 });
 
+router.get('/responder/arrival-config', requireRole('responder', 'admin'), async (_req, res) => {
+  try {
+    const arrivalConfig = await getArrivalConfig(pool);
+    return res.json({ arrivalConfig });
+  } catch (err) {
+    console.error('[Portal API] GET /responder/arrival-config failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load arrival detection configuration' });
+  }
+});
+
 async function handleResponderAssignmentUpdate(req, res) {
   const paramId = String(req.params.id || '').trim();
   const {
@@ -1182,6 +1362,8 @@ async function handleResponderAssignmentUpdate(req, res) {
     photos,
     assignmentType,
     type,
+    autoArrival,
+    arrivalGps,
   } = req.body || {};
 
   const fieldNotes = String(
@@ -1287,6 +1469,94 @@ async function handleResponderAssignmentUpdate(req, res) {
       return res.status(404).json({ error: 'Assigned rescue request or incident report not found' });
     }
 
+    // Verify assignment ownership for Responders
+    const isAdminActor = req.user.role === 'admin';
+    if (!isAdminActor) {
+      if (targetKind === 'rescue') {
+        const [latestRows] = await conn.query(
+          `SELECT responder_user_id, assignment_status
+           FROM rescue_assignments
+           WHERE rescue_id = ?
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1`,
+          [rescueRow.id]
+        );
+        if (!latestRows.length || Number(latestRows[0].responder_user_id) !== Number(req.user.id)) {
+          await conn.rollback();
+          return res.status(403).json({ error: 'You are not authorized to update this rescue assignment.' });
+        }
+      } else if (targetKind === 'incident') {
+        if (Number(reportRow.assigned_to) !== Number(req.user.id)) {
+          await conn.rollback();
+          return res.status(403).json({ error: 'You are not authorized to update this incident assignment.' });
+        }
+      }
+    }
+
+    // Validate automatic GPS-based arrival transitions (On Scene)
+    if (autoArrival === true) {
+      if (statusLower !== 'on scene' && statusLower !== 'on site') {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Automatic arrival detection only supports On Scene transitions.' });
+      }
+
+      const currentStatusLower = String(
+        targetKind === 'rescue' ? rescueRow.status : reportRow.status
+      ).toLowerCase();
+
+      if (currentStatusLower === 'on scene' || currentStatusLower === 'on_site') {
+        await conn.rollback();
+        return res.json({
+          alreadyOnScene: true,
+          message: 'Assignment is already On Scene.',
+        });
+      }
+
+      const ineligibleStatuses = ['completed', 'resolved', 'false_alarm', 'dismissed', 'cancelled'];
+      if (ineligibleStatuses.includes(currentStatusLower)) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Assignment is no longer eligible for On Scene transition.' });
+      }
+
+      const gpsLat = Number(arrivalGps && arrivalGps.lat);
+      const gpsLng = Number(arrivalGps && arrivalGps.lng);
+      const gpsAcc = Number(arrivalGps && arrivalGps.accuracy);
+      if (
+        !Number.isFinite(gpsLat) ||
+        !Number.isFinite(gpsLng) ||
+        Math.abs(gpsLat) > 90 ||
+        Math.abs(gpsLng) > 180 ||
+        !Number.isFinite(gpsAcc) ||
+        gpsAcc <= 0
+      ) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Valid GPS coordinates and accuracy are required for arrival confirmation.' });
+      }
+
+      const destLat = Number(targetKind === 'rescue' ? rescueRow.latitude : reportRow.latitude);
+      const destLng = Number(targetKind === 'rescue' ? rescueRow.longitude : reportRow.longitude);
+      if (!Number.isFinite(destLat) || !Number.isFinite(destLng) || (destLat === 0 && destLng === 0)) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Destination coordinates are missing or invalid for this assignment.' });
+      }
+
+      const arrivalConfig = await getArrivalConfig(conn);
+      if (gpsAcc > arrivalConfig.maxGpsAccuracyMeters) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: `GPS accuracy (±${Math.round(gpsAcc)}m) is insufficient for automatic arrival confirmation.`,
+        });
+      }
+
+      const distMeters = computeHaversineMeters(gpsLat, gpsLng, destLat, destLng);
+      if (distMeters > arrivalConfig.geofenceRadiusMeters) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: `Responder GPS is outside the arrival boundary (${Math.round(distMeters)}m away).`,
+        });
+      }
+    }
+
     // Save uploaded photos to appropriate folder
     const subDir = targetKind === 'rescue' ? 'rescues' : 'incidents';
     const prefix = targetKind === 'rescue' ? `RES-UPD-${req.user.id}` : `INC-UPD-${req.user.id}`;
@@ -1366,7 +1636,7 @@ async function handleResponderAssignmentUpdate(req, res) {
       const noteToSave = fieldNotes || `Responder updated status to ${displayRescueStatus}`;
       await conn.query(
         `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
-         VALUES (?, ?, ?, ?, ?, 0)`,
+         VALUES (?, ?, ?, ?, ?, FALSE)`,
         [rescueRow.id, req.user.id, nextUpdateStatus, noteToSave, primaryPhotoUrl]
       );
 
@@ -1393,7 +1663,6 @@ async function handleResponderAssignmentUpdate(req, res) {
         await createNotificationForUsers(conn, {
           title: `Rescue Status Update (${refNumber}): ${displayRescueStatus}`,
           message: noteToSave,
-          severity: rescueRow.priority === 'Critical' ? 'Critical' : 'High',
           category: 'Dispatch',
           createdBy: req.user.id,
           userIds: recipientIds,
@@ -1416,12 +1685,22 @@ async function handleResponderAssignmentUpdate(req, res) {
         photoUrl: primaryPhotoUrl,
         residentId: rescueRow.user_id,
         responderId: req.user.id,
+        actorUserId: req.user.id,
         responderName: req.user.name || 'Responder',
         updatedAt: new Date().toISOString(),
       };
 
       emitStatusUpdate(updatePayload);
-      emitAssignmentUpdate(updatePayload);
+      if (nextRescueStatus === 'Completed' && oldStatus !== 'Completed') {
+        emitIncidentResolved({
+          id: rescueRow.id,
+          referenceNumber: refNumber,
+          recordType: 'rescue',
+          status: 'Completed',
+          residentId: rescueRow.user_id,
+          assignedTo: req.user.id,
+        });
+      }
 
       return res.json({
         message: 'Rescue assignment status updated',
@@ -1495,7 +1774,7 @@ async function handleResponderAssignmentUpdate(req, res) {
     const noteToSave = fieldNotes || `Responder updated incident status to ${displayStatus}`;
     await conn.query(
       `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
-       VALUES (?, ?, ?, ?, ?, 0)`,
+       VALUES (?, ?, ?, ?, ?, FALSE)`,
       [reportRow.id, req.user.id, nextIncidentUpdateStatus, noteToSave, primaryPhotoUrl]
     );
 
@@ -1522,7 +1801,6 @@ async function handleResponderAssignmentUpdate(req, res) {
       await createNotificationForUsers(conn, {
         title: `Incident Status Update (${refNumber}): ${displayStatus}`,
         message: noteToSave,
-        severity: reportRow.severity === 'critical' ? 'Critical' : 'High',
         category: 'Dispatch',
         createdBy: req.user.id,
         userIds: recipientIds,
@@ -1545,12 +1823,12 @@ async function handleResponderAssignmentUpdate(req, res) {
       photoUrl: primaryPhotoUrl,
       residentId: reportRow.user_id,
       responderId: req.user.id,
+      actorUserId: req.user.id,
       responderName: req.user.name || 'Responder',
       updatedAt: new Date().toISOString(),
     };
 
     emitStatusUpdate(updatePayload);
-    emitAssignmentUpdate(updatePayload);
 
     return res.json({
       message: 'Incident assignment status updated',
@@ -1578,13 +1856,6 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
     const inProgress = assignments.filter((a) => ['En Route', 'On Scene', 'In Progress'].includes(a.status)).length;
     const completed = assignments.filter((a) => a.status === 'Completed').length;
 
-    const priorityCounts = {
-      critical: assignments.filter((a) => String(a.priority).toLowerCase() === 'critical').length,
-      high: assignments.filter((a) => String(a.priority).toLowerCase() === 'high').length,
-      medium: assignments.filter((a) => ['medium', 'moderate'].includes(String(a.priority).toLowerCase())).length,
-      low: assignments.filter((a) => String(a.priority).toLowerCase() === 'low').length,
-    };
-
     const [rRows] = await pool.query(
       'SELECT * FROM responder_profiles WHERE user_id = ? LIMIT 1',
       [req.user.id]
@@ -1594,7 +1865,6 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
 
     return res.json({
       stats: { active, pending, inProgress, completed },
-      priorityCounts,
       recentAssignments: assignments.slice(0, 5),
       responder: {
         id: req.user.id,
@@ -1613,6 +1883,16 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
   }
 });
 
+router.get('/eoc-location', async (req, res) => {
+  try {
+    const eoc = await getEocLocation(pool);
+    return res.json(eoc);
+  } catch (err) {
+    console.error('[Portal API] GET /eoc-location failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load EOC location' });
+  }
+});
+
 router.get('/responder/map-data', requireRole('responder', 'admin'), async (req, res) => {
   try {
     const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
@@ -1622,12 +1902,43 @@ router.get('/responder/map-data', requireRole('responder', 'admin'), async (req,
       [req.user.id]
     );
     const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
+    const activeAssignments = assignments.filter(
+      (a) => !['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(String(a.status || '').toLowerCase())
+    );
+    const assignedIncidentDbIds = new Set(
+      activeAssignments
+        .filter((a) => a.assignmentType === 'incident')
+        .map((a) => Number(a.dbId))
+    );
+    const [incidentRows] = await pool.query(
+      `SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, status, created_at
+       FROM reports
+       WHERE status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress')
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+    const activeIncidents = incidentRows
+      .filter((r) => !assignedIncidentDbIds.has(Number(r.id)))
+      .map((r) => {
+        const formatted = formatReportForPortal(r);
+        return {
+          ...formatted,
+          assignmentType: 'incident',
+          isAssignedToMe: false,
+          isPublicIncident: true,
+          category: formatted.incidentType,
+        };
+      });
     const prof = profRows[0];
 
+    const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
+    const eocLocation = await getEocLocation(pool);
     return res.json({
-      assignments,
+      assignments: activeAssignments,
+      incidents: activeIncidents,
+      eocLocation,
       evacuationCenters: evacRows
-        .filter((e) => String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude))
+        .filter((e) => !isExcludedEvacuationCenter(e) && (String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude)))
         .map((e) => ({
           ...e,
           coordinates: { lat: Number(e.latitude), lng: Number(e.longitude) },
@@ -1640,7 +1951,7 @@ router.get('/responder/map-data', requireRole('responder', 'admin'), async (req,
       responderLocation:
         prof && prof.current_latitude && prof.current_longitude
           ? { lat: Number(prof.current_latitude), lng: Number(prof.current_longitude) }
-          : { lat: 14.4068, lng: 121.0462 },
+          : null,
     });
   } catch (err) {
     console.error('[Portal API] GET /responder/map-data failed:', err.message);

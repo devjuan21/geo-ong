@@ -92,7 +92,7 @@ async function verifyRequestSession(req) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status
+      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status, u.must_change_password
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.id = ?
@@ -126,6 +126,7 @@ async function verifyRequestSession(req) {
         role_id: user.role_id,
         role: label,
         role_name: user.role_name,
+        mustChangePassword: Boolean(user.must_change_password),
       },
       decoded,
       source,
@@ -166,6 +167,34 @@ async function authenticate(req, res, next) {
   req.sessionJti = result.decoded.jti || null;
   req.csrfToken = result.decoded.csrf || null;
   req.authSource = result.source;
+
+  if (req.user.mustChangePassword) {
+    const reqPath = String(req.originalUrl || req.path || '').split('?')[0].toLowerCase();
+    const allowedPaths = new Set([
+      '/api/auth/session',
+      '/api/v1/auth/session',
+      '/api/me',
+      '/api/v1/me',
+      '/api/auth/me',
+      '/api/v1/auth/me',
+      '/api/auth/change-password',
+      '/api/v1/auth/change-password',
+      '/api/change-password',
+      '/api/v1/change-password',
+      '/api/logout',
+      '/api/v1/logout',
+      '/api/auth/logout',
+      '/api/v1/auth/logout',
+    ]);
+    if (!allowedPaths.has(reqPath)) {
+      return res.status(403).json({
+        error: 'First-login password change is required before accessing GeoSafe resources.',
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        redirectTo: '/change-password.html',
+      });
+    }
+  }
+
   return next();
 }
 

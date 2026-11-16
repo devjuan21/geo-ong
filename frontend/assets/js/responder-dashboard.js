@@ -11,6 +11,8 @@
  */
 
 let miniPreviewMap = null;
+let miniMapLayerGroup = null;
+let miniEocMarker = null;
 let currentAssignments = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -45,7 +47,10 @@ async function loadDashboardData() {
   if (contentEl) contentEl.classList.add('hidden');
 
   try {
-    const summary = await window.geoSafeStore.getResponderDashboardSummary();
+    const [summary, mapData] = await Promise.all([
+      window.geoSafeStore.getResponderDashboardSummary(),
+      window.geoSafeStore.getResponderMapData().catch(() => null),
+    ]);
     currentAssignments = summary.recentAssignments || [];
 
     // Dynamically update unit text
@@ -66,9 +71,6 @@ async function loadDashboardData() {
     // Render Stats
     renderStatistics(summary.stats);
 
-    // Render Priority Breakdown
-    renderPrioritySection(summary.priorityCounts);
-
     // Render Active Assignments List
     renderActiveAssignments(currentAssignments);
 
@@ -76,7 +78,14 @@ async function loadDashboardData() {
     if (contentEl) contentEl.classList.remove('hidden');
 
     // Update mini map markers if initialized
-    updateMiniMapMarkers(currentAssignments);
+    if (mapData && mapData.eocLocation) {
+      updateMiniEocMarker(mapData.eocLocation);
+    }
+    const assignedKeys = new Set(currentAssignments.map((a) => String(a.referenceNumber || a.id || '')));
+    const extraIncidents = ((mapData && mapData.incidents) || []).filter(
+      (inc) => !assignedKeys.has(String(inc.referenceNumber || inc.id || ''))
+    );
+    updateMiniMapMarkers([...currentAssignments, ...extraIncidents]);
   } catch (err) {
     console.error('[ResponderDashboard] Error loading dashboard:', err);
     if (loadingEl) {
@@ -104,20 +113,6 @@ function renderStatistics(stats) {
   if (completedEl) completedEl.textContent = stats.completed || 0;
 }
 
-function renderPrioritySection(priorityCounts) {
-  priorityCounts = priorityCounts || { critical: 0, high: 0, medium: 0, low: 0 };
-
-  const critEl = document.getElementById('prio-critical-count');
-  const highEl = document.getElementById('prio-high-count');
-  const medEl = document.getElementById('prio-medium-count');
-  const lowEl = document.getElementById('prio-low-count');
-
-  if (critEl) critEl.textContent = priorityCounts.critical || 0;
-  if (highEl) highEl.textContent = priorityCounts.high || 0;
-  if (medEl) medEl.textContent = priorityCounts.medium || 0;
-  if (lowEl) lowEl.textContent = priorityCounts.low || 0;
-}
-
 function renderActiveAssignments(assignments) {
   const container = document.getElementById('assignments-container');
   const emptyEl = document.getElementById('assignments-empty');
@@ -136,14 +131,6 @@ function renderActiveAssignments(assignments) {
 
   container.innerHTML = activeList.map(a => {
     const isRescue = a.assignmentType === 'rescue';
-    const isCritical = (a.priority || '').toLowerCase() === 'critical';
-    const isHigh = (a.priority || '').toLowerCase() === 'high';
-
-    // Priority badge styling
-    let prioBadge = 'bg-slate-100 text-slate-700 border-slate-200';
-    if (isCritical) prioBadge = 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2] font-black';
-    else if (isHigh) prioBadge = 'bg-[#FFF8E1] text-[#E99524] border-[#FFE082] font-bold';
-    else if ((a.priority || '').toLowerCase() === 'medium') prioBadge = 'bg-sky-50 text-sky-700 border-sky-200';
 
     // Status badge styling
     let statusBadge = 'bg-slate-100 text-slate-700 border-slate-200';
@@ -154,9 +141,9 @@ function renderActiveAssignments(assignments) {
     else if (s === 'completed' || s === 'resolved') statusBadge = 'bg-emerald-50 text-[#278653] border-emerald-200';
 
     return `
-      <div class="bg-white rounded-3xl p-4 sm:p-5 border ${isCritical ? 'border-[#FFC2C2] shadow-emergency-glow ring-1 ring-[#FFC2C2]' : 'border-[#EEEEEE] shadow-card'} transition-all hover:border-[#F5B900] hover:shadow-card-hover space-y-3">
+      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card transition-all hover:border-[#F5B900] hover:shadow-card-hover space-y-3">
         
-        <!-- Header: Ref #, Type, Priority, Status -->
+        <!-- Header: Ref #, Type, Status -->
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2">
             <span class="font-mono text-xs sm:text-sm font-black text-[#202020]">${a.referenceNumber || a.id}</span>
@@ -166,9 +153,6 @@ function renderActiveAssignments(assignments) {
           </div>
 
           <div class="flex items-center gap-1.5">
-            <span class="text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full border ${prioBadge}">
-              ${a.priority || 'Normal'}
-            </span>
             <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${statusBadge}">
               ${a.status || 'Pending'}
             </span>
@@ -215,45 +199,61 @@ function initMiniMapPreview() {
   if (!container || typeof L === 'undefined') return;
 
   try {
+    const eoc = GeoSafeMapping.getEocLocation();
     miniPreviewMap = GeoSafeMapping.createMap('dash-map-preview', {
-      center: [GeoSafeMapping.config.center.lat, GeoSafeMapping.config.center.lng],
-      zoom: 14,
+      center: [eoc.latitude, eoc.longitude],
+      zoom: 15,
       scrollWheelZoom: false,
       zoomControl: false
     });
-
-    // Add Responder Base Marker
-    const responderIcon = GeoSafeMapping.createCustomIcon('incident');
-    L.marker([GeoSafeMapping.config.center.lat, GeoSafeMapping.config.center.lng], {
-      icon: responderIcon
-    }).addTo(miniPreviewMap).bindPopup(`
-      <div class="text-xs p-1">
-        <strong>Barangay Bayanan Emergency Operations Center</strong><br>
-        <span class="text-[10px] text-slate-500">Field response operations headquarters</span>
-      </div>
-    `);
+    miniMapLayerGroup = L.layerGroup().addTo(miniPreviewMap);
+    updateMiniEocMarker(eoc);
   } catch (err) {
     console.warn('[ResponderDashboard] Could not initialize mini map preview:', err);
   }
 }
 
+function updateMiniEocMarker(eoc) {
+  if (!miniPreviewMap || !eoc) return;
+  const lat = Number(eoc.latitude);
+  const lng = Number(eoc.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+  if (typeof GeoSafeMapping.setEocLocation === 'function') {
+    GeoSafeMapping.setEocLocation(eoc);
+  }
+  const popupHtml = `
+    <div class="text-xs p-1">
+      <strong class="block text-[#202020]">${eoc.name || 'GeoSafe Emergency Operations Center (EOC)'}</strong>
+      <span class="text-[10px] text-[#555555] block">${eoc.address || 'Bayanan Baywalk Ilaya, Muntinlupa, Metro Manila, Philippines'}</span>
+      <span class="text-[10px] font-mono text-[#777777]">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
+    </div>
+  `;
+  if (!miniEocMarker) {
+    const eocIcon = GeoSafeMapping.createCustomIcon('eoc', 'EOC');
+    miniEocMarker = L.marker([lat, lng], { icon: eocIcon }).addTo(miniPreviewMap).bindPopup(popupHtml);
+  } else {
+    miniEocMarker.setLatLng([lat, lng]).setPopupContent(popupHtml);
+  }
+  miniPreviewMap.setView([lat, lng], 15);
+}
+
 function updateMiniMapMarkers(assignments) {
   if (!miniPreviewMap) return;
+  if (miniMapLayerGroup) {
+    miniMapLayerGroup.clearLayers();
+  }
 
   assignments.forEach(a => {
+    const st = String(a.status || '').toLowerCase();
+    if (['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(st)) return;
     if (a.coordinates && typeof a.coordinates.lat === 'number') {
-      const isRescue = a.assignmentType === 'rescue';
-      const markerColor = isRescue ? '#D93636' : '#F5B900';
+      const isRescue = a.assignmentType === 'rescue' || String(a.referenceNumber || a.id || '').startsWith('RES-');
+      const taskIcon = GeoSafeMapping.createCustomIcon(isRescue ? 'rescue' : 'incident', { compact: true });
 
-      const dot = L.circleMarker([a.coordinates.lat, a.coordinates.lng], {
-        radius: 6,
-        fillColor: markerColor,
-        color: '#ffffff',
-        weight: 2,
-        fillOpacity: 0.95
-      }).addTo(miniPreviewMap);
+      const marker = L.marker([a.coordinates.lat, a.coordinates.lng], { icon: taskIcon }).addTo(miniMapLayerGroup || miniPreviewMap);
 
-      dot.bindPopup(`
+      marker.bindPopup(`
         <div class="text-xs p-1">
           <strong class="${isRescue ? 'text-red-700' : 'text-amber-800'}">${a.referenceNumber || a.id}</strong><br>
           <span>${a.title || a.category}</span>

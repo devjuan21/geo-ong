@@ -183,7 +183,7 @@ async function runVerification() {
   check(adminHtml.includes('id="stat-available-responders"'), 'Summary card: Available Responders');
   check(adminHtml.includes('id="stat-registered-residents"'), 'Summary card: Registered Residents');
   check(adminHtml.includes('id="admin-incident-map"'), 'Dashboard includes prominent Incident Map container');
-  check(adminHtml.includes('id="map-filter-type"') && adminHtml.includes('id="map-filter-severity"') && adminHtml.includes('id="map-filter-status"'), 'Incident Map supports filtering by report type, severity, and status');
+  check(adminHtml.includes('id="map-filter-type"') && adminHtml.includes('id="map-filter-status"'), 'Incident Map supports filtering by report type and status');
   check(adminHtml.includes('id="admin-map-marker-panel"'), 'Incident Map includes compact marker information panel');
   check(adminHtml.includes('No incident locations are currently available.') && adminJs.includes('No incident locations are currently available.'), 'Includes explicit "No incident locations are currently available." empty state');
   check(adminHtml.includes('id="admin-activity-list"'), 'Dashboard includes System Activity Feed container');
@@ -221,7 +221,7 @@ async function runVerification() {
   check(adminHtml.includes('id="analytics-period-select"'), 'Analytics section includes time period selector');
   check(adminHtml.includes('id="analytics-total-reports"') && adminHtml.includes('id="analytics-total-rescues"'), 'Analytics section includes summary metric cards');
   check(adminHtml.includes('id="analytics-categories-list"'), 'Analytics includes Category breakdown container');
-  check(adminHtml.includes('id="analytics-severities-list"'), 'Analytics includes Severity breakdown container');
+  check(!adminHtml.includes('id="analytics-severities-list"'), 'Analytics cleanly excludes Severity breakdown container');
   check(adminHtml.includes('id="analytics-statuses-list"'), 'Analytics includes Status breakdown container');
   check(adminHtml.includes('id="analytics-locations-list"'), 'Analytics includes Top Locations breakdown container');
   check(adminHtml.includes('Export to CSV'), 'Analytics includes Export to CSV capability');

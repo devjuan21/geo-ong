@@ -127,15 +127,11 @@ class GeoSafeStore {
     return null;
   }
 
-  async request(endpoint, options = {}, fallbackFn = null) {
+  async request(endpoint, options = {}) {
     if (!this.isOnline()) {
       const error = new Error('No internet connection. GeoSafe requires an active internet connection to communicate with the Emergency Operations Center.');
       error.isOffline = true;
       throw error;
-    }
-
-    if (typeof fallbackFn === 'function' && ((this.config && this.config.USE_MOCK_DATA) || typeof document === 'undefined')) {
-      return await fallbackFn();
     }
 
     const url = `${this.config.API_BASE_URL}${endpoint}`;
@@ -169,6 +165,12 @@ class GeoSafeStore {
           const path = (window.location.pathname || '').toLowerCase();
           if (!path.endsWith('/login.html')) {
             window.location.replace('/login.html');
+          }
+        }
+        if (response.status === 403 && errData && errData.code === 'PASSWORD_CHANGE_REQUIRED' && typeof window !== 'undefined') {
+          const path = (window.location.pathname || '').toLowerCase();
+          if (!path.endsWith('/change-password.html')) {
+            window.location.replace(errData.redirectTo || '/change-password.html');
           }
         }
         throw err;
@@ -240,6 +242,18 @@ class GeoSafeStore {
 
     if (Array.isArray(res)) return res;
     if (res && Array.isArray(res.reports)) {
+      const statusMap = {
+        pending: 'Pending Verification',
+        under_review: 'Under Review',
+        verified: 'Verified',
+        dispatched: 'Assigned',
+        responding: 'Responding',
+        on_site: 'On Scene',
+        in_progress: 'In Progress',
+        resolved: 'Resolved',
+        false_alarm: 'Rejected',
+        dismissed: 'Rejected'
+      };
       return res.reports.map(r => ({
         id: r.reference_number || (r.id ? `INC-${r.id}` : 'INC-0'),
         databaseId: r.id,
@@ -248,8 +262,9 @@ class GeoSafeStore {
         title: r.title || `${r.incident_type || 'Incident'} Report`,
         description: r.description || '',
         location: r.address || r.location || 'Barangay Bayanan',
-        severity: r.severity || 'Medium',
-        status: r.status || 'Pending Verification',
+        status: statusMap[String(r.status || '').toLowerCase()] || r.status || 'Pending Verification',
+        rawStatus: r.status || 'pending',
+        reviewRemarks: r.latest_remarks || '',
         submittedAt: r.created_at || r.submittedAt || new Date().toISOString(),
         coordinates: {
           lat: Number(r.latitude || 14.4081),
@@ -274,7 +289,6 @@ class GeoSafeStore {
         coordinates: r.coordinates,
         submittedAt: r.submittedAt,
         status: r.status || 'Verified',
-        severity: r.severity || 'Moderate',
         photos: r.photos || []
       })).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
     });
@@ -304,7 +318,6 @@ class GeoSafeStore {
       description: payload.description || '',
       location: loc,
       address: loc,
-      severity: payload.severity || 'Medium',
       latitude: lat,
       longitude: lng,
       coordinates: { lat, lng },
@@ -333,7 +346,6 @@ class GeoSafeStore {
         lat: Number(reportObj.latitude !== undefined ? reportObj.latitude : lat),
         lng: Number(reportObj.longitude !== undefined ? reportObj.longitude : lng)
       },
-      severity: reportObj.severity || payload.severity || 'Medium',
       status: reportObj.status || 'Pending Verification',
       submittedAt: nowIso,
       photos: reportObj.attachments && reportObj.attachments.length
@@ -353,7 +365,7 @@ class GeoSafeStore {
         timestamp: nowIso,
         read: false,
         referenceId: refId,
-        link: 'my-reports.html'
+        link: 'report-rescue.html'
       });
     }
 
@@ -383,10 +395,6 @@ class GeoSafeStore {
     return this.request(endpoint, { method: 'GET' }, () => {
       let alerts = [...(this.state.hazardAlerts || [])];
 
-      if (filters.severity && filters.severity !== 'All') {
-        alerts = alerts.filter(a => a.severity.toLowerCase() === filters.severity.toLowerCase());
-      }
-
       if (filters.category && filters.category !== 'All') {
         alerts = alerts.filter(a => a.category.toLowerCase().includes(filters.category.toLowerCase()));
       }
@@ -396,17 +404,25 @@ class GeoSafeStore {
   }
 
   // Evacuation Centers
+  isExcludedEvacuationCenter(center) {
+    if (!center) return false;
+    const name = String(center.name || '').toLowerCase();
+    const address = String(center.address || '').toLowerCase();
+    return name.includes('summitville') || address.includes('summitville');
+  }
+
   async getEvacuationCenters(filter = 'All') {
     const data = await this.request(`/evacuation-centers?status=${encodeURIComponent(filter)}`, { method: 'GET' }, () => {
-      let list = [...(this.state.evacuationCenters || [])];
+      let list = [...(this.state.evacuationCenters || [])].filter(c => !this.isExcludedEvacuationCenter(c));
       if (filter && filter !== 'All') {
         list = list.filter(c => String(c.status || '').toLowerCase().includes(filter.toLowerCase()));
       }
       return list;
     });
-    const list = Array.isArray(data)
+    const rawList = Array.isArray(data)
       ? data
       : (data && Array.isArray(data.evacuation_centers) ? data.evacuation_centers : []);
+    const list = rawList.filter(c => !this.isExcludedEvacuationCenter(c));
     if (filter && filter !== 'All') {
       return list.filter(c => String(c.status || '').toLowerCase().includes(filter.toLowerCase()));
     }
@@ -579,17 +595,26 @@ class GeoSafeStore {
       payload.title ||
       payload.message ||
       '';
-    const statusText = payload.status || payload.newStatus || payload.severity || '';
+    const statusText = payload.status || payload.newStatus || '';
     const dedupeKey = `${eventName}:${recordId}:${statusText}`;
 
-    if (this._shouldShowRealtimeToast(dedupeKey) && window.GeoSafeToast) {
+    const silentEvents = new Set(['public-report-verified', 'incident-resolved', 'admin-sync', 'reconnect-sync']);
+    const currentUser = (typeof this.getUser === 'function' ? this.getUser() : null) || (this.state && this.state.currentUser) || null;
+    const eventActorId = payload.actorUserId || payload.authorizedById || payload.createdBy;
+    const isSelfActor = Boolean(
+      eventActorId &&
+      currentUser &&
+      currentUser.id !== undefined &&
+      Number(eventActorId) === Number(currentUser.id)
+    );
+
+    if (!silentEvents.has(eventName) && !isSelfActor && this._shouldShowRealtimeToast(dedupeKey) && window.GeoSafeToast) {
       let toastType = 'info';
       let toastMsg = payload.message || payload.title || 'Real-time operational update received.';
 
       if (eventName === 'new-hazard-alert' || eventName === 'alert-broadcast') {
-        const sev = String(payload.severity || 'Moderate');
-        toastType = sev.toLowerCase().includes('critical') ? 'error' : 'warning';
-        toastMsg = `Hazard Alert (${sev}): ${payload.title || payload.message || 'New advisory issued for Barangay Bayanan.'}`;
+        toastType = 'warning';
+        toastMsg = `Hazard Alert: ${payload.title || payload.message || 'New advisory issued for Barangay Bayanan.'}`;
       } else if (eventName === 'new-incident-report' || eventName === 'new-report') {
         toastType = 'info';
         toastMsg = `New Incident Report: ${payload.title || payload.incident_type || payload.incidentType || recordId || 'Submitted'}`;
@@ -599,6 +624,18 @@ class GeoSafeStore {
       } else if (eventName === 'rescue-assignment-updated') {
         toastType = 'info';
         toastMsg = payload.message || `Rescue assignment updated (${recordId || 'Task assigned'}).`;
+      } else if (eventName === 'report-verification-result') {
+        const decision = String(payload.decision || payload.status || '').toLowerCase();
+        if (decision === 'rejected' || decision === 'false_alarm' || decision === 'dismissed') {
+          toastType = 'warning';
+          toastMsg = `Report ${recordId || ''} rejected${payload.reason ? `: ${payload.reason}` : '.'}`;
+        } else if (decision === 'verified') {
+          toastType = 'success';
+          toastMsg = `Report ${recordId || ''} has been verified by an Administrator.`;
+        } else {
+          toastType = 'info';
+          toastMsg = payload.message || `Report ${recordId || ''} updated.`;
+        }
       } else if (eventName === 'rescue-status-updated' || eventName === 'status-update') {
         toastType = 'success';
         toastMsg = payload.message || `Status updated${recordId ? ` for ${recordId}` : ''}${statusText ? `: ${statusText}` : ''}.`;
@@ -661,6 +698,10 @@ class GeoSafeStore {
       'alert-broadcast',
       'new-incident-report',
       'new-report',
+      'public-report-verified',
+      'incident-resolved',
+      'report-verification-result',
+      'admin-sync',
       'new-rescue-request',
       'rescue-assignment-updated',
       'rescue-status-updated',
@@ -743,7 +784,8 @@ class GeoSafeStore {
           email: data.user.email,
           role_id: data.user.role_id,
           role: normalizedRole,
-          portal: data.user.portal || this.portalForRole(normalizedRole)
+          portal: data.user.portal || this.portalForRole(normalizedRole),
+          mustChangePassword: Boolean(data.user.mustChangePassword)
         };
 
         this.state.currentUser = verifiedUser;
@@ -792,6 +834,39 @@ class GeoSafeStore {
       };
     }
 
+    const currentPath = typeof window !== 'undefined' ? (window.location.pathname || '').toLowerCase() : '';
+    const isChangePasswordPage = currentPath.endsWith('/change-password.html');
+
+    if (sessionResult.user.mustChangePassword) {
+      if (!isChangePasswordPage) {
+        return {
+          authenticated: true,
+          authorized: false,
+          user: sessionResult.user,
+          profile: sessionResult.profile,
+          redirectTo: '/change-password.html'
+        };
+      }
+      return {
+        authenticated: true,
+        authorized: true,
+        user: sessionResult.user,
+        profile: sessionResult.profile,
+        redirectTo: null
+      };
+    }
+
+    if (isChangePasswordPage) {
+      const actualRole = sessionResult.user.role;
+      return {
+        authenticated: true,
+        authorized: false,
+        user: sessionResult.user,
+        profile: sessionResult.profile,
+        redirectTo: sessionResult.user.portal || this.portalForRole(actualRole)
+      };
+    }
+
     const actualRole = sessionResult.user.role;
     if (requiredRoleLabel) {
       const expectedRole = this.normalizeRoleName(requiredRoleLabel);
@@ -835,6 +910,31 @@ class GeoSafeStore {
     return check.user;
   }
 
+  async verifyRegistrationLocation(payload = {}) {
+    if (!this.isOnline()) {
+      throw new Error('Network offline. Location verification requires an active internet connection.');
+    }
+
+    const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
+    const endpoint = apiBase.endsWith('/api') ? `${apiBase}/auth/verify-location` : '/api/auth/verify-location';
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `Location verification failed (HTTP ${response.status}).`);
+    }
+    return data;
+  }
+
   async registerResident(payload = {}) {
     if (!this.isOnline()) {
       throw new Error('Network offline. Resident registration requires an active internet connection.');
@@ -875,7 +975,9 @@ class GeoSafeStore {
         email,
         password,
         phone_number: phone,
-        street_address: street
+        street_address: street,
+        locationVerificationToken: payload.locationVerificationToken || null,
+        locationStatus: payload.locationStatus || null
       })
     });
 
@@ -958,7 +1060,8 @@ class GeoSafeStore {
       email: data.user.email || email,
       role_id: data.user.role_id,
       role: normalizedRole,
-      portal: data.user.portal || this.portalForRole(normalizedRole)
+      portal: data.user.portal || this.portalForRole(normalizedRole),
+      mustChangePassword: Boolean(data.user.mustChangePassword)
     };
 
     this.state.currentUser = verifiedUser;
@@ -974,6 +1077,21 @@ class GeoSafeStore {
       role: normalizedRole,
       portal: verifiedUser.portal
     };
+  }
+
+  async changePassword(currentPassword, newPassword, confirmPassword) {
+    const res = await this.request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+    });
+    if (res && res.csrfToken) {
+      this.csrfToken = res.csrfToken;
+    }
+    if (this.state && this.state.currentUser) {
+      this.state.currentUser.mustChangePassword = false;
+    }
+    this.sessionPromise = null;
+    return res;
   }
 
   async logout() {
@@ -1110,7 +1228,6 @@ class GeoSafeStore {
             location: r.location,
             landmark: r.landmark || '',
             coordinates: r.coordinates || null,
-            priority: r.priority || 'High',
             status: r.status || 'Pending',
             peopleCount: r.peopleCount || 1,
             vulnerableDetails: r.vulnerableDetails || 'None specified',
@@ -1138,7 +1255,6 @@ class GeoSafeStore {
             description: r.description,
             location: r.location,
             coordinates: r.coordinates || null,
-            priority: r.severity === 'Critical' ? 'Critical' : (r.severity === 'High' ? 'High' : (r.severity === 'Moderate' ? 'Medium' : 'Low')),
             status: r.status === 'Resolved' ? 'Completed' : (r.status === 'Responding' ? 'En Route' : (r.status === 'Verified' ? 'Accepted' : (r.status || 'Pending'))),
             assignedAt: r.assignedAt || r.submittedAt,
             timeline: r.timeline || [],
@@ -1175,10 +1291,6 @@ class GeoSafeStore {
         });
       }
 
-      if (filters.priority && filters.priority !== 'All') {
-        filtered = filtered.filter(a => (a.priority || '').toLowerCase() === filters.priority.toLowerCase());
-      }
-
       if (filters.search) {
         const q = filters.search.toLowerCase().trim();
         filtered = filtered.filter(a => 
@@ -1204,19 +1316,32 @@ class GeoSafeStore {
     });
   }
 
+  async getArrivalConfig() {
+    if (this._arrivalConfigCache) return this._arrivalConfigCache;
+    const data = await this.request('/responder/arrival-config', { method: 'GET' });
+    const cfg = data && data.arrivalConfig ? data.arrivalConfig : null;
+    if (cfg) this._arrivalConfigCache = cfg;
+    return cfg;
+  }
+
   /**
    * Update Assignment Response Status Workflow (Section 4 & 6)
    * Transition: Pending -> Accepted -> En Route -> On Scene -> Completed
    */
-  async updateAssignmentStatus(id, newStatus, workNotes = '', photo = null, isInternalOnly = false) {
+  async updateAssignmentStatus(id, newStatus, workNotes = '', photo = null, isInternalOnly = false, extra = {}) {
     const validStatuses = ['Accepted', 'En Route', 'On Scene', 'Completed', 'In Progress'];
     if (!validStatuses.includes(newStatus)) {
       throw new Error(`Invalid assignment status transition: ${newStatus}`);
     }
 
+    const payload = { status: newStatus, workNotes, photo, isInternalOnly };
+    if (extra && typeof extra === 'object') {
+      Object.assign(payload, extra);
+    }
+
     return this.request(`/responder/assignments/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: newStatus, workNotes, photo, isInternalOnly })
+      body: JSON.stringify(payload)
     }, () => {
       const nowIso = new Date().toISOString();
       const responder = this.state.responderProfile;
@@ -1304,13 +1429,6 @@ class GeoSafeStore {
       const inProgress = all.filter(a => ['accepted', 'en route', 'on scene', 'responding'].includes((a.status || '').toLowerCase())).length;
       const completed = all.filter(a => ['completed', 'resolved'].includes((a.status || '').toLowerCase())).length;
 
-      const priorityCounts = {
-        critical: all.filter(a => (a.priority || '').toLowerCase() === 'critical').length,
-        high: all.filter(a => (a.priority || '').toLowerCase() === 'high').length,
-        medium: all.filter(a => (a.priority || '').toLowerCase() === 'medium').length,
-        low: all.filter(a => (a.priority || '').toLowerCase() === 'low').length
-      };
-
       const recentAssignments = all.slice(0, 5);
 
       return {
@@ -1320,7 +1438,6 @@ class GeoSafeStore {
           inProgress,
           completed
         },
-        priorityCounts,
         recentAssignments,
         responder: await this.getResponderProfile()
       };
@@ -1348,7 +1465,7 @@ class GeoSafeStore {
   /**
    * Helper for Dispatchers / EOC to assign tasks to responders
    */
-  async assignTaskToResponder(taskId, taskType, priority = 'High', instructions = '') {
+  async assignTaskToResponder(taskId, taskType, instructions = '') {
     const responder = await this.getResponderProfile();
     if (!responder) {
       throw new Error('No authorized responder session available for assignment.');
@@ -1361,7 +1478,6 @@ class GeoSafeStore {
         rescue.assignedResponderId = responder.id;
         rescue.assignedUnit = responder.assignedUnit || '';
         rescue.status = 'Assigned';
-        rescue.priority = priority || rescue.priority;
         rescue.dispatchInstructions = instructions;
         rescue.assignedAt = nowIso;
         rescue.updates = rescue.updates || [];
@@ -1379,7 +1495,6 @@ class GeoSafeStore {
         report.assignedResponderId = responder.id;
         report.assignedUnit = responder.assignedUnit || '';
         report.status = 'Assigned';
-        report.priority = priority || 'Medium';
         report.dispatchInstructions = instructions;
         report.assignedAt = nowIso;
         report.timeline = report.timeline || [];
@@ -1411,7 +1526,9 @@ window.geoSafeStore = new GeoSafeStore();
   }
 
   let requiredRole = 'Resident';
-  if (pathname.endsWith('/admin.html')) {
+  if (pathname.endsWith('/change-password.html')) {
+    requiredRole = null;
+  } else if (pathname.endsWith('/admin.html')) {
     requiredRole = 'Administrator';
   } else if (pathname.includes('responder')) {
     requiredRole = 'Responder';

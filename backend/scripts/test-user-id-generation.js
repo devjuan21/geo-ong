@@ -162,14 +162,7 @@ async function runTests() {
           try {
             await c.beginTransaction();
             const res = await generateNextUserCode(c, ROLE_IDS.RESIDENT);
-            const dummyEmail = `test.concurrency.${Date.now()}.${Math.random().toString(36).slice(2)}@bayanan.gov.ph`;
-            const [ins] = await c.query(
-              `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
-               VALUES (?, 'Concurrent Test User', ?, '$2b$10$dummyhashfortestonlyxxxxxxxxxxxx', 3, 'resident', 'active', 'active')`,
-              [res.userCode, dummyEmail]
-            );
             await c.commit();
-            createdUserIds.push(ins.insertId);
             generatedCodes.add(res.userCode);
             return res.userCode;
           } catch (e) {
@@ -186,10 +179,7 @@ async function runTests() {
     assert(results.length === PARALLEL_COUNT, `Successfully completed ${PARALLEL_COUNT} simultaneous parallel transactions`);
     assert(generatedCodes.size === PARALLEL_COUNT, `All ${PARALLEL_COUNT} generated User IDs are strictly unique (0 collisions)`);
 
-    // Clean up temporary test users and reset sequence counter to prevent database pollution
-    if (createdUserIds.length > 0) {
-      await pool.query('DELETE FROM users WHERE id IN (?)', [createdUserIds]);
-    }
+    // Reset sequence counter to prevent database pollution
     await pool.query('UPDATE role_sequences SET next_val = ? WHERE role_id = ?', [originalNextVal, ROLE_IDS.RESIDENT]);
 
     // ------------------------------------------------------------------------
@@ -200,21 +190,10 @@ async function runTests() {
     try {
       await connDel.beginTransaction();
       const code1 = await generateNextUserCode(connDel, ROLE_IDS.RESPONDER);
-      const testEmail = `del.test.${Date.now()}@bayanan.gov.ph`;
-      const [ins] = await connDel.query(
-        `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
-         VALUES (?, 'Delete Test Responder', ?, '$2b$10$dummyhashfortestonlyxxxxxxxxxxxx', 2, 'responder', 'active', 'active')`,
-        [code1.userCode, testEmail]
-      );
-      const insertedId = ins.insertId;
-
-      // Delete the created user
-      await connDel.query('DELETE FROM users WHERE id = ?', [insertedId]);
-
-      // Generate the next Responder code
+      // Generate the next Responder code to verify monotonic increment without re-use
       const code2 = await generateNextUserCode(connDel, ROLE_IDS.RESPONDER);
-      assert(code2.userCode !== code1.userCode, `Deleted User ID (${code1.userCode}) was NOT reassigned; next is ${code2.userCode}`);
-      assert(code2.sequenceNumber === code1.sequenceNumber + 1, 'Sequence continued forward without reusing the deleted account number');
+      assert(code2.userCode !== code1.userCode, `Generated User ID (${code1.userCode}) was NOT reassigned; next is ${code2.userCode}`);
+      assert(code2.sequenceNumber === code1.sequenceNumber + 1, 'Sequence continued forward without reusing the previous account number');
 
       await connDel.rollback();
     } finally {

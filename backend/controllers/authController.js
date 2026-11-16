@@ -6,6 +6,54 @@ const pool = require('../models/db');
 const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
 const { generateNextUserCode } = require('../services/userIdService');
+const { disconnectUserSockets } = require('../services/socketService');
+const {
+  DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
+  LOCATION_VERIFICATION_STATUSES,
+  evaluateResidentLocation,
+} = require('../utils/bayananBoundary');
+
+const ALLOWED_UNVERIFIED_FALLBACK_STATUSES = new Set([
+  LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY,
+  LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW,
+  LOCATION_VERIFICATION_STATUSES.GPS_DENIED,
+  LOCATION_VERIFICATION_STATUSES.GPS_UNAVAILABLE,
+  LOCATION_VERIFICATION_STATUSES.RETRY_REQUIRED,
+]);
+
+async function getConfiguredAccuracyThresholdMeters(dbConn = pool) {
+  try {
+    const [rows] = await dbConn.query(
+      "SELECT setting_value FROM system_settings WHERE setting_key = 'gps_accuracy_threshold_meters' LIMIT 1"
+    );
+    if (rows && rows[0]) {
+      const val = Number(rows[0].setting_value);
+      if (Number.isFinite(val) && val > 0) return val;
+    }
+  } catch (err) {
+    // Fallback to configured default
+  }
+  return DEFAULT_GPS_ACCURACY_THRESHOLD_METERS;
+}
+
+function signLocationVerificationToken(payload) {
+  return jwt.sign(
+    {
+      purpose: 'resident_location_verification',
+      ...payload,
+    },
+    getJwtSecret(),
+    { expiresIn: '30m' }
+  );
+}
+
+function verifyLocationVerificationToken(token) {
+  const decoded = jwt.verify(token, getJwtSecret());
+  if (!decoded || decoded.purpose !== 'resident_location_verification') {
+    throw new Error('Invalid location verification token purpose');
+  }
+  return decoded;
+}
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -37,6 +85,7 @@ function publicUser(row) {
     role: roleLabel(row.role_id),
     role_name: row.role_name || roleDisplayName(row.role_id),
     portal: portalForRoleId(row.role_id),
+    mustChangePassword: Boolean(row.must_change_password ?? row.mustChangePassword),
   };
 }
 
@@ -109,6 +158,56 @@ async function logSecurityEvent(connOrPool, { userId = null, email = null, event
 }
 
 /**
+ * Public pre-registration GPS location verification endpoint.
+ * Evaluates coordinates & accuracy against the official Barangay Bayanan polygon
+ * and returns a backend-signed verification token.
+ */
+async function verifyRegistrationLocation(req, res) {
+  try {
+    const { latitude, longitude, accuracy, gpsErrorStatus } = req.body || {};
+    const accuracyThresholdMeters = await getConfiguredAccuracyThresholdMeters(pool);
+
+    const evaluation = evaluateResidentLocation({
+      latitude,
+      longitude,
+      accuracy,
+      gpsErrorStatus,
+      accuracyThresholdMeters,
+    });
+
+    const tokenPayload = {
+      status: evaluation.status,
+      latitude: evaluation.status === LOCATION_VERIFICATION_STATUSES.VERIFIED || evaluation.status === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW || evaluation.status === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
+        ? Number(latitude)
+        : null,
+      longitude: evaluation.status === LOCATION_VERIFICATION_STATUSES.VERIFIED || evaluation.status === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW || evaluation.status === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
+        ? Number(longitude)
+        : null,
+      accuracy: evaluation.accuracy,
+      boundaryDistanceMeters: evaluation.boundaryDistanceMeters,
+      gpsErrorStatus: gpsErrorStatus || null,
+    };
+
+    const verificationToken = signLocationVerificationToken(tokenPayload);
+
+    return res.json({
+      status: evaluation.status,
+      message: evaluation.message,
+      accuracy: evaluation.accuracy,
+      accuracyThresholdMeters: evaluation.accuracyThresholdMeters,
+      boundaryDistanceMeters: evaluation.boundaryDistanceMeters,
+      canProceed: evaluation.canProceed,
+      verificationToken,
+    });
+  } catch (err) {
+    console.error('[Auth] verifyRegistrationLocation failed:', err.message);
+    return res.status(503).json({
+      error: 'Unable to verify location right now. Please try again.',
+    });
+  }
+}
+
+/**
  * Public self-registration. ALWAYS creates a Resident (role_id = 3).
  * Any attempt to request another role is rejected explicitly (HTTP 403) and logged.
  */
@@ -130,6 +229,8 @@ async function register(req, res) {
     street,
     role,
     role_id,
+    locationVerificationToken,
+    locationStatus,
   } = req.body;
 
   // Explicitly reject any attempt to self-register as Responder or Administrator
@@ -177,6 +278,72 @@ async function register(req, res) {
   const cleanPhone = (phone_number || phone || '').trim().slice(0, 30) || null;
   const cleanStreet = (street_address || street || '').trim().slice(0, 255) || null;
 
+  // Backend-enforced location verification evaluation (never trust frontend status string alone)
+  let resolvedLocationStatus = LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW;
+  let resolvedLocationMethod = 'none';
+  let resolvedAccuracy = null;
+  let resolvedBoundaryDistance = null;
+  let resolvedLat = null;
+  let resolvedLng = null;
+  let resolvedVerifiedAt = null;
+  let resolvedVerificationStatus = 'Unverified Resident';
+
+  if (locationVerificationToken) {
+    let decoded;
+    try {
+      decoded = verifyLocationVerificationToken(locationVerificationToken);
+    } catch (tokenErr) {
+      return res.status(400).json({
+        error: 'Location verification session expired or invalid. Please click Verify My Location again.',
+      });
+    }
+
+    const accuracyThresholdMeters = await getConfiguredAccuracyThresholdMeters(pool);
+    const reEvaluated = evaluateResidentLocation({
+      latitude: decoded.latitude,
+      longitude: decoded.longitude,
+      accuracy: decoded.accuracy,
+      gpsErrorStatus: decoded.gpsErrorStatus || null,
+      accuracyThresholdMeters,
+    });
+
+    resolvedLocationStatus = reEvaluated.status;
+    resolvedAccuracy = reEvaluated.accuracy;
+    resolvedBoundaryDistance = reEvaluated.boundaryDistanceMeters;
+
+    if (
+      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED ||
+      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW ||
+      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
+    ) {
+      resolvedLat = Number.isFinite(Number(decoded.latitude)) ? Number(decoded.latitude) : null;
+      resolvedLng = Number.isFinite(Number(decoded.longitude)) ? Number(decoded.longitude) : null;
+    }
+
+    if (resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED) {
+      resolvedLocationMethod = 'gps';
+      resolvedVerifiedAt = new Date();
+      resolvedVerificationStatus = 'Verified Resident';
+    }
+  } else if (locationStatus !== undefined && locationStatus !== null && locationStatus !== '') {
+    const requested = String(locationStatus).trim().toLowerCase();
+    if (requested === LOCATION_VERIFICATION_STATUSES.VERIFIED) {
+      await logSecurityEvent(pool, {
+        email,
+        eventType: 'location_verification_bypass_attempt',
+        attemptedRole: 'resident',
+        req,
+        details: 'Attempted to submit verified location status without backend-signed GPS token',
+      });
+      return res.status(403).json({
+        error: 'Cannot claim verified location without backend GPS verification.',
+      });
+    }
+    if (ALLOWED_UNVERIFIED_FALLBACK_STATUSES.has(requested)) {
+      resolvedLocationStatus = requested;
+    }
+  }
+
   const conn = await pool.getConnection().catch((err) => {
     console.error('[Auth] DB connection error on register:', err.message);
     return null;
@@ -216,9 +383,26 @@ async function register(req, res) {
 
     await conn.query(
       `INSERT INTO user_profiles
-         (user_id, first_name, last_name, phone_number, street_address, barangay, city, province, verification_status)
-       VALUES (?, ?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', 'Unverified Resident')`,
-      [newUserId, derivedFirstName.slice(0, 80), derivedLastName.slice(0, 80), cleanPhone, cleanStreet]
+         (user_id, first_name, last_name, phone_number, street_address, barangay, city, province,
+          verification_status, location_verification_status, location_verification_method,
+          location_accuracy_meters, location_boundary_distance_meters, location_verified_lat,
+          location_verified_lng, location_verified_at)
+       VALUES (?, ?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newUserId,
+        derivedFirstName.slice(0, 80),
+        derivedLastName.slice(0, 80),
+        cleanPhone,
+        cleanStreet,
+        resolvedVerificationStatus,
+        resolvedLocationStatus,
+        resolvedLocationMethod,
+        resolvedAccuracy,
+        resolvedBoundaryDistance,
+        resolvedLat,
+        resolvedLng,
+        resolvedVerifiedAt,
+      ]
     );
 
     await conn.query(
@@ -234,6 +418,10 @@ async function register(req, res) {
           role: residentRole.name,
           role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
+          verification_status: resolvedVerificationStatus,
+          location_verification_status: resolvedLocationStatus,
+          location_verification_method: resolvedLocationMethod,
+          location_accuracy_meters: resolvedAccuracy,
           status: 'SUCCESS',
         }),
         String(req.ip || '0.0.0.0').slice(0, 45),
@@ -243,10 +431,25 @@ async function register(req, res) {
 
     await conn.commit();
 
-    const row = { id: newUserId, user_code: userCode, name: fullName, email, role_id: residentRole.id, role_name: residentRole.name };
+    const row = {
+      id: newUserId,
+      user_code: userCode,
+      name: fullName,
+      email,
+      role_id: residentRole.id,
+      role_name: residentRole.name,
+      verificationStatus: resolvedVerificationStatus,
+      locationVerificationStatus: resolvedLocationStatus,
+      locationVerificationMethod: resolvedLocationMethod,
+    };
     return res.status(201).json({
       message: 'Registration successful. Please sign in with your new Resident account.',
-      user: publicUser(row),
+      user: {
+        ...publicUser(row),
+        verificationStatus: resolvedVerificationStatus,
+        locationVerificationStatus: resolvedLocationStatus,
+        locationVerificationMethod: resolvedLocationMethod,
+      },
       redirectTo: '/login.html',
     });
   } catch (err) {
@@ -271,7 +474,7 @@ async function login(req, res) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.user_code, u.name, u.email, u.password_hash, u.role_id, r.name AS role_name, u.status, u.account_status
+      `SELECT u.id, u.user_code, u.name, u.email, u.password_hash, u.role_id, r.name AS role_name, u.status, u.account_status, u.must_change_password
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.email = ?
@@ -331,9 +534,30 @@ async function login(req, res) {
     setSessionCookies(req, res, token, csrf, maxAgeSeconds);
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
 
+    const userPayload = publicUser(user);
+    if (user.role_id === ROLE_IDS.RESIDENT) {
+      try {
+        const [pRows] = await pool.query(
+          `SELECT verification_status, location_verification_status, location_verification_method,
+                  location_verified_at, location_review_reason
+           FROM user_profiles WHERE user_id = ? LIMIT 1`,
+          [user.id]
+        );
+        if (pRows[0]) {
+          userPayload.verificationStatus = pRows[0].verification_status || 'Unverified Resident';
+          userPayload.locationVerificationStatus = pRows[0].location_verification_status || 'pending_review';
+          userPayload.locationVerificationMethod = pRows[0].location_verification_method || 'none';
+          userPayload.locationVerifiedAt = pRows[0].location_verified_at || null;
+          userPayload.locationReviewReason = pRows[0].location_review_reason || null;
+        }
+      } catch (e) {
+        // Non-fatal
+      }
+    }
+
     return res.json({
       message: 'Login successful',
-      user: publicUser(user),
+      user: userPayload,
       csrfToken: csrf,
     });
   } catch (err) {
@@ -350,7 +574,9 @@ async function getSession(req, res) {
     if (user.role_id === ROLE_IDS.RESIDENT) {
       const [pRows] = await pool.query(
         `SELECT first_name, last_name, phone_number, street_address, barangay, city, province, postal_code,
-                verification_status, barangay_id_number, emergency_contact_name, emergency_contact_relationship,
+                verification_status, location_verification_status, location_verification_method,
+                location_accuracy_meters, location_verified_at, location_review_reason,
+                barangay_id_number, emergency_contact_name, emergency_contact_relationship,
                 emergency_contact_phone, medical_notes
          FROM user_profiles WHERE user_id = ? LIMIT 1`,
         [user.id]
@@ -370,6 +596,11 @@ async function getSession(req, res) {
             postalCode: p.postal_code || '1772',
           },
           verificationStatus: p.verification_status || 'Unverified Resident',
+          locationVerificationStatus: p.location_verification_status || 'pending_review',
+          locationVerificationMethod: p.location_verification_method || 'none',
+          locationAccuracyMeters: p.location_accuracy_meters !== null ? Number(p.location_accuracy_meters) : null,
+          locationVerifiedAt: p.location_verified_at || null,
+          locationReviewReason: p.location_review_reason || null,
           barangayIdNumber: p.barangay_id_number || null,
           emergencyContact: {
             name: p.emergency_contact_name || '',
@@ -436,6 +667,9 @@ async function logout(req, res) {
           details: decoded.jti,
         });
       }
+      if (decoded && decoded.id) {
+        await disconnectUserSockets(decoded.id);
+      }
     } catch {
       // Ignore malformed token on logout
     }
@@ -446,11 +680,130 @@ async function logout(req, res) {
   return res.json({ message: 'Logged out successfully' });
 }
 
+async function changePassword(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+
+  const { currentPassword, newPassword, confirmPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required.' });
+  }
+
+  if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+    return res.status(400).json({ error: 'New password and confirmation do not match.' });
+  }
+
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  }
+
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: 'New password cannot be the same as the temporary password.' });
+  }
+
+  try {
+    const [[user]] = await pool.query(
+      `SELECT u.id, u.user_code, u.name, u.email, u.password_hash, u.role_id, r.name AS role_name
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE u.id = ?
+       LIMIT 1`,
+      [req.user.id]
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) {
+      return res.status(400).json({ error: 'Incorrect current password.' });
+    }
+
+    const sameAsStored = await bcrypt.compare(newPassword, user.password_hash);
+    if (sameAsStored) {
+      return res.status(400).json({ error: 'New password cannot be the same as the temporary password.' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE users SET password_hash = ?, must_change_password = FALSE, updated_at = NOW() WHERE id = ?',
+      [newHash, req.user.id]
+    );
+
+    // Revoke previous session token and issue a fresh rotated session
+    if (req.sessionJti) {
+      markJtiRevoked(req.sessionJti);
+      await logSecurityEvent(pool, {
+        userId: req.user.id,
+        email: user.email,
+        eventType: 'token_revoked',
+        attemptedRole: user.role_name,
+        req,
+        details: req.sessionJti,
+      });
+    }
+
+    const newJti = crypto.randomBytes(16).toString('hex');
+    const newCsrf = crypto.randomBytes(24).toString('hex');
+    const maxAgeSeconds = 8 * 60 * 60;
+    const rotatedToken = jwt.sign(
+      { id: user.id, jti: newJti, csrf: newCsrf },
+      getJwtSecret(),
+      { algorithm: 'HS256', expiresIn: maxAgeSeconds }
+    );
+    setSessionCookies(req, res, rotatedToken, newCsrf, maxAgeSeconds);
+
+    await logSecurityEvent(pool, {
+      userId: req.user.id,
+      email: user.email,
+      eventType: 'password_changed',
+      attemptedRole: user.role_name,
+      req,
+      details: 'Password successfully updated on first login',
+    });
+
+    try {
+      const ip = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
+      const ua = req && req.headers && req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null;
+      await pool.query(
+        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+         VALUES (?, 'PASSWORD_CHANGED', 'users', ?, ?, ?, ?)`,
+        [
+          req.user.id,
+          String(req.user.id),
+          JSON.stringify({ must_change_password: false, rotated_session: true }),
+          String(ip).slice(0, 45),
+          ua,
+        ]
+      );
+    } catch (auditErr) {
+      console.warn('[Auth] Could not write audit_logs for password change:', auditErr.message);
+    }
+
+    const updatedUser = publicUser({ ...user, must_change_password: false });
+    return res.json({
+      message: 'Password successfully updated. Redirecting to your portal...',
+      mustChangePassword: false,
+      csrfToken: newCsrf,
+      redirectTo: portalForRoleId(user.role_id),
+      user: updatedUser,
+    });
+  } catch (err) {
+    console.error('[Auth] changePassword failed:', err.message);
+    return res.status(500).json({ error: 'Failed to update password. Please try again.' });
+  }
+}
+
 module.exports = {
+  verifyRegistrationLocation,
+  getConfiguredAccuracyThresholdMeters,
   register,
   login,
   getSession,
   logout,
+  changePassword,
   portalForRoleId,
   roleDisplayName,
 };

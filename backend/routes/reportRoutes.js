@@ -2,7 +2,6 @@ const express = require('express');
 const { body } = require('express-validator');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
-const { getBayananBounds } = require('../utils/bayananBoundary');
 const {
   createReport,
   getReports,
@@ -14,7 +13,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
-function normalizeReportPayload(req, _res, next) {
+function normalizeReportPayload(req, res, next) {
   if (!req.body) req.body = {};
 
   // Normalize incident_type / incidentType
@@ -56,29 +55,23 @@ function normalizeReportPayload(req, _res, next) {
     req.body.longitude = req.body.lng;
   }
 
-  // Fallback to verified Barangay Bayanan polygon center if missing or invalid
-  const bayananBounds = getBayananBounds();
-  if (req.body.latitude === undefined || req.body.latitude === null || isNaN(Number(req.body.latitude))) {
-    req.body.latitude = bayananBounds.centerLat;
-  } else {
-    req.body.latitude = Number(req.body.latitude);
+  const rawLat = req.body.latitude;
+  const rawLng = req.body.longitude;
+  if (rawLat === undefined || rawLat === null || rawLat === '' || rawLng === undefined || rawLng === null || rawLng === '') {
+    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
   }
-  if (req.body.longitude === undefined || req.body.longitude === null || isNaN(Number(req.body.longitude))) {
-    req.body.longitude = bayananBounds.centerLng;
-  } else {
-    req.body.longitude = Number(req.body.longitude);
+
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) {
+    return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
   }
+  req.body.latitude = lat;
+  req.body.longitude = lng;
 
   // Normalize single photo into photos array
   if (!Array.isArray(req.body.photos) && typeof req.body.photo === 'string' && req.body.photo.trim()) {
     req.body.photos = [req.body.photo.trim()];
-  }
-
-  // Normalize severity
-  if (req.body.severity) {
-    const s = String(req.body.severity).toLowerCase();
-    if (s === 'moderate') req.body.severity = 'medium';
-    else if (['low', 'medium', 'high', 'critical'].includes(s)) req.body.severity = s;
   }
 
   next();
@@ -105,7 +98,6 @@ const statusUpdateMiddleware = [
   requireRole('admin', 'responder'),
   [
     body('status').optional().isIn(['pending', 'verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved', 'false_alarm', 'dismissed']),
-    body('severity').optional().isIn(['low', 'medium', 'high', 'critical']),
     body('assigned_to').optional().isInt({ min: 1 }),
   ],
   updateReportStatus,

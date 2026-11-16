@@ -176,9 +176,208 @@ function getBayananBounds() {
   return { ...loadBoundaryData().bounds };
 }
 
+function isExcludedEvacuationCenter(center) {
+  if (!center) return false;
+  const name = String(center.name || '').toLowerCase();
+  const address = String(center.address || '').toLowerCase();
+  return name.includes('summitville') || address.includes('summitville');
+}
+
+const DEFAULT_GPS_ACCURACY_THRESHOLD_METERS = (() => {
+  const envVal = Number(process.env.GPS_ACCURACY_THRESHOLD_METERS);
+  return Number.isFinite(envVal) && envVal > 0 ? envVal : 100;
+})();
+
+const LOCATION_VERIFICATION_STATUSES = Object.freeze({
+  VERIFIED: 'verified',
+  OUTSIDE_BOUNDARY: 'outside_boundary',
+  PENDING_REVIEW: 'pending_review',
+  GPS_DENIED: 'gps_denied',
+  GPS_UNAVAILABLE: 'gps_unavailable',
+  RETRY_REQUIRED: 'retry_required',
+});
+
+/**
+ * Compute shortest distance in meters from point (lat, lng) to segment (aLng, aLat)-(bLng, bLat)
+ * using local equirectangular projection.
+ */
+function distancePointToSegmentMeters(lat, lng, aLng, aLat, bLng, bLat) {
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
+
+  const px = 0;
+  const py = 0;
+  const ax = (aLng - lng) * metersPerDegLng;
+  const ay = (aLat - lat) * metersPerDegLat;
+  const bx = (bLng - lng) * metersPerDegLng;
+  const by = (bLat - lat) * metersPerDegLat;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    return Math.hypot(px - ax, py - ay);
+  }
+
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const closestX = ax + t * dx;
+  const closestY = ay + t * dy;
+  return Math.hypot(px - closestX, py - closestY);
+}
+
+/**
+ * Compute shortest distance in meters from (latitude, longitude) to any edge
+ * of the official Barangay Bayanan boundary polygon.
+ */
+function distanceToBayananBoundaryMeters(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return Infinity;
+  }
+
+  const { polygons } = loadBoundaryData();
+  let minMeters = Infinity;
+
+  for (const poly of polygons) {
+    for (const ring of poly) {
+      if (!Array.isArray(ring) || ring.length < 2) continue;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const aLng = Number(ring[j][0]);
+        const aLat = Number(ring[j][1]);
+        const bLng = Number(ring[i][0]);
+        const bLat = Number(ring[i][1]);
+        const d = distancePointToSegmentMeters(lat, lng, aLng, aLat, bLng, bLat);
+        if (d < minMeters) minMeters = d;
+      }
+    }
+  }
+
+  return Number.isFinite(minMeters) ? Number(minMeters.toFixed(2)) : Infinity;
+}
+
+/**
+ * Evaluate GPS coordinates and accuracy against the official Barangay Bayanan boundary.
+ */
+function evaluateResidentLocation({
+  latitude,
+  longitude,
+  accuracy,
+  gpsErrorStatus = null,
+  accuracyThresholdMeters = DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
+} = {}) {
+  const threshold = Number(accuracyThresholdMeters) > 0
+    ? Number(accuracyThresholdMeters)
+    : DEFAULT_GPS_ACCURACY_THRESHOLD_METERS;
+
+  if (gpsErrorStatus === LOCATION_VERIFICATION_STATUSES.GPS_DENIED) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.GPS_DENIED,
+      message: 'Location permission is required for automatic verification. You can still register for Administrator review.',
+      accuracy: null,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: null,
+      insidePolygon: false,
+      canProceed: true,
+    };
+  }
+
+  if (gpsErrorStatus === LOCATION_VERIFICATION_STATUSES.GPS_UNAVAILABLE) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.GPS_UNAVAILABLE,
+      message: 'Unable to retrieve your current location. Please try again or register for Administrator review.',
+      accuracy: null,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: null,
+      insidePolygon: false,
+      canProceed: true,
+    };
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const acc = Number(accuracy);
+
+  if (
+    latitude === undefined || latitude === null || latitude === '' ||
+    longitude === undefined || longitude === null || longitude === '' ||
+    !Number.isFinite(lat) || !Number.isFinite(lng) ||
+    lat < -90 || lat > 90 || lng < -180 || lng > 180
+  ) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.GPS_UNAVAILABLE,
+      message: 'Unable to retrieve your current location. Please try again or register for Administrator review.',
+      accuracy: null,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: null,
+      insidePolygon: false,
+      canProceed: true,
+    };
+  }
+
+  if (!Number.isFinite(acc) || acc <= 0 || acc > threshold) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.RETRY_REQUIRED,
+      message: 'GPS accuracy is insufficient. Please try again in an area with a better signal.',
+      accuracy: Number.isFinite(acc) && acc > 0 ? Number(acc.toFixed(2)) : null,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: null,
+      insidePolygon: false,
+      canProceed: true,
+    };
+  }
+
+  const inside = isPointInsideBayanan(lat, lng);
+  const distanceMeters = distanceToBayananBoundaryMeters(lat, lng);
+  const roundedAcc = Number(acc.toFixed(2));
+
+  // If the GPS accuracy radius overlaps or may cross the boundary, mark for review
+  if (distanceMeters <= roundedAcc) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW,
+      message: 'Your location is near the Barangay Bayanan boundary and requires Administrator review.',
+      accuracy: roundedAcc,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: distanceMeters,
+      insidePolygon: inside,
+      canProceed: true,
+    };
+  }
+
+  if (inside) {
+    return {
+      status: LOCATION_VERIFICATION_STATUSES.VERIFIED,
+      message: 'Your location is within Barangay Bayanan.',
+      accuracy: roundedAcc,
+      accuracyThresholdMeters: threshold,
+      boundaryDistanceMeters: distanceMeters,
+      insidePolygon: true,
+      canProceed: true,
+    };
+  }
+
+  return {
+    status: LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY,
+    message: 'Your current location is outside Barangay Bayanan. You can still register for Administrator review.',
+    accuracy: roundedAcc,
+    accuracyThresholdMeters: threshold,
+    boundaryDistanceMeters: distanceMeters,
+    insidePolygon: false,
+    canProceed: true,
+  };
+}
+
 module.exports = {
   BOUNDARY_FILE_PATH,
+  DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
+  LOCATION_VERIFICATION_STATUSES,
   isPointInsideBayanan,
+  distanceToBayananBoundaryMeters,
+  evaluateResidentLocation,
+  isExcludedEvacuationCenter,
   getBayananBoundaryGeoJson,
   getBayananBounds,
 };

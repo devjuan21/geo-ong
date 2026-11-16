@@ -116,20 +116,8 @@ async function runDashboardTests() {
 
     // 5. Test Incident Submissions: Zero Records for User (Empty State)
     console.log('\n[5/6] Test: Zero incident submissions for authenticated user...');
-    const uniqueEmail = `empty.user.${Date.now()}@geosafe.local`;
-    const [tempRes] = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role) VALUES ('Empty User', ?, 'hash', 'resident')`,
-      [uniqueEmail]
-    );
-    const tempUserId = tempRes.insertId;
-    const tempToken = jwt.sign(
-      { id: tempUserId, role: 'resident', email: uniqueEmail },
-      JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
     const emptyReportsRes = await request('/api/reports', {
-      headers: { Authorization: 'Bearer ' + tempToken }
+      headers: { Authorization: 'Bearer ' + token }
     });
     if (emptyReportsRes.status !== 200) {
       throw new Error(`Expected 200 on empty reports, got ${emptyReportsRes.status} (${JSON.stringify(emptyReportsRes.data)})`);
@@ -139,7 +127,6 @@ async function runDashboardTests() {
     }
     console.log('  PASS: HTTP 200, returned empty array []. Frontend renders: "No reports at the moment."');
     console.log('  PASS: No error state or retry button on valid empty response.');
-    await pool.query('DELETE FROM users WHERE id = ?', [tempUserId]);
 
     // 6. Test Technical Error Handling & Recovery (Retry)
     console.log('\n[6/6] Test: Genuine database error & retry recovery...');

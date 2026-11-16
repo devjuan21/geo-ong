@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const http = require('http');
@@ -56,17 +57,12 @@ const RESIDENT_HTML_PAGES = new Set([
   '/index.html',
   '/evacuation-routes.html',
   '/evacuation-centers.html',
-  '/report-incident.html',
   '/report-rescue.html',
   '/rescue-requests.html',
-  '/my-reports.html',
   '/hazard-alerts.html',
   '/notifications.html',
   '/profile.html',
   '/settings.html',
-  '/home.html',
-  '/report.html',
-  '/route.html',
 ]);
 
 const RESPONDER_HTML_PAGES = new Set([
@@ -74,7 +70,6 @@ const RESPONDER_HTML_PAGES = new Set([
   '/responder-assignments.html',
   '/responder-map.html',
   '/responder-profile.html',
-  '/responder.html',
 ]);
 
 const ADMIN_HTML_PAGES = new Set([
@@ -108,6 +103,21 @@ app.use(async (req, res, next) => {
   if (pathname === '/login.html') {
     const session = await verifyRequestSession(req);
     if (session.ok) {
+      if (session.user.mustChangePassword) {
+        return res.redirect(302, '/change-password.html');
+      }
+      return res.redirect(302, portalForRoleId(session.user.role_id));
+    }
+    return next();
+  }
+
+  // Dedicated first-login password change page
+  if (pathname === '/change-password.html') {
+    const session = await verifyRequestSession(req);
+    if (!session.ok) {
+      return res.redirect(302, '/login.html');
+    }
+    if (!session.user.mustChangePassword) {
       return res.redirect(302, portalForRoleId(session.user.role_id));
     }
     return next();
@@ -119,6 +129,10 @@ app.use(async (req, res, next) => {
   const session = await verifyRequestSession(req);
   if (!session.ok) {
     return res.redirect(302, '/login.html');
+  }
+
+  if (session.user.mustChangePassword) {
+    return res.redirect(302, '/change-password.html');
   }
 
   if (requiredRoleId !== null && session.user.role_id !== requiredRoleId) {
@@ -171,6 +185,108 @@ app.use(async (req, res, next) => {
 
 // Serve the GeoSafe frontend static files from ../frontend
 const frontendPath = path.join(__dirname, '../frontend');
+const uploadsRoot = path.resolve(frontendPath, 'assets', 'uploads');
+
+// Protect private incident & rescue attachments behind session auth and role/ownership checks
+app.use('/assets/uploads', async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  }
+
+  const session = await verifyRequestSession(req);
+  if (!session.ok) {
+    return res.status(401).json({ success: false, message: 'Authentication required to view attachments.' });
+  }
+
+  const rawPath = String(req.path || '').replace(/^\/+/, '');
+  const parts = rawPath.split('/');
+  if (parts.length !== 2) {
+    return res.status(404).json({ success: false, message: 'Attachment not found.' });
+  }
+
+  const [category, rawFilename] = parts;
+  if (category !== 'incidents' && category !== 'rescues') {
+    return res.status(404).json({ success: false, message: 'Attachment not found.' });
+  }
+
+  let decodedName = '';
+  try {
+    decodedName = decodeURIComponent(rawFilename);
+  } catch (_) {
+    return res.status(400).json({ success: false, message: 'Invalid attachment filename.' });
+  }
+
+  if (
+    !decodedName ||
+    decodedName.includes('/') ||
+    decodedName.includes('\\') ||
+    decodedName.includes('..') ||
+    path.basename(decodedName) !== decodedName
+  ) {
+    return res.status(400).json({ success: false, message: 'Invalid attachment filename.' });
+  }
+
+  const publicUrl = `/assets/uploads/${category}/${decodedName}`;
+  const isStaff =
+    session.user.role_id === ROLE_IDS.ADMINISTRATOR ||
+    session.user.role_id === ROLE_IDS.RESPONDER;
+
+  try {
+    let authorized = isStaff;
+
+    if (!authorized && category === 'incidents') {
+      const [rows] = await pool.query(
+        `SELECT r.user_id
+         FROM incident_attachments ia
+         JOIN reports r ON r.id = ia.incident_id
+         WHERE ia.file_url = ? OR ia.file_name = ?
+         LIMIT 1`,
+        [publicUrl, decodedName]
+      );
+      if (rows.length > 0 && Number(rows[0].user_id) === Number(session.user.id)) {
+        authorized = true;
+      }
+    } else if (!authorized && category === 'rescues') {
+      const [rows] = await pool.query(
+        `SELECT rr.user_id
+         FROM rescue_attachments ra
+         JOIN rescue_requests rr ON rr.id = ra.rescue_id
+         WHERE ra.file_url = ? OR ra.file_name = ?
+         LIMIT 1`,
+        [publicUrl, decodedName]
+      );
+      if (rows.length > 0 && Number(rows[0].user_id) === Number(session.user.id)) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to access this attachment.' });
+    }
+
+    const resolvedFile = path.resolve(uploadsRoot, category, decodedName);
+    const expectedDir = path.resolve(uploadsRoot, category) + path.sep;
+    if (!resolvedFile.startsWith(expectedDir)) {
+      return res.status(400).json({ success: false, message: 'Invalid attachment path.' });
+    }
+
+    if (!fs.existsSync(resolvedFile)) {
+      return res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(resolvedFile, (err) => {
+      if (err && !res.headersSent) {
+        res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
+      }
+    });
+  } catch (err) {
+    console.error('[Uploads] Error serving protected attachment:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve attachment.' });
+  }
+});
+
 app.use(express.static(frontendPath));
 
 app.get('*', (_req, res) => {

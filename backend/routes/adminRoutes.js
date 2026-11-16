@@ -11,11 +11,14 @@ const {
   createResponderAccount,
   createResidentAccount,
   updateAdminUserStatus,
+  reviewResidentLocationVerification,
   getAdminAuditLogs,
   getAdminRespondersList,
   assignResponder,
   getEmergencyBroadcasts,
   createEmergencyBroadcast,
+  getBroadcastCategories,
+  createBroadcastCategory,
   getAdminAnalytics,
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,
@@ -51,21 +54,35 @@ router.post(
     // Support both camelCase and snake_case request bodies seamlessly
     if (req.body) {
       if (req.body.firstName && !req.body.first_name) req.body.first_name = req.body.firstName;
+      if (req.body.middleName && !req.body.middle_name) req.body.middle_name = req.body.middleName;
       if (req.body.surname && !req.body.last_name) req.body.last_name = req.body.surname;
       if (req.body.lastName && !req.body.last_name) req.body.last_name = req.body.lastName;
-      if (req.body.badgeNumber && !req.body.badge_number) req.body.badge_number = req.body.badgeNumber;
-      if (req.body.assignedUnit && !req.body.assigned_unit) req.body.assigned_unit = req.body.assignedUnit;
-      if (req.body.phone && !req.body.phone_number) req.body.phone_number = req.body.phone;
+      if (req.body.contactNumber && !req.body.contact_number) req.body.contact_number = req.body.contactNumber;
+      if (req.body.phone && !req.body.contact_number) req.body.contact_number = req.body.phone;
+      if (req.body.phone_number && !req.body.contact_number) req.body.contact_number = req.body.phone_number;
+      if (req.body.serviceId && !req.body.service_id) req.body.service_id = req.body.serviceId;
+      if (req.body.organizationId && !req.body.service_id) req.body.service_id = req.body.organizationId;
+      if (req.body.badgeNumber && !req.body.service_id) req.body.service_id = req.body.badgeNumber;
+      if (req.body.customDesignation && (!req.body.designation || req.body.designation === 'Other')) {
+        req.body.designation = req.body.customDesignation;
+      }
+      if (req.body.custom_designation && (!req.body.designation || req.body.designation === 'Other')) {
+        req.body.designation = req.body.custom_designation;
+      }
+      if (!req.body.organization) {
+        req.body.organization = 'Barangay Bayanan Emergency Response Team';
+      }
+      if (req.body.status && !req.body.account_status) req.body.account_status = req.body.status;
     }
     next();
   },
   [
     body('first_name').trim().notEmpty().withMessage('First name is required'),
-    body('last_name').trim().notEmpty().withMessage('Surname is required'),
+    body('last_name').trim().notEmpty().withMessage('Last name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
-    body('badge_number').trim().notEmpty().withMessage('Badge number is required'),
-    body('assigned_unit').trim().notEmpty().withMessage('Assigned unit is required'),
+    body('contact_number').trim().notEmpty().withMessage('Contact number is required'),
+    body('organization').trim().notEmpty().withMessage('Organization is required'),
+    body('designation').trim().notEmpty().withMessage('Designation is required'),
   ],
   createResponderAccount
 );
@@ -89,30 +106,30 @@ router.post(
   createResidentAccount
 );
 router.patch('/users/:id/status', updateAdminUserStatus);
+router.post('/users/:id/location-verification', reviewResidentLocationVerification);
 
-// 5. Alerts & Notifications (Emergency Broadcasts)
+// 5. Alerts & Notifications (Emergency Broadcasts & Categories)
+router.get('/broadcast-categories', getBroadcastCategories);
+router.post(
+  '/broadcast-categories',
+  [
+    body('name').trim().notEmpty().isLength({ max: 60 }).withMessage('Category name is required (max 60 chars)'),
+  ],
+  createBroadcastCategory
+);
 router.get('/broadcasts', getEmergencyBroadcasts);
 router.post(
   '/broadcasts',
   [
     body('title').trim().notEmpty().withMessage('Broadcast title is required'),
     body('message').trim().notEmpty().withMessage('Broadcast message is required'),
-    body('severity')
-      .isIn([
-        'Critical',
-        'High',
-        'Moderate',
-        'Low',
-        'critical',
-        'high',
-        'moderate',
-        'low',
-        'Advisory',
-        'Watch',
-        'Warning',
-        'Critical Evacuation',
-      ])
-      .withMessage('Invalid broadcast severity'),
+    body('category_id')
+      .custom((val, { req }) => {
+        const hasId = val !== undefined && val !== null && String(val).trim() !== '';
+        const hasName = Boolean((req.body && (req.body.advisory_type || req.body.advisoryType || req.body.category)));
+        return hasId || hasName;
+      })
+      .withMessage('Advisory category is required'),
   ],
   createEmergencyBroadcast
 );

@@ -22,8 +22,10 @@ let markerLayerGroup = null;
 
 let allMapData = {
   assignments: [],
+  incidents: [],
   evacuationCenters: [],
-  barangayFacilities: []
+  barangayFacilities: [],
+  eocLocation: null
 };
 
 let activeFilter = 'All'; // 'All' | 'Rescue' | 'Incident' | 'Shelter'
@@ -72,7 +74,18 @@ function initResponderMap() {
 async function loadMapData() {
   try {
     const data = await window.geoSafeStore.getResponderMapData();
-    allMapData = data;
+    const isNotTerminal = (t) =>
+      !['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(String(t.status || '').toLowerCase());
+    allMapData = {
+      assignments: Array.isArray(data && data.assignments) ? data.assignments.filter(isNotTerminal) : [],
+      incidents: Array.isArray(data && data.incidents) ? data.incidents.filter(isNotTerminal) : [],
+      evacuationCenters: Array.isArray(data && data.evacuationCenters) ? data.evacuationCenters : [],
+      barangayFacilities: Array.isArray(data && data.barangayFacilities) ? data.barangayFacilities : [],
+      eocLocation: (data && data.eocLocation) || (typeof GeoSafeMapping.getEocLocation === 'function' ? GeoSafeMapping.getEocLocation() : null)
+    };
+    if (allMapData.eocLocation && typeof GeoSafeMapping.setEocLocation === 'function') {
+      GeoSafeMapping.setEocLocation(allMapData.eocLocation);
+    }
     renderMapMarkers();
   } catch (err) {
     console.error('[ResponderMap] Error loading map data:', err);
@@ -104,10 +117,24 @@ function renderMapMarkers() {
 
   markerLayerGroup.clearLayers();
 
-  // 1. Render Assigned Tasks (Rescue Requests & Incident Reports)
+  // 1. Render Assigned Tasks (Rescue Requests & Incident Reports) & Active Verified Incidents
+  const assignmentKeys = new Set();
+  const operationalTargets = [];
   (allMapData.assignments || []).forEach(task => {
+    const key = String(task.referenceNumber || task.id || '');
+    if (key) assignmentKeys.add(key);
+    operationalTargets.push(task);
+  });
+  (allMapData.incidents || []).forEach(inc => {
+    const key = String(inc.referenceNumber || inc.id || '');
+    if (key && assignmentKeys.has(key)) return;
+    operationalTargets.push(inc);
+  });
+
+  operationalTargets.forEach(task => {
     const isRescue = task.assignmentType === 'rescue';
-    const isCompleted = ['completed', 'resolved'].includes((task.status || '').toLowerCase());
+    const isCompleted = ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes((task.status || '').toLowerCase());
+    if (isCompleted) return;
 
     if (activeFilter === 'Rescue' && !isRescue) return;
     if (activeFilter === 'Incident' && isRescue) return;
@@ -115,26 +142,10 @@ function renderMapMarkers() {
 
     if (!task.coordinates || typeof task.coordinates.lat !== 'number') return;
 
-    // Custom Div Icon
-    const markerHtml = `
-      <div class="relative flex items-center justify-center cursor-pointer">
-        <div class="w-8 h-8 rounded-full flex items-center justify-center text-white border-2 border-white shadow-xl ${
-          isRescue ? 'bg-[#D93636] ring-4 ring-[#FFC2C2]' : 'bg-[#F5B900] text-[#202020] ring-4 ring-[#FFE872]'
-        } ${isCompleted ? 'opacity-60 saturate-50' : ''}">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            ${isRescue
-              ? '<circle cx="12" cy="12" r="10" stroke-width="2"></circle><circle cx="12" cy="12" r="4" stroke-width="2"></circle>'
-              : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>'}
-          </svg>
-        </div>
-      </div>
-    `;
-
-    const icon = L.divIcon({
-      className: 'geosafe-task-marker',
-      html: markerHtml,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
+    const isSelected = Boolean(selectedTask && String(selectedTask.id) === String(task.id));
+    const icon = GeoSafeMapping.createCustomIcon(isRescue ? 'rescue' : 'incident', {
+      selected: isSelected,
+      muted: isCompleted
     });
 
     const marker = L.marker([task.coordinates.lat, task.coordinates.lng], { icon });
@@ -194,6 +205,24 @@ function renderMapMarkers() {
       `);
       markerLayerGroup.addLayer(m);
     });
+
+    // Render Official GeoSafe EOC Marker
+    const eoc = allMapData.eocLocation || (typeof GeoSafeMapping.getEocLocation === 'function' ? GeoSafeMapping.getEocLocation() : null);
+    if (eoc && Number.isFinite(Number(eoc.latitude)) && Number.isFinite(Number(eoc.longitude))) {
+      const eocLat = Number(eoc.latitude);
+      const eocLng = Number(eoc.longitude);
+      const eocIcon = GeoSafeMapping.createCustomIcon('eoc', 'EOC');
+      const eocMarker = L.marker([eocLat, eocLng], { icon: eocIcon, zIndexOffset: 250 });
+      eocMarker.bindPopup(`
+        <div class="text-xs p-1">
+          <span class="text-[10px] font-bold text-[#4338CA] uppercase block">Official Command Center</span>
+          <strong class="text-[#202020] block">${eoc.name || 'GeoSafe Emergency Operations Center (EOC)'}</strong>
+          <span class="text-[10px] text-[#555555] block">${eoc.address || 'Bayanan Baywalk Ilaya, Muntinlupa, Metro Manila, Philippines'}</span>
+          <span class="text-[10px] font-mono text-[#777777]">${eocLat.toFixed(5)}, ${eocLng.toFixed(5)}</span>
+        </div>
+      `);
+      markerLayerGroup.addLayer(eocMarker);
+    }
   }
 }
 
@@ -327,7 +356,8 @@ window.closeTaskBottomSheet = function () {
 window.calculateRouteToTask = async function () {
   if (!selectedTask || !selectedTask.coordinates) return;
 
-  const start = currentGpsLocation || { lat: GeoSafeMapping.config.center.lat, lng: GeoSafeMapping.config.center.lng };
+  const eoc = allMapData.eocLocation || (typeof GeoSafeMapping.getEocLocation === 'function' ? GeoSafeMapping.getEocLocation() : { latitude: 14.41141, longitude: 121.05130 });
+  const start = currentGpsLocation || { lat: Number(eoc.latitude ?? eoc.lat ?? 14.41141), lng: Number(eoc.longitude ?? eoc.lng ?? 121.05130) };
   const dest = { lat: selectedTask.coordinates.lat, lng: selectedTask.coordinates.lng };
 
   const btn = document.getElementById('sheet-btn-route');
@@ -395,7 +425,8 @@ function clearCalculatedRoute() {
 window.openExternalGps = function () {
   if (!selectedTask || !selectedTask.coordinates) return;
 
-  const start = currentGpsLocation || { lat: 14.4075, lng: 121.0475 };
+  const eoc = allMapData.eocLocation || (typeof GeoSafeMapping.getEocLocation === 'function' ? GeoSafeMapping.getEocLocation() : { lat: 14.41141, lng: 121.05130 });
+  const start = currentGpsLocation || { lat: Number(eoc.latitude ?? eoc.lat ?? 14.41141), lng: Number(eoc.longitude ?? eoc.lng ?? 121.05130) };
   const dest = selectedTask.coordinates;
   const url = `https://www.google.com/maps/dir/?api=1&origin=${start.lat},${start.lng}&destination=${dest.lat},${dest.lng}&travelmode=walking`;
 

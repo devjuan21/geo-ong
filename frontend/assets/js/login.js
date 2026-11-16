@@ -13,11 +13,12 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await checkExistingServerSession();
+  clearLoginFormFields();
   setupPasswordVisibilityToggle();
   setupForgotPasswordHandler();
   setupLoginForm();
   setupRegisterForm();
+  await checkExistingServerSession();
 
   // Support ?mode=register query parameter
   const params = new URLSearchParams(window.location.search);
@@ -33,6 +34,10 @@ async function checkExistingServerSession() {
   if (!window.geoSafeStore) return;
   const check = await window.geoSafeStore.verifySession(null, true);
   if (check && check.authenticated && check.user) {
+    if (check.user.mustChangePassword) {
+      window.location.replace('change-password.html');
+      return;
+    }
     redirectByVerifiedRole(check.user.role);
   }
 }
@@ -76,11 +81,9 @@ window.switchAuthTab = function (mode) {
       tabLogin.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
     if (titleEl) titleEl.textContent = 'Create Resident Account';
-    if (subEl) {
-      subEl.textContent = 'Register as a Barangay Bayanan resident to submit incident reports, request emergency rescue, and receive real-time hazard alerts.';
-    }
+    if (subEl) subEl.textContent = '';
     if (headerSwitchBtn) {
-      headerSwitchBtn.innerHTML = '<span>Back to Sign In</span>';
+      headerSwitchBtn.innerHTML = '<span>Login</span>';
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('login')");
     }
   } else {
@@ -92,10 +95,8 @@ window.switchAuthTab = function (mode) {
     if (tabRegister) {
       tabRegister.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
-    if (titleEl) titleEl.textContent = 'Sign In to GeoSafe';
-    if (subEl) {
-      subEl.textContent = 'Enter your registered email and password. Your portal is determined automatically by your verified account role.';
-    }
+    if (titleEl) titleEl.textContent = 'Login';
+    if (subEl) subEl.textContent = '';
     if (headerSwitchBtn) {
       headerSwitchBtn.innerHTML = '<span>Create Resident Account</span>';
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('register')");
@@ -168,12 +169,12 @@ function setSubmittingState(isSubmitting) {
 
   if (isSubmitting) {
     submitBtn.classList.add('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Verifying Credentials...';
+    if (btnText) btnText.textContent = 'Logging in...';
     if (btnArrow) btnArrow.classList.add('hidden');
     if (btnSpinner) btnSpinner.classList.remove('hidden');
   } else {
     submitBtn.classList.remove('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Sign In to GeoSafe';
+    if (btnText) btnText.textContent = 'Login';
     if (btnArrow) btnArrow.classList.remove('hidden');
     if (btnSpinner) btnSpinner.classList.add('hidden');
   }
@@ -202,6 +203,28 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+let userPhysicallyInteracted = false;
+
+function clearLoginFormFields(force = false) {
+  if (userPhysicallyInteracted && !force) return;
+  const form = document.getElementById('login-form');
+  const emailInput = document.getElementById('login-email');
+  const passwordInput = document.getElementById('login-password');
+  if (form && (!userPhysicallyInteracted || force)) {
+    try {
+      form.reset();
+    } catch (_) {}
+  }
+  if (emailInput && (!userPhysicallyInteracted || force)) {
+    emailInput.value = '';
+    if (typeof emailInput.removeAttribute === 'function') emailInput.removeAttribute('value');
+  }
+  if (passwordInput && (!userPhysicallyInteracted || force)) {
+    passwordInput.value = '';
+    if (typeof passwordInput.removeAttribute === 'function') passwordInput.removeAttribute('value');
+  }
+}
+
 function setupLoginForm() {
   const form = document.getElementById('login-form');
   const emailInput = document.getElementById('login-email');
@@ -209,6 +232,52 @@ function setupLoginForm() {
   const rememberInput = document.getElementById('login-remember');
 
   if (!form || !emailInput || !passwordInput) return;
+
+  // Clear any default or prefilled credentials immediately on initialization
+  clearLoginFormFields(true);
+
+  // Only genuine physical keystrokes, beforeinput, or intentional paste by the user mark form interaction.
+  // Synthetic input/change events fired by browser password managers (autofill) on load are NOT physical interactions.
+  const markPhysicalInteraction = () => {
+    userPhysicallyInteracted = true;
+  };
+
+  ['keydown', 'beforeinput', 'paste'].forEach((evt) => {
+    emailInput.addEventListener(evt, markPhysicalInteraction, { passive: true });
+    passwordInput.addEventListener(evt, markPhysicalInteraction, { passive: true });
+  });
+
+  // Guard against browser password managers injecting saved credentials before any user interaction
+  const guardAutofillInjection = () => {
+    if (!userPhysicallyInteracted) {
+      clearLoginFormFields();
+    }
+  };
+
+  ['input', 'change'].forEach((evt) => {
+    emailInput.addEventListener(evt, guardAutofillInjection, { passive: true });
+    passwordInput.addEventListener(evt, guardAutofillInjection, { passive: true });
+  });
+
+  // Clear on back/forward cache navigation and page load (before user interaction)
+  window.addEventListener('pageshow', () => {
+    userPhysicallyInteracted = false;
+    clearLoginFormFields(true);
+  });
+  window.addEventListener('load', () => {
+    if (!userPhysicallyInteracted) {
+      clearLoginFormFields(true);
+    }
+  });
+
+  // Intercept delayed browser password manager autofill rounds on page open (only while untouched)
+  [0, 50, 100, 200, 400, 600, 1000, 1500, 2000].forEach((delay) => {
+    setTimeout(() => {
+      if (!userPhysicallyInteracted) {
+        clearLoginFormFields(true);
+      }
+    }, delay);
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -248,6 +317,14 @@ function setupLoginForm() {
           ? 'Administrator Command Portal'
           : 'Resident Portal';
 
+      if (authResult.user?.mustChangePassword) {
+        showToastNotification('First-login password change required. Redirecting...', 'info');
+        setTimeout(() => {
+          window.location.replace('change-password.html');
+        }, 350);
+        return;
+      }
+
       showSuccessBanner(`Authenticated as ${authResult.user?.name || email}. Redirecting to ${roleLabel}...`);
 
       setTimeout(() => {
@@ -273,9 +350,188 @@ function setupLoginForm() {
   });
 }
 
+const regLocationState = {
+  attempted: false,
+  status: null,
+  verificationToken: null,
+  accuracy: null,
+};
+
+function renderLocationVerificationStatus({ status, message, accuracy, accuracyThresholdMeters }) {
+  const box = document.getElementById('reg-location-status-box');
+  const badge = document.getElementById('reg-location-status-badge');
+  const msgEl = document.getElementById('reg-location-status-message');
+  const fallbackEl = document.getElementById('reg-location-admin-fallback');
+  const accEl = document.getElementById('reg-location-accuracy-label');
+  const btnText = document.getElementById('btn-verify-location-text');
+
+  if (!box || !badge || !msgEl) return;
+
+  box.classList.remove(
+    'hidden',
+    'bg-emerald-50', 'border-emerald-200',
+    'bg-amber-50', 'border-amber-200',
+    'bg-rose-50', 'border-rose-200',
+    'bg-slate-50', 'border-slate-200'
+  );
+  badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold';
+
+  const statusMeta = {
+    verified: {
+      label: 'Verified',
+      boxCls: ['bg-emerald-50', 'border-emerald-200'],
+      badgeCls: ['bg-emerald-100', 'text-emerald-800', 'border', 'border-emerald-300'],
+      showFallback: false,
+      btnLabel: 'Re-verify Location',
+    },
+    outside_boundary: {
+      label: 'Outside Boundary',
+      boxCls: ['bg-amber-50', 'border-amber-200'],
+      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
+      showFallback: true,
+      btnLabel: 'Retry Location Verification',
+    },
+    pending_review: {
+      label: 'Pending Review',
+      boxCls: ['bg-amber-50', 'border-amber-200'],
+      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
+      showFallback: true,
+      btnLabel: 'Retry Location Verification',
+    },
+    gps_denied: {
+      label: 'GPS Denied',
+      boxCls: ['bg-rose-50', 'border-rose-200'],
+      badgeCls: ['bg-rose-100', 'text-rose-800', 'border', 'border-rose-300'],
+      showFallback: true,
+      btnLabel: 'Retry Location Verification',
+    },
+    gps_unavailable: {
+      label: 'GPS Unavailable',
+      boxCls: ['bg-slate-50', 'border-slate-200'],
+      badgeCls: ['bg-slate-200', 'text-slate-800', 'border', 'border-slate-300'],
+      showFallback: true,
+      btnLabel: 'Retry Location Verification',
+    },
+    retry_required: {
+      label: 'Retry Required',
+      boxCls: ['bg-amber-50', 'border-amber-200'],
+      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
+      showFallback: true,
+      btnLabel: 'Retry Location Verification',
+    },
+  };
+
+  const meta = statusMeta[status] || statusMeta.pending_review;
+  box.classList.add(...meta.boxCls);
+  badge.classList.add(...meta.badgeCls);
+  badge.textContent = meta.label;
+  msgEl.textContent = message || '';
+
+  if (fallbackEl) {
+    fallbackEl.classList.toggle('hidden', !meta.showFallback);
+  }
+  if (accEl) {
+    if (typeof accuracy === 'number' && Number.isFinite(accuracy)) {
+      const threshText = accuracyThresholdMeters ? ` (threshold <= ${accuracyThresholdMeters}m)` : '';
+      accEl.textContent = `GPS Accuracy: +/-${Math.round(accuracy)}m${threshText}`;
+      accEl.classList.remove('hidden');
+    } else {
+      accEl.classList.add('hidden');
+    }
+  }
+  if (btnText) {
+    btnText.textContent = meta.btnLabel;
+  }
+}
+
+function resetRegisterLocationState() {
+  regLocationState.attempted = false;
+  regLocationState.status = null;
+  regLocationState.verificationToken = null;
+  regLocationState.accuracy = null;
+
+  const box = document.getElementById('reg-location-status-box');
+  const accEl = document.getElementById('reg-location-accuracy-label');
+  const btnText = document.getElementById('btn-verify-location-text');
+  if (box) box.classList.add('hidden');
+  if (accEl) accEl.classList.add('hidden');
+  if (btnText) btnText.textContent = 'Verify My Location';
+}
+
+function setupRegisterLocationVerification() {
+  const verifyBtn = document.getElementById('btn-verify-location');
+  if (!verifyBtn) return;
+
+  // Never request geolocation on page load; only on explicit click.
+  verifyBtn.addEventListener('click', async () => {
+    const btnText = document.getElementById('btn-verify-location-text');
+    verifyBtn.disabled = true;
+    if (btnText) btnText.textContent = 'Checking Location...';
+
+    const submitBackendEvaluation = async (payload) => {
+      try {
+        const result = await window.geoSafeStore.verifyRegistrationLocation(payload);
+        regLocationState.attempted = true;
+        regLocationState.status = result.status;
+        regLocationState.verificationToken = result.verificationToken || null;
+        regLocationState.accuracy = result.accuracy ?? null;
+        renderLocationVerificationStatus(result);
+      } catch (err) {
+        regLocationState.attempted = true;
+        regLocationState.status = 'gps_unavailable';
+        regLocationState.verificationToken = null;
+        renderLocationVerificationStatus({
+          status: 'gps_unavailable',
+          message: err.message || 'Unable to verify location with the server. Please try again.',
+        });
+      } finally {
+        verifyBtn.disabled = false;
+      }
+    };
+
+    // Browser geolocation requires a secure context (HTTPS or localhost)
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      await submitBackendEvaluation({ gpsErrorStatus: 'gps_unavailable' });
+      const msgEl = document.getElementById('reg-location-status-message');
+      if (msgEl) {
+        msgEl.textContent = 'Browser geolocation is blocked because this connection is not secure (HTTPS required on non-localhost devices). You can still register for Administrator review.';
+      }
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      await submitBackendEvaluation({ gpsErrorStatus: 'gps_unavailable' });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await submitBackendEvaluation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+      },
+      async (err) => {
+        const isDenied = err && err.code === 1; // PERMISSION_DENIED
+        await submitBackendEvaluation({
+          gpsErrorStatus: isDenied ? 'gps_denied' : 'gps_unavailable',
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  });
+}
+
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
+
+  setupRegisterLocationVerification();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -305,6 +561,10 @@ function setupRegisterForm() {
       showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
+    if (!regLocationState.attempted) {
+      showToastNotification('Please click "Verify My Location" before creating your account.', 'warning');
+      return;
+    }
 
     setRegisterSubmittingState(true);
 
@@ -315,20 +575,22 @@ function setupRegisterForm() {
         email,
         phone,
         street,
-        password
+        password,
+        locationVerificationToken: regLocationState.verificationToken,
+        locationStatus: regLocationState.status,
       });
 
       setRegisterSubmittingState(false);
       form.reset();
+      resetRegisterLocationState();
 
-      // Switch to Sign In tab and prefill email address as required
+      // Switch to Sign In tab with empty fields requiring manual credential entry
       window.switchAuthTab('login');
+      clearLoginFormFields();
       const loginEmailInput = document.getElementById('login-email');
-      const loginPassInput = document.getElementById('login-password');
-      if (loginEmailInput) loginEmailInput.value = email;
-      if (loginPassInput) loginPassInput.focus();
+      if (loginEmailInput) loginEmailInput.focus();
 
-      showSuccessBanner('Account successfully created. Please sign in with your password below.');
+      showSuccessBanner('Account successfully created. Please sign in with your email and password.');
     } catch (err) {
       setRegisterSubmittingState(false);
       showToastNotification(err.message || 'Failed to create account. Please try again.', 'error');

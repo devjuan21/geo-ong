@@ -154,8 +154,7 @@ async function runTests() {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}` },
       body: {
-        message: 'TEST MONITORED WARNING: High tide advisory over Muntinlupa lakeshore.',
-        severity: 'high'
+        message: 'TEST MONITORED WARNING: High tide advisory over Muntinlupa lakeshore.'
       }
     });
     console.log('  POST /api/alerts status:', newAlertRes.status, 'Alert ID:', newAlertRes.data?.alert?.id);

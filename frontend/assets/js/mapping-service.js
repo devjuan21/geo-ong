@@ -49,6 +49,13 @@
       lat: 14.4075,
       lng: 121.0475
     },
+    // Official GeoSafe Emergency Operations Center (EOC) Location
+    eoc: {
+      name: 'GeoSafe Emergency Operations Center (Bayanan Barangay Hall)',
+      address: 'Bayanan Barangay Hall, Bayanan Baywalk Ilaya, Muntinlupa, Metro Manila, Philippines',
+      lat: 14.41141,
+      lng: 121.05130
+    },
     defaultZoom: 15,
     boundaryGeoJsonUrl: '/assets/data/barangay-bayanan-boundary.geojson'
   };
@@ -288,6 +295,15 @@
       const shouldFit = options.fitBayananBounds !== false && !options.center && !options.zoom;
       this.addBayananBoundary(map, { fitBounds: shouldFit });
 
+      // Automatically recalculate map tiles when layout dimensions change or window resizes
+      setTimeout(() => {
+        try { map.invalidateSize(); } catch (e) {}
+      }, 250);
+
+      window.addEventListener('resize', () => {
+        try { map.invalidateSize(); } catch (e) {}
+      });
+
       return map;
     },
 
@@ -342,6 +358,28 @@
       }
 
       return bounds || null;
+    },
+
+    getEocLocation() {
+      return {
+        name: this.config.eoc.name,
+        address: this.config.eoc.address,
+        latitude: this.config.eoc.lat,
+        longitude: this.config.eoc.lng,
+        coordinates: { lat: this.config.eoc.lat, lng: this.config.eoc.lng }
+      };
+    },
+
+    setEocLocation(eoc) {
+      if (!eoc) return;
+      const lat = Number(eoc.latitude ?? eoc.lat);
+      const lng = Number(eoc.longitude ?? eoc.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        this.config.eoc.lat = lat;
+        this.config.eoc.lng = lng;
+      }
+      if (eoc.name) this.config.eoc.name = String(eoc.name);
+      if (eoc.address) this.config.eoc.address = String(eoc.address);
     },
 
     /**
@@ -675,6 +713,143 @@
       return `${GeoSafeMapConfig.externalDirections.baseUrl}?engine=fossgis_osrm_foot&route=${start.lat}%2C${start.lng}%3B${destination.lat}%2C${destination.lng}`;
     },
 
+    /**
+     * Calculate an actual navigable road driving route via Project-OSRM Driving API.
+     * Never returns a fabricated or straight-line fallback route on failure.
+     * @param {{lat: number, lng: number}} start
+     * @param {{lat: number, lng: number}} destination
+     */
+    async calculateDrivingRoute(start, destination) {
+      const validCoord = (pt) =>
+        pt &&
+        typeof pt.lat === 'number' &&
+        typeof pt.lng === 'number' &&
+        Number.isFinite(pt.lat) &&
+        Number.isFinite(pt.lng) &&
+        Math.abs(pt.lat) <= 90 &&
+        Math.abs(pt.lng) <= 180;
+
+      if (!validCoord(start) || !validCoord(destination)) {
+        throw new Error('Valid origin and destination coordinates are required for road routing.');
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Device is offline. Road routing service is unavailable.');
+      }
+
+      const cacheKey = `drv:${start.lat.toFixed(5)},${start.lng.toFixed(5)}->${destination.lat.toFixed(5)},${destination.lng.toFixed(5)}`;
+      if (routeCache.has(cacheKey)) {
+        return routeCache.get(cacheKey);
+      }
+
+      const coordsString = `${start.lng},${start.lat};${destination.lng},${destination.lat}`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson&steps=true&alternatives=true`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), GeoSafeMapConfig.routing.timeoutMs);
+
+      try {
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Routing service returned HTTP ${response.status}.`);
+        }
+
+        const data = await response.json();
+        if (data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
+          throw new Error(data.message || 'No navigable road route found between your location and the destination.');
+        }
+
+        // Prefer the shortest practical road route among returned alternatives
+        const sortedRoutes = [...data.routes].sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity));
+        const selectedRoute = sortedRoutes[0];
+        if (!selectedRoute.geometry || !Array.isArray(selectedRoute.geometry.coordinates) || selectedRoute.geometry.coordinates.length < 2) {
+          throw new Error('Routing service returned an incomplete road geometry.');
+        }
+
+        const leafletCoordinates = selectedRoute.geometry.coordinates.map((pt) => [pt[1], pt[0]]);
+        const rawSteps = (selectedRoute.legs && selectedRoute.legs[0] && Array.isArray(selectedRoute.legs[0].steps))
+          ? selectedRoute.legs[0].steps
+          : [];
+
+        const steps = rawSteps.map((s) => {
+          const maneuver = s.maneuver || {};
+          const loc = Array.isArray(maneuver.location) && maneuver.location.length >= 2
+            ? [Number(maneuver.location[1]), Number(maneuver.location[0])]
+            : null;
+          return {
+            type: maneuver.type || '',
+            modifier: maneuver.modifier || '',
+            name: s.name || '',
+            instruction: this.formatManeuverInstruction(maneuver.type, maneuver.modifier, s.name),
+            distanceMeters: Math.round(s.distance || 0),
+            durationSeconds: Math.round(s.duration || 0),
+            location: loc
+          };
+        });
+
+        const result = {
+          coordinates: leafletCoordinates,
+          distanceMeters: Math.round(selectedRoute.distance || 0),
+          durationSeconds: Math.round(selectedRoute.duration || 0),
+          steps,
+          alternativesCount: data.routes.length,
+        };
+
+        routeCache.set(cacheKey, result);
+        return result;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error('Routing request timed out. Please retry.');
+        }
+        throw err;
+      }
+    },
+
+    formatManeuverInstruction(type, modifier, roadName) {
+      const road = roadName ? ` onto ${roadName}` : '';
+      const mod = modifier ? modifier.replace(/-/g, ' ') : '';
+      switch (type) {
+        case 'depart':
+          return `Head ${mod || 'forward'}${road}`;
+        case 'arrive':
+          return 'Arrive at assigned destination';
+        case 'turn':
+          return `Turn ${mod || ''}${road}`.trim();
+        case 'new name':
+          return `Continue${road}`;
+        case 'continue':
+          return `Continue ${mod || 'straight'}${road}`.trim();
+        case 'merge':
+          return `Merge ${mod || ''}${road}`.trim();
+        case 'roundabout':
+        case 'rotary':
+          return `Enter roundabout${road}`;
+        case 'fork':
+          return `Keep ${mod || 'straight'} at fork${road}`;
+        case 'end of road':
+          return `Turn ${mod || ''} at end of road${road}`.trim();
+        default:
+          return `${type ? type.replace(/-/g, ' ') : 'Proceed'}${mod ? ' ' + mod : ''}${road}`.trim();
+      }
+    },
+
+    pointToRouteDistanceMeters(point, polylineCoords) {
+      if (!point || !Array.isArray(polylineCoords) || polylineCoords.length === 0) return Infinity;
+      let minMeters = Infinity;
+      for (let i = 0; i < polylineCoords.length; i++) {
+        const pt = polylineCoords[i];
+        const d = computeHaversineMeters(point, { lat: pt[0], lng: pt[1] });
+        if (d < minMeters) minMeters = d;
+      }
+      return minMeters;
+    },
+
     computeDistanceMeters(a, b) {
       return computeHaversineMeters(a, b);
     },
@@ -710,40 +885,66 @@
 
     /**
      * Helper to render custom colored Leaflet markers
-     * @param {string} type - 'user' | 'evacuation' | 'incident' | 'responder'
-     * @param {string} label - Short text/initials
+     * @param {string} type - 'user' | 'evacuation' | 'incident' | 'rescue' | 'responder'
+     * @param {string|object} labelOrOptions - Short text/initials or { label, selected, muted, compact }
      * @returns {L.DivIcon}
      */
-    createCustomIcon(type, label = '') {
-      let bgClass = 'bg-brand-900 ring-brand-300';
+    createCustomIcon(type, labelOrOptions = '') {
+      const opts =
+        labelOrOptions && typeof labelOrOptions === 'object'
+          ? labelOrOptions
+          : { label: String(labelOrOptions || '') };
+      const label = String(opts.label || '');
+      const isSelected = Boolean(opts.selected);
+      const isMuted = Boolean(opts.muted);
+      const isCompact = Boolean(opts.compact);
+
+      let bgStyle = 'background-color:#202020;';
+      let ringClass = 'ring-4 ring-slate-300';
       let iconSvg = '';
 
       if (type === 'user') {
-        bgClass = 'bg-blue-600 ring-blue-300 animate-pulse';
+        bgStyle = 'background-color:#2563EB;';
+        ringClass = 'ring-4 ring-blue-300 animate-pulse';
         iconSvg = `<div class="w-3 h-3 rounded-full bg-white"></div>`;
       } else if (type === 'evacuation') {
-        bgClass = 'bg-emerald-600 ring-emerald-300';
-        iconSvg = `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>`;
+        bgStyle = 'background-color:#278653;';
+        ringClass = 'ring-4 ring-emerald-300';
+        iconSvg = `<svg class="${isCompact ? 'w-3 h-3' : 'w-4 h-4'} text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>`;
+      } else if (type === 'rescue') {
+        bgStyle = 'background-color:#D93636;';
+        ringClass = isSelected ? 'ring-4 ring-[#FDE047]' : 'ring-4 ring-[#FCA5A5]';
+        iconSvg = `<svg class="${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" stroke-width="2"></circle><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M12 8v8M8 12h8"></path></svg>`;
       } else if (type === 'incident') {
-        bgClass = 'bg-amber-600 ring-amber-300';
-        iconSvg = `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
-      } else if (type === 'responder') {
-        bgClass = 'bg-indigo-700 ring-indigo-300';
-        iconSvg = `<span class="text-xs font-bold text-white">${label.substring(0, 2).toUpperCase()}</span>`;
+        bgStyle = 'background-color:#D97706;';
+        ringClass = isSelected ? 'ring-4 ring-[#202020]/40' : 'ring-4 ring-amber-300';
+        iconSvg = `<svg class="${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 9v3.5m0 3.25h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path></svg>`;
+      } else if (type === 'responder' || type === 'eoc') {
+        bgStyle = 'background-color:#4338CA;';
+        ringClass = type === 'eoc' ? 'ring-4 ring-[#FDE047]' : 'ring-4 ring-indigo-300';
+        iconSvg = `<span class="text-[10px] font-bold text-white">${label.substring(0, 3).toUpperCase() || (type === 'eoc' ? 'EOC' : 'RSP')}</span>`;
       }
+
+      const sizePx = isCompact ? 24 : 32;
+      const anchorPx = isCompact ? 12 : 16;
+      const sizeClass = isCompact ? 'w-6 h-6' : 'w-8 h-8';
+      const stateClasses = [
+        isSelected ? 'scale-110 shadow-xl' : 'shadow-lg',
+        isMuted ? 'opacity-60 saturate-50' : '',
+      ].filter(Boolean).join(' ');
 
       return L.divIcon({
         className: 'geosafe-custom-marker',
         html: `
           <div class="relative flex items-center justify-center">
-            <div class="w-8 h-8 rounded-full ${bgClass} ring-4 shadow-lg flex items-center justify-center border-2 border-white">
+            <div style="${bgStyle}" class="${sizeClass} rounded-full ${ringClass} ${stateClasses} flex items-center justify-center border-2 border-white transition-transform">
               ${iconSvg}
             </div>
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -18]
+        iconSize: [sizePx, sizePx],
+        iconAnchor: [anchorPx, anchorPx],
+        popupAnchor: [0, -anchorPx - 2]
       });
     }
   };

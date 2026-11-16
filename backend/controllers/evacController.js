@@ -1,5 +1,5 @@
 const pool = require('../models/db');
-const { isPointInsideBayanan } = require('../utils/bayananBoundary');
+const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
 
 function normalizeEvacStatus(status) {
   if (!status) return 'Open - Accommodating';
@@ -66,7 +66,7 @@ async function getEvacuationCenters(req, res) {
     }
 
     const centers = rows
-      .filter((r) => String(r.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(r.latitude, r.longitude))
+      .filter((r) => !isExcludedEvacuationCenter(r) && (String(r.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(r.latitude, r.longitude)))
       .map((r) => enrichEvacRow(r, facByCenter.get(r.id) || []));
     return res.json({ evacuation_centers: centers });
   } catch (err) {
@@ -81,7 +81,7 @@ async function getEvacuationCenterById(req, res) {
       'SELECT * FROM evacuation_centers WHERE id = ?',
       [req.params.id]
     );
-    if (!rows.length) {
+    if (!rows.length || isExcludedEvacuationCenter(rows[0])) {
       return res.status(404).json({ error: 'Evacuation center not found' });
     }
     let facilities = [];

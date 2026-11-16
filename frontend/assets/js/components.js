@@ -1,16 +1,18 @@
 /**
  * GeoSafe - Resident Portal UI Navigation & Shell Component
  * ============================================================================
- * Strictly 4 Primary Navigation Items (Sections 1 & 2):
+ * Strictly 4 Primary Navigation Items across all views:
  * 1. Home (index.html)
  * 2. Evacuation Routes (evacuation-routes.html)
  * 3. Report / Rescue (report-rescue.html) - Visually emphasized emergency action
  * 4. Hazard Alerts (hazard-alerts.html)
  * 
- * - Mobile: Fixed 4-item bottom navigation bar with safe-area insets.
- * - Desktop/Tablet: Top navigation bar with the exact same 4 items.
- *   (Strictly NO administrator sidebar or management dashboard).
- * - Compact Header with dynamic time-based greeting, notification bell with unread indicator, and resident avatar.
+ * Responsive Behavior:
+ * - Desktop (>= 1024px): Fixed vertical sidebar on the left (240px width) with
+ *   GeoSafe branding at the top, active state highlight, and content aligned beside.
+ * - Tablet (768px - 1023px): Clean horizontal navigation in the top header.
+ * - Mobile (< 768px): Fixed bottom navigation bar with mobile safe-area insets.
+ * - Zero duplicate navigation menus or buttons across all screen widths.
  * ============================================================================
  */
 
@@ -110,8 +112,14 @@ const GeoSafeUI = {
       if (!user) return;
     }
 
+    // Ensure body has resident layout styling for wide desktop sidebar offset
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.add('resident-layout');
+    }
+
     const resolvedActiveId = this.resolveActivePageId(activePageId);
     this.activePageId = resolvedActiveId;
+    this.renderDesktopSidebar(resolvedActiveId);
     this.renderTopNav(resolvedActiveId);
     this.renderMobileBottomNav(resolvedActiveId);
     this.renderOfflineBanner();
@@ -133,6 +141,71 @@ const GeoSafeUI = {
     if (window.geoSafeStore) {
       window.geoSafeStore.notifyNetworkChange(window.geoSafeStore.isOnline());
     }
+  },
+
+  /**
+   * Render Desktop Fixed Vertical Sidebar (>= 1024px)
+   * Strictly 4 Primary Navigation Items with 240px width (w-60).
+   */
+  renderDesktopSidebar(activeId) {
+    let sidebarContainer = document.getElementById('resident-desktop-sidebar');
+    if (!sidebarContainer) {
+      sidebarContainer = document.createElement('aside');
+      sidebarContainer.id = 'resident-desktop-sidebar';
+      document.body.prepend(sidebarContainer);
+    }
+
+    sidebarContainer.className = 'hidden lg:flex fixed top-0 bottom-0 left-0 z-40 w-60 bg-white border-r border-[#EEEEEE] flex-col justify-between shadow-subtle select-none transition-all';
+
+    const sidebarNavHtml = this.navItems.map(item => {
+      const isActive = item.id === activeId;
+      return `
+        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all ${
+          isActive
+            ? 'bg-[#F5B900] text-[#202020] font-bold shadow-sm ring-1 ring-[#F5B900]'
+            : 'text-[#555555] hover:text-[#202020] hover:bg-[#FFF9E8] font-semibold'
+        }">
+          <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-5 h-5')}</span>
+          <span class="truncate">${item.label}</span>
+        </a>
+      `;
+    }).join('');
+
+    sidebarContainer.innerHTML = `
+      <!-- Top: Logo & Branding -->
+      <div class="h-14 flex items-center px-4 border-b border-[#EEEEEE] gap-2.5 flex-shrink-0 bg-white">
+        <a href="index.html" class="flex items-center gap-2.5 group">
+          <div class="w-8 h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-black text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
+            GS
+          </div>
+          <div class="min-w-0">
+            <span class="font-black text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors block leading-tight">GeoSafe</span>
+            <span class="text-[10px] text-[#777777] font-semibold block leading-tight truncate">Barangay Bayanan</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Center: 4 Navigation Items with Icons & Labels -->
+      <div class="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <div class="px-2 pb-1.5 text-[10px] font-bold tracking-wider text-[#777777] uppercase">
+          Resident Portal
+        </div>
+        <nav class="space-y-1.5">
+          ${sidebarNavHtml}
+        </nav>
+      </div>
+
+      <!-- Bottom: SafeZone Status Footer -->
+      <div class="p-3 border-t border-[#EEEEEE] bg-[#FFFDF7] flex-shrink-0">
+        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-[#EEEEEE] shadow-subtle">
+          <div class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse"></div>
+          <div class="min-w-0">
+            <span class="block text-xs font-bold text-[#202020] truncate">Barangay Bayanan</span>
+            <span class="block text-[10px] text-[#777777] font-medium">SafeZone Active</span>
+          </div>
+        </div>
+      </div>
+    `;
   },
 
   /**
@@ -170,13 +243,13 @@ const GeoSafeUI = {
     }).join('');
 
     container.innerHTML = `
-      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full z-40 bg-white border-b border-[#EEEEEE] shadow-subtle" style="padding-top: env(safe-area-inset-top, 0px);">
-        <div class="max-w-7xl mx-auto px-3 sm:px-5 lg:px-8">
-          <div class="flex items-center justify-between h-12 sm:h-13 gap-2">
+      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white border-b border-[#EEEEEE] shadow-subtle" style="padding-top: env(safe-area-inset-top, 0px);">
+        <div class="w-full px-3 sm:px-5 lg:px-6">
+          <div class="flex items-center justify-between h-14 gap-2">
             
-            <!-- Left: Logo & Dynamic Resident Greeting (Compact Section 1) -->
+            <!-- Left: Logo (Mobile/Tablet) & Dynamic Resident Greeting -->
             <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
-              <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0">
+              <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0 lg:hidden">
                 <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-black text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
                   GS
                 </div>
@@ -185,8 +258,8 @@ const GeoSafeUI = {
                 </div>
               </a>
 
-              <!-- Greeting, Resident Name & Role Badge (Compact) -->
-              <div class="border-l border-[#EEEEEE] pl-2 sm:pl-2.5">
+              <!-- Greeting, Resident Name & Role Badge -->
+              <div class="border-l border-[#EEEEEE] pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0">
                 <span id="header-greeting-label" class="text-[10px] text-[#777777] font-medium block leading-tight">Greeting</span>
                 <div class="flex items-center gap-1.5">
                   <span id="header-resident-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[110px] sm:max-w-[160px]">Resident</span>
@@ -195,8 +268,8 @@ const GeoSafeUI = {
               </div>
             </div>
 
-            <!-- Center: Desktop & Tablet Navigation (Exactly 4 Items) -->
-            <nav class="hidden md:flex items-center gap-1 lg:gap-1.5">
+            <!-- Center: Tablet Horizontal Navigation (Visible on tablet only, hidden on mobile & desktop >= 1024px) -->
+            <nav class="hidden md:flex lg:hidden items-center gap-1">
               ${navLinksHtml}
             </nav>
 
@@ -724,22 +797,6 @@ const GeoSafeUI = {
       hour: 'numeric',
       minute: '2-digit'
     });
-  },
-
-  /**
-   * Render a severity badge HTML snippet
-   */
-  renderSeverityBadge(severity = 'Moderate') {
-    const normalized = String(severity || 'Moderate');
-    const styles = {
-      Critical: 'bg-rose-100 text-rose-700 border-rose-200',
-      High: 'bg-orange-100 text-orange-700 border-orange-200',
-      Moderate: 'bg-amber-100 text-amber-800 border-amber-200',
-      Medium: 'bg-amber-100 text-amber-800 border-amber-200',
-      Low: 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    };
-    const cls = styles[normalized] || styles.Moderate;
-    return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized}</span>`;
   },
 
   /**

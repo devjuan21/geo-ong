@@ -3,17 +3,17 @@ const path = require('path');
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS } = require('../config/roles');
-const { emitNewReport, emitStatusUpdate } = require('../services/socketService');
+const { emitNewReport, emitPublicVerifiedReport, emitReportVerificationResult, emitStatusUpdate, emitIncidentResolved } = require('../services/socketService');
 const { isPointInsideBayanan } = require('../utils/bayananBoundary');
 
 // Canonical incident storage: `reports` is the ONLY incident table written by the application.
-// Allowed values mirror the reports.status / reports.severity ENUMs exactly.
+// Allowed values mirror the reports.status ENUM exactly.
 const VALID_STATUSES = ['pending', 'verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved', 'false_alarm', 'dismissed'];
-const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 
 const REPORT_SELECT = `
-  SELECT r.*, u.name AS reporter_name, resp.name AS responder_name
+  SELECT r.*, u.name AS reporter_name, resp.name AS responder_name,
+    COALESCE((SELECT h.remarks FROM incident_status_history h WHERE h.incident_id = r.id ORDER BY h.created_at DESC, h.id DESC LIMIT 1), '') AS latest_remarks
   FROM reports r
   JOIN users u ON r.user_id = u.id
   LEFT JOIN users resp ON r.assigned_to = resp.id`;
@@ -61,7 +61,8 @@ async function createReport(req, res) {
   const address = (req.body.address || req.body.location || 'Barangay Bayanan, Muntinlupa City').trim().substring(0, 255);
   const latitude = Number(req.body.latitude);
   const longitude = Number(req.body.longitude);
-  const is_public = req.body.authorizedForCommunity === false || req.body.is_public === 0 ? 0 : 1;
+  // Newly submitted resident reports are never publicly visible until verified by an Administrator
+  const is_public = 0;
 
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     return res.status(400).json({ error: 'Valid geographic coordinates (latitude and longitude) are required.' });
@@ -71,14 +72,6 @@ async function createReport(req, res) {
     return res.status(400).json({
       error: 'Submitted incident location is outside the official administrative boundary of Barangay Bayanan, Muntinlupa City.'
     });
-  }
-
-  let severity = 'medium';
-  const requestedSeverity = String(req.body.severity || '').trim().toLowerCase();
-  if (VALID_SEVERITIES.includes(requestedSeverity)) {
-    severity = requestedSeverity;
-  } else if (requestedSeverity === 'moderate') {
-    severity = 'medium';
   }
 
   // Validate Base64 photos before starting DB transaction
@@ -129,9 +122,9 @@ async function createReport(req, res) {
     }
 
     const [result] = await conn.query(
-      `INSERT INTO reports (user_id, incident_type, title, description, latitude, longitude, address, severity, status, is_public)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [req.user.id, incident_type, title, description, latitude, longitude, address, severity, is_public]
+      `INSERT INTO reports (user_id, incident_type, title, description, latitude, longitude, address, status, is_public)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [req.user.id, incident_type, title, description, latitude, longitude, address, is_public]
     );
 
     // Ticket / reference number derived from the canonical primary key
@@ -170,14 +163,12 @@ async function createReport(req, res) {
 
     // Create notification for Administrators
     try {
-      const notifSeverity = severity === 'critical' ? 'Critical' : 'High';
       const [notifRes] = await conn.query(
-        `INSERT INTO notifications (title, message, severity, category, created_by)
-         VALUES (?, ?, ?, 'Alert', ?)`,
+        `INSERT INTO notifications (title, message, category, created_by)
+         VALUES (?, ?, 'Alert', ?)`,
         [
           `New Incident Report: ${referenceNumber}`,
-          `${incident_type} reported at ${address} (${severity.toUpperCase()}).`,
-          notifSeverity,
+          `${incident_type} reported at ${address}.`,
           req.user.id,
         ]
       );
@@ -208,7 +199,6 @@ async function createReport(req, res) {
           reference_number: referenceNumber,
           incident_type,
           title,
-          severity,
           address,
           latitude,
           longitude,
@@ -265,7 +255,7 @@ async function getReports(req, res) {
       query += ' WHERE r.user_id = ?';
       params.push(req.user.id);
     } else if (req.user.role === 'responder') {
-      query += " WHERE (r.assigned_to = ? OR r.status NOT IN ('resolved', 'dismissed'))";
+      query += " WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND (r.assigned_to = ? OR r.status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress'))";
       params.push(req.user.id);
     }
 
@@ -314,14 +304,23 @@ async function updateReportStatus(req, res) {
 
   const rawStatus = req.body.status;
   const status = rawStatus === 'dismissed' ? 'false_alarm' : rawStatus;
-  const { severity, assigned_to } = req.body;
+  const { assigned_to } = req.body;
+  const trimmedReason = typeof (req.body.reason ?? req.body.remarks) === 'string'
+    ? String(req.body.reason ?? req.body.remarks).trim()
+    : '';
   const reportId = parseInt(req.params.id, 10);
 
   if (status && !VALID_STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Invalid status' });
   }
-  if (severity && !VALID_SEVERITIES.includes(severity)) {
-    return res.status(400).json({ error: 'Invalid severity' });
+
+  // Only Administrators may verify, reject, or reset reports to pending
+  if (status && ['pending', 'verified', 'false_alarm', 'dismissed'].includes(status) && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only Administrators can verify or reject incident reports.' });
+  }
+
+  if (status === 'false_alarm' && !trimmedReason) {
+    return res.status(400).json({ error: 'A rejection reason is required when rejecting a report.' });
   }
 
   const conn = await pool.getConnection().catch((err) => { dbUnavailable(res, err, 'updateReportStatus'); return null; });
@@ -344,16 +343,14 @@ async function updateReportStatus(req, res) {
       updates.push('status = ?');
       params.push(status);
       if (status === 'verified') {
-        updates.push('verified_by = ?', 'verified_at = NOW()');
+        updates.push('is_public = 1', 'verified_by = ?', 'verified_at = NOW()');
         params.push(req.user.id);
+      } else if (['pending', 'false_alarm', 'dismissed'].includes(status)) {
+        updates.push('is_public = 0');
       }
       if (status === 'resolved') {
         updates.push('resolved_at = NOW()');
       }
-    }
-    if (severity && req.user.role === 'admin' && severity !== current.severity) {
-      updates.push('severity = ?');
-      params.push(severity);
     }
 
     let newAssignee = null;
@@ -377,9 +374,9 @@ async function updateReportStatus(req, res) {
 
       if (status && status !== current.status) {
         await conn.query(
-          `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by)
-           VALUES (?, ?, ?, ?)`,
-          [reportId, current.status, status, req.user.id]
+          `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+           VALUES (?, ?, ?, ?, ?)`,
+          [reportId, current.status, status, req.user.id, trimmedReason || null]
         );
       }
 
@@ -400,7 +397,31 @@ async function updateReportStatus(req, res) {
       recordType: 'incident',
       residentId: rows[0].user_id,
     };
-    if (updates.length) emitStatusUpdate(updated);
+    if (updates.length) {
+      if (status === 'resolved' && current.status !== 'resolved') {
+        emitIncidentResolved({
+          id: reportId,
+          referenceNumber: updated.reference_number || `INC-${reportId}`,
+          residentId: rows[0].user_id,
+          assignedTo: rows[0].assigned_to || null,
+          reason: trimmedReason,
+        });
+      } else if (status === 'verified' || status === 'false_alarm') {
+        emitReportVerificationResult({
+          id: reportId,
+          referenceNumber: updated.reference_number || `INC-${reportId}`,
+          status,
+          decision: status === 'false_alarm' ? 'rejected' : 'verified',
+          reason: trimmedReason,
+          residentId: rows[0].user_id,
+        });
+      } else {
+        emitStatusUpdate(updated);
+      }
+      if (status === 'verified' && current.status !== 'verified') {
+        emitPublicVerifiedReport(updated);
+      }
+    }
     return res.json({ message: updates.length ? 'Report updated' : 'No changes', report: updated });
   } catch (err) {
     await conn.rollback().catch(() => {});

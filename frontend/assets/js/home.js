@@ -10,9 +10,12 @@
 let incidentMap = null;
 let incidentMarkersGroup = null;
 let userLocationMarker = null;
+let isLocatingUser = false;
 
 let currentLoadedReports = [];
 let currentLoadedAlerts = [];
+let currentLoadedCenters = [];
+let currentUserLocation = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Initialize common shell navigation & compact header
@@ -20,6 +23,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Initialize interactive Leaflet map
   initIncidentMap();
+
+  // Start automatic GPS detection without blocking genuine operational data loading
+  detectUserGpsLocation({ isAuto: true });
 
   // Load all live homepage records
   await loadHomepageData();
@@ -36,6 +42,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 /**
  * Initialize Community Incident Leaflet Map
  */
+let incidentMapResizeObserver = null;
+
 function initIncidentMap() {
   try {
     incidentMap = GeoSafeMapping.createMap('incident-map', {
@@ -43,6 +51,23 @@ function initIncidentMap() {
     });
 
     incidentMarkersGroup = L.layerGroup().addTo(incidentMap);
+
+    const refreshMapSize = () => {
+      if (incidentMap) {
+        try { incidentMap.invalidateSize({ animate: false }); } catch (_) {}
+      }
+    };
+    requestAnimationFrame(refreshMapSize);
+    setTimeout(refreshMapSize, 150);
+    setTimeout(refreshMapSize, 350);
+
+    const mapEl = document.getElementById('incident-map');
+    if (mapEl && typeof ResizeObserver !== 'undefined') {
+      if (incidentMapResizeObserver) incidentMapResizeObserver.disconnect();
+      incidentMapResizeObserver = new ResizeObserver(() => refreshMapSize());
+      incidentMapResizeObserver.observe(mapEl);
+    }
+    window.addEventListener('resize', refreshMapSize);
   } catch (err) {
     console.error('Failed to initialize incident map:', err);
   }
@@ -55,15 +80,17 @@ async function loadHomepageData() {
   await Promise.all([
     loadCommunityReports(),
     loadHazardAlerts(),
-    loadEvacuationSummary(),
-    loadMyReportsSummary()
+    loadEvacuationSummary()
   ]);
 }
 
 /**
  * Load verified community reports and plot on map (Sections 2.C & 2.D)
  */
+let communityReportsFetchSeq = 0;
+
 async function loadCommunityReports() {
+  const reqSeq = ++communityReportsFetchSeq;
   const mapEmptyOverlay = document.getElementById('incident-map-empty');
   const reportsEmptyEl = document.getElementById('community-reports-empty');
   const reportsListEl = document.getElementById('community-reports-list');
@@ -72,7 +99,10 @@ async function loadCommunityReports() {
 
   try {
     const reports = await window.geoSafeStore.getPublicIncidentReports();
-    currentLoadedReports = reports || [];
+    if (reqSeq !== communityReportsFetchSeq) return;
+    currentLoadedReports = (reports || []).filter(
+      (r) => !['resolved', 'false_alarm', 'dismissed'].includes(String(r.status || '').toLowerCase())
+    );
 
     const totalCount = currentLoadedReports.length;
 
@@ -195,61 +225,127 @@ function renderCommunityReportsList(reports) {
 }
 
 /**
- * Load Hazard Alerts (Section 2.E)
+ * Load Hazard Alerts (displays up to 2 genuine active alerts)
  */
+function escapeHtmlSafe(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function loadHazardAlerts() {
   const countEl = document.getElementById('stat-alerts-count');
-  const summaryEl = document.getElementById('alerts-summary-text');
-  const badgeEl = document.getElementById('alerts-severity-badge');
+  const listEl = document.getElementById('alerts-widget-list');
 
   try {
     const alerts = await window.geoSafeStore.getHazardAlerts();
-    currentLoadedAlerts = alerts || [];
+    currentLoadedAlerts = Array.isArray(alerts) ? alerts : [];
     const count = currentLoadedAlerts.length;
 
     if (countEl) countEl.textContent = `${count} Active`;
+    if (!listEl) return;
 
     if (count === 0) {
-      if (summaryEl) summaryEl.textContent = 'No active hazard alerts.';
-      if (badgeEl) badgeEl.classList.add('hidden');
+      listEl.innerHTML = `
+        <div class="p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] text-xs text-[#777777] font-medium">
+          No active hazard alerts.
+        </div>
+      `;
       return;
     }
 
-    const latest = currentLoadedAlerts[0];
-    if (summaryEl) summaryEl.textContent = latest.headline || latest.title;
+    const sortedAlerts = window.GeoSafeAdvisories
+      ? [...currentLoadedAlerts].sort(window.GeoSafeAdvisories.comparePriorityThenNewest)
+      : currentLoadedAlerts;
 
-    if (badgeEl) {
-      badgeEl.classList.remove('hidden');
-      badgeEl.textContent = latest.severity || 'Moderate';
-      badgeEl.className = 'text-[10px] font-bold px-1.5 py-0.2 rounded mt-1 inline-block bg-amber-100 text-amber-800 border border-amber-200';
-    }
+    listEl.innerHTML = sortedAlerts.slice(0, 2).map((alert) => {
+      const advisoryType = alert.categoryName || alert.advisoryType || alert.category || 'Other';
+      const badgeHtml = window.GeoSafeAdvisories
+        ? window.GeoSafeAdvisories.renderBadge(advisoryType, { badgeColor: alert.badgeColor })
+        : '';
+      const title = escapeHtmlSafe(alert.headline || alert.title || 'Hazard Alert');
+      const desc = escapeHtmlSafe(alert.description || '');
+      const timeStr = alert.publishedAt ? GeoSafeUI.formatRelative(alert.publishedAt) : '';
+      return `
+        <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] space-y-1.5 min-w-0">
+          <div class="flex items-center justify-between gap-2 min-w-0">
+            <span class="text-xs font-bold text-[#202020] truncate min-w-0 flex-1">${title}</span>
+            ${timeStr ? `<span class="text-[11px] text-[#777777] whitespace-nowrap flex-shrink-0">${escapeHtmlSafe(timeStr)}</span>` : ''}
+          </div>
+          ${desc ? `<p class="text-xs text-[#555555] truncate leading-snug">${desc}</p>` : ''}
+          ${badgeHtml ? `<div class="pt-0.5">${badgeHtml}</div>` : ''}
+        </div>
+      `;
+    }).join('');
   } catch (err) {
     console.error('Error loading hazard alerts:', err);
   }
 }
 
 /**
- * Load Evacuation Centers Summary (Section 2.E)
+ * Load & Render Nearest Evacuation Center based on actual user GPS
  */
-async function loadEvacuationSummary() {
-  const countEl = document.getElementById('stat-centers-count');
-  const summaryEl = document.getElementById('centers-summary-text');
+function renderNearestEvacuationCenter() {
+  const nameEl = document.getElementById('nearest-center-name');
+  const metaEl = document.getElementById('nearest-center-meta');
+  if (!nameEl || !metaEl) return;
 
+  const centers = Array.isArray(currentLoadedCenters) ? currentLoadedCenters : [];
+  if (centers.length === 0) {
+    nameEl.textContent = 'No evacuation centers available';
+    metaEl.textContent = 'No active centers found in database.';
+    return;
+  }
+
+  if (!currentUserLocation || !Number.isFinite(currentUserLocation.lat) || !Number.isFinite(currentUserLocation.lng)) {
+    nameEl.textContent = 'Location access needed';
+    metaEl.textContent = 'Enable browser location access to calculate the nearest evacuation center.';
+    return;
+  }
+
+  const available = centers.filter((c) => {
+    const st = String(c.status || '').toLowerCase();
+    return !st.includes('closed') && !st.includes('full');
+  });
+  const pool = available.length > 0 ? available : centers;
+
+  let nearest = null;
+  let minMeters = Infinity;
+
+  pool.forEach((c) => {
+    const lat = Number(c.coordinates ? c.coordinates.lat : c.latitude);
+    const lng = Number(c.coordinates ? c.coordinates.lng : c.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const dist = GeoSafeMapping.computeDistanceMeters(currentUserLocation, { lat, lng });
+    if (dist < minMeters) {
+      minMeters = dist;
+      nearest = c;
+    }
+  });
+
+  if (!nearest || !Number.isFinite(minMeters)) {
+    nameEl.textContent = 'Location unavailable';
+    metaEl.textContent = 'Could not match coordinates to an evacuation center.';
+    return;
+  }
+
+  const distText = minMeters >= 1000
+    ? `${(minMeters / 1000).toFixed(2)} km away`
+    : `${Math.round(minMeters)} m away`;
+  const statusText = nearest.status ? ` • ${nearest.status}` : '';
+
+  nameEl.textContent = nearest.name || 'Evacuation Center';
+  metaEl.textContent = `${distText}${statusText}`;
+}
+
+async function loadEvacuationSummary() {
   try {
     const centers = await window.geoSafeStore.getEvacuationCenters();
-    const count = (centers || []).length;
-
-    if (countEl) countEl.textContent = `${count} Centers`;
-
-    if (count === 0) {
-      if (summaryEl) summaryEl.textContent = 'No evacuation centers available.';
-      return;
-    }
-
-    const firstCenter = centers[0];
-    if (summaryEl) {
-      summaryEl.textContent = `${firstCenter.name} (${firstCenter.status || 'Active'})`;
-    }
+    currentLoadedCenters = Array.isArray(centers) ? centers : [];
+    renderNearestEvacuationCenter();
   } catch (err) {
     console.error('Error loading evacuation centers summary:', err);
   }
@@ -289,9 +385,30 @@ async function loadMyReportsSummary() {
 }
 
 /**
- * GPS Locate Me on Community Map
+ * Update GPS status pill below the Community Map
  */
-window.locateUserOnMap = async function () {
+function updateGpsStatusIndicator(tone, text) {
+  const el = document.getElementById('resident-gps-status');
+  if (!el) return;
+
+  const toneClasses = {
+    loading: 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]',
+    success: 'bg-emerald-50 text-[#278653] border-emerald-200',
+    warning: 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]',
+    neutral: 'bg-slate-100 text-[#555555] border-[#EEEEEE]'
+  };
+
+  el.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${toneClasses[tone] || toneClasses.neutral}`;
+  el.textContent = text;
+}
+
+/**
+ * Detect Resident GPS Location (automatic on load, or manual refresh via Location button)
+ */
+async function detectUserGpsLocation({ isAuto = false } = {}) {
+  if (isLocatingUser || !incidentMap) return;
+  isLocatingUser = true;
+
   const btn = document.getElementById('btn-locate-me');
   if (btn) {
     btn.disabled = true;
@@ -299,23 +416,92 @@ window.locateUserOnMap = async function () {
   }
 
   try {
+    if (isAuto && typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function') {
+      try {
+        const perm = await navigator.permissions.query({ name: 'geolocation' });
+        if (perm.state === 'denied') {
+          currentUserLocation = null;
+          renderNearestEvacuationCenter();
+          updateGpsStatusIndicator(
+            'warning',
+            'Location access disabled. Enable permission in browser site settings or use map controls.'
+          );
+          return;
+        }
+        if (perm.state === 'prompt') {
+          updateGpsStatusIndicator('loading', 'Requesting location permission...');
+        } else {
+          updateGpsStatusIndicator('loading', 'Detecting GPS location...');
+        }
+      } catch (_) {
+        updateGpsStatusIndicator('loading', 'Detecting GPS location...');
+      }
+    } else {
+      updateGpsStatusIndicator('loading', 'Detecting GPS location...');
+    }
+
     const pos = await GeoSafeMapping.getCurrentLocation();
+    currentUserLocation = { lat: Number(pos.lat), lng: Number(pos.lng) };
+    renderNearestEvacuationCenter();
     const latLng = [pos.lat, pos.lng];
+    const hasAccuracy = Number.isFinite(Number(pos.accuracy)) && Number(pos.accuracy) > 0;
+    const accuracyMeters = hasAccuracy ? Math.round(Number(pos.accuracy)) : null;
+
+    const popupHtml = accuracyMeters !== null
+      ? `<div class="text-xs space-y-0.5"><strong class="block">Your Current GPS Location</strong><span class="text-[#555555]">Accuracy: &plusmn;${accuracyMeters} m</span></div>`
+      : '<strong class="text-xs">Your Current GPS Location</strong>';
 
     if (!userLocationMarker) {
       const userIcon = GeoSafeMapping.createCustomIcon('user');
       userLocationMarker = L.marker(latLng, { icon: userIcon }).addTo(incidentMap);
-      userLocationMarker.bindPopup('<strong class="text-xs">Your Current GPS Location</strong>');
+      userLocationMarker.bindPopup(popupHtml);
     } else {
       userLocationMarker.setLatLng(latLng);
+      userLocationMarker.setPopupContent(popupHtml);
     }
 
     incidentMap.setView(latLng, 16);
-    userLocationMarker.openPopup();
-    GeoSafeUI.showToast('Acquired current GPS location.', 'info');
+    if (!isAuto) {
+      userLocationMarker.openPopup();
+      GeoSafeUI.showToast(
+        accuracyMeters !== null
+          ? `GPS location updated (±${accuracyMeters} m).`
+          : 'Acquired current GPS location.',
+        'info'
+      );
+    }
+
+    updateGpsStatusIndicator(
+      'success',
+      accuracyMeters !== null ? `GPS active (±${accuracyMeters} m)` : 'GPS active'
+    );
   } catch (err) {
-    GeoSafeUI.showToast(err.message || 'Unable to access current GPS position.', 'warning');
+    currentUserLocation = null;
+    renderNearestEvacuationCenter();
+    const code = err && err.code;
+    if (code === 'INSECURE_CONTEXT_LAN') {
+      updateGpsStatusIndicator(
+        'warning',
+        'GPS blocked over non-HTTPS LAN. Use HTTPS or localhost for automatic GPS.'
+      );
+    } else if (code === 1) {
+      updateGpsStatusIndicator(
+        'warning',
+        'Location access denied. Enable location in browser settings to view your position.'
+      );
+      if (!isAuto) {
+        GeoSafeUI.showToast('Location permission is denied. Enable it in your browser site settings.', 'warning');
+      }
+    } else if (code === 'UNSUPPORTED') {
+      updateGpsStatusIndicator('warning', 'Browser does not support GPS geolocation.');
+    } else {
+      updateGpsStatusIndicator('neutral', 'Location unavailable. Tap Location to retry.');
+      if (!isAuto) {
+        GeoSafeUI.showToast((err && err.message) || 'Unable to access current GPS position.', 'warning');
+      }
+    }
   } finally {
+    isLocatingUser = false;
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `
@@ -324,6 +510,13 @@ window.locateUserOnMap = async function () {
       `;
     }
   }
+}
+
+/**
+ * GPS Locate Me on Community Map (Manual refresh & recenter)
+ */
+window.locateUserOnMap = function () {
+  return detectUserGpsLocation({ isAuto: false });
 };
 
 window.refreshCommunityMap = async function () {
@@ -358,7 +551,7 @@ window.closeIncidentModal = function () {
 /**
  * Hazard Alerts Modal (Section 2.E)
  */
-window.openAlertsModal = function () {
+window.openAlertsModal = function (focusAlertId = null) {
   const modal = document.getElementById('hazard-alerts-modal');
   const content = document.getElementById('alerts-modal-content');
   if (!modal || !content) return;
@@ -371,13 +564,18 @@ window.openAlertsModal = function () {
       </div>
     `;
   } else {
-    content.innerHTML = currentLoadedAlerts.map(a => `
-      <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-1">
+    const ordered = focusAlertId
+      ? [
+          ...currentLoadedAlerts.filter((a) => String(a.id) === String(focusAlertId)),
+          ...currentLoadedAlerts.filter((a) => String(a.id) !== String(focusAlertId)),
+        ]
+      : currentLoadedAlerts;
+    content.innerHTML = ordered.map(a => `
+      <div class="p-3 bg-amber-50 rounded-xl border ${focusAlertId && String(a.id) === String(focusAlertId) ? 'border-[#F5B900] ring-1 ring-[#F5B900]' : 'border-amber-200'} text-xs space-y-1">
         <div class="flex items-center justify-between">
-          <span class="font-bold text-amber-950">${a.headline || a.title}</span>
-          <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">${a.severity || 'Moderate'}</span>
+          <span class="font-bold text-amber-950">${escapeHtmlSafe(a.headline || a.title)}</span>
         </div>
-        <p class="text-[11px] text-slate-700 leading-relaxed">${a.description}</p>
+        <p class="text-[11px] text-slate-700 leading-relaxed">${escapeHtmlSafe(a.description)}</p>
         <span class="text-[10px] text-slate-400 block">Issued: ${GeoSafeUI.formatRelative(a.publishedAt)}</span>
       </div>
     `).join('');

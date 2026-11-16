@@ -1,9 +1,11 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, getSession, logout } = require('../controllers/authController');
+const { register, login, getSession, logout, changePassword, verifyRegistrationLocation } = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.post(['/verify-location', '/auth/verify-location'], verifyRegistrationLocation);
 
 router.post(
   ['/register', '/auth/register'],
@@ -41,6 +43,22 @@ router.post(
 );
 
 router.get(['/auth/session', '/me', '/auth/me'], authenticate, getSession);
+
+router.post(
+  ['/auth/change-password', '/change-password'],
+  authenticate,
+  [
+    body('currentPassword').notEmpty().withMessage('Current password is required'),
+    body('newPassword')
+      .isLength({ min: 8 })
+      .withMessage('New password must be at least 8 characters long'),
+    body('confirmPassword')
+      .optional()
+      .custom((value, { req }) => value === req.body.newPassword)
+      .withMessage('New password and confirmation do not match'),
+  ],
+  changePassword
+);
 
 router.post(['/logout', '/auth/logout'], logout);
 

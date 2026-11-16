@@ -113,7 +113,6 @@ function renderMapMarkers(centers) {
         <p class="text-slate-600 mt-0.5">${c.address}</p>
         <div class="mt-1.5 flex items-center justify-between">
           <span class="font-bold ${c.status === 'Open - Accommodating' ? 'text-emerald-700' : 'text-amber-700'}">${c.status}</span>
-          <span class="text-slate-500">${c.capacity.available} available</span>
         </div>
       </div>
     `;

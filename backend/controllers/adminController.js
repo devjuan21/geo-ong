@@ -1,14 +1,25 @@
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS, roleLabel, roleDisplayName } = require('../config/roles');
+const { isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
 const { generateNextUserCode } = require('../services/userIdService');
 const {
   emitStatusUpdate,
   emitAssignmentUpdate,
   emitAlertBroadcast,
   emitAdminAnnouncement,
+  emitPublicVerifiedReport,
+  emitReportVerificationResult,
+  emitIncidentResolved,
 } = require('../services/socketService');
+const {
+  alertSeverityForCategory,
+  broadcastSeverityForCategory,
+  defaultColorForName,
+} = require('../config/advisoryCategories');
+const { getEocLocation } = require('../config/eocConfig');
 
 const BCRYPT_ROUNDS = 12;
 
@@ -35,6 +46,50 @@ const RESCUE_VALID_STATUSES = [
 
 const INCIDENT_VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
 const RESCUE_VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
+
+function isValidLatLng(lat, lng) {
+  if (lat === null || lng === null || lat === undefined || lng === undefined || lat === '' || lng === '') {
+    return false;
+  }
+  const nLat = Number(lat);
+  const nLng = Number(lng);
+  return (
+    Number.isFinite(nLat) &&
+    Number.isFinite(nLng) &&
+    nLat >= -90 &&
+    nLat <= 90 &&
+    nLng >= -180 &&
+    nLng <= 180 &&
+    !(nLat === 0 && nLng === 0)
+  );
+}
+
+function parseLocationProvenance(notesInput) {
+  const notesArray = Array.isArray(notesInput) ? notesInput : [notesInput];
+  for (const rawNote of notesArray) {
+    const text = String(rawNote || '');
+    const match = text.match(/\[([^\]]*source:[^\]]+)\]/i);
+    if (!match) continue;
+    const parts = match[1].split('|').map((p) => p.trim());
+    let locationSource = null;
+    let gpsAccuracy = null;
+    let locationCapturedAt = null;
+    for (const part of parts) {
+      if (part.startsWith('source:')) {
+        const val = part.slice('source:'.length).trim().toLowerCase();
+        if (val === 'gps' || val === 'manual') locationSource = val;
+      } else if (part.startsWith('accuracy:')) {
+        const num = Number(part.slice('accuracy:'.length).replace(/m$/i, '').trim());
+        if (Number.isFinite(num) && num >= 0) gpsAccuracy = Math.round(num);
+      } else if (part.startsWith('captured:')) {
+        const ts = part.slice('captured:'.length).trim();
+        if (ts) locationCapturedAt = ts;
+      }
+    }
+    return { locationSource, gpsAccuracy, locationCapturedAt };
+  }
+  return { locationSource: null, gpsAccuracy: null, locationCapturedAt: null };
+}
 
 function normalizeIncidentStatusLabel(status) {
   const map = {
@@ -80,15 +135,6 @@ function mapUnifiedFilterBucket(recordType, rawStatus) {
   return 'pending';
 }
 
-function normalizeSeverityDisplay(val) {
-  const s = String(val || '').toLowerCase();
-  if (s === 'critical') return 'Critical';
-  if (s === 'high') return 'High';
-  if (s === 'medium' || s === 'moderate') return 'Medium';
-  if (s === 'low') return 'Low';
-  return 'Medium';
-}
-
 async function writeAuditLog(connOrPool, { userId, action, entityType, entityId, oldValues = null, newValues = null, req }) {
   try {
     const ip = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
@@ -112,19 +158,18 @@ async function writeAuditLog(connOrPool, { userId, action, entityType, entityId,
   }
 }
 
-async function insertNotificationForUsers(connOrPool, { title, message, severity = 'High', category = 'Alert', createdBy = null, userIds = [] }) {
+async function insertNotificationForUsers(connOrPool, { title, message, category = 'Alert', advisoryType = null, createdBy = null, userIds = [] }) {
   const uniqueIds = Array.from(new Set(userIds.filter((id) => Number.isInteger(Number(id)) && Number(id) > 0).map(Number)));
   if (!uniqueIds.length) return null;
-  const safeSeverity = ['Critical', 'High'].includes(severity) ? severity : 'High';
   const safeCategory = 'Alert';
   const [notifRes] = await connOrPool.query(
-    `INSERT INTO notifications (title, message, severity, category, created_by)
+    `INSERT INTO notifications (title, message, category, advisory_type, created_by)
      VALUES (?, ?, ?, ?, ?)`,
-    [String(title).slice(0, 150), String(message), safeSeverity, safeCategory, createdBy]
+    [String(title).slice(0, 150), String(message), safeCategory, advisoryType, createdBy]
   );
   for (const uid of uniqueIds) {
     await connOrPool.query(
-      'INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)',
+      'INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
       [notifRes.insertId, uid]
     );
   }
@@ -136,8 +181,8 @@ async function insertNotificationForUsers(connOrPool, { title, message, severity
 // ============================================================================
 async function getAdminOverview(req, res) {
   try {
-    const [[incTotalRow]] = await pool.query('SELECT COUNT(*) AS count FROM reports');
-    const [[resTotalRow]] = await pool.query('SELECT COUNT(*) AS count FROM rescue_requests');
+    const [[incTotalRow]] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE status NOT IN ('resolved', 'false_alarm', 'dismissed')");
+    const [[resTotalRow]] = await pool.query("SELECT COUNT(*) AS count FROM rescue_requests WHERE status NOT IN ('Completed', 'Cancelled')");
 
     const [[incPendingRow]] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE status = 'pending'");
     const [[resPendingRow]] = await pool.query(
@@ -174,24 +219,32 @@ async function getAdminOverview(req, res) {
     // Fetch actual incident reports and rescue requests with valid coordinates for the Incident Map
     // Do NOT expose private reporter PII in map marker payloads
     const [incidentMarkers] = await pool.query(
-      `SELECT id, reference_number, incident_type, title, latitude, longitude, address, severity, status, created_at
+      `SELECT id, reference_number, incident_type, title, latitude, longitude, address, status, created_at
        FROM reports
        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+         AND status NOT IN ('resolved', 'false_alarm', 'dismissed')
        ORDER BY created_at DESC
        LIMIT 300`
     );
 
     const [rescueMarkers] = await pool.query(
-      `SELECT id, reference_number, emergency_type, latitude, longitude, address, landmark, priority, people_count, status, created_at
-       FROM rescue_requests
-       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-       ORDER BY created_at DESC
+      `SELECT r.id, r.reference_number, r.emergency_type, r.latitude, r.longitude,
+              r.address, r.landmark, r.people_count, r.status, r.created_at,
+              (SELECT h.work_notes
+               FROM rescue_status_history h
+               WHERE h.rescue_id = r.id
+               ORDER BY h.created_at ASC, h.id ASC
+               LIMIT 1) AS initial_work_notes
+       FROM rescue_requests r
+       WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+         AND r.status NOT IN ('Completed', 'Cancelled')
+       ORDER BY r.created_at DESC
        LIMIT 300`
     );
 
     const mapItems = [
       ...incidentMarkers
-        .filter((r) => Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude)))
+        .filter((r) => isValidLatLng(r.latitude, r.longitude))
         .map((r) => ({
           uid: `incident-${r.id}`,
           id: r.id,
@@ -200,36 +253,38 @@ async function getAdminOverview(req, res) {
           referenceNumber: r.reference_number || `INC-${r.id}`,
           category: r.incident_type || 'General Incident',
           title: r.title || `${r.incident_type || 'Incident'} Report`,
-          severity: normalizeSeverityDisplay(r.severity),
-          rawSeverity: r.severity,
           status: r.status,
           statusLabel: normalizeIncidentStatusLabel(r.status),
           filterBucket: mapUnifiedFilterBucket('incident', r.status),
-          location: r.address || 'Barangay Bayanan, Muntinlupa City',
+          location: r.address || 'Location not specified',
           latitude: Number(r.latitude),
           longitude: Number(r.longitude),
           submittedAt: r.created_at,
         })),
       ...rescueMarkers
-        .filter((r) => Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude)))
-        .map((r) => ({
-          uid: `rescue-${r.id}`,
-          id: r.id,
-          recordType: 'rescue',
-          reportTypeLabel: 'Rescue Request',
-          referenceNumber: r.reference_number || `RES-${r.id}`,
-          category: r.emergency_type || 'Emergency Rescue',
-          title: `${r.emergency_type || 'Rescue'} (${r.people_count || 1} person${(r.people_count || 1) > 1 ? 's' : ''})`,
-          severity: normalizeSeverityDisplay(r.priority),
-          rawSeverity: String(r.priority || 'High').toLowerCase(),
-          status: r.status,
-          statusLabel: normalizeRescueStatusLabel(r.status),
-          filterBucket: mapUnifiedFilterBucket('rescue', r.status),
-          location: r.address || 'Barangay Bayanan, Muntinlupa City',
-          latitude: Number(r.latitude),
-          longitude: Number(r.longitude),
-          submittedAt: r.created_at,
-        })),
+        .filter((r) => isValidLatLng(r.latitude, r.longitude))
+        .map((r) => {
+          const locMeta = parseLocationProvenance(r.initial_work_notes);
+          return {
+            uid: `rescue-${r.id}`,
+            id: r.id,
+            recordType: 'rescue',
+            reportTypeLabel: 'Rescue Request',
+            referenceNumber: r.reference_number || `RES-${r.id}`,
+            category: r.emergency_type || 'Emergency Rescue',
+            title: `${r.emergency_type || 'Rescue'} (${r.people_count || 1} person${(r.people_count || 1) > 1 ? 's' : ''})`,
+            status: r.status,
+            statusLabel: normalizeRescueStatusLabel(r.status),
+            filterBucket: mapUnifiedFilterBucket('rescue', r.status),
+            location: r.address || 'Location not specified',
+            latitude: Number(r.latitude),
+            longitude: Number(r.longitude),
+            locationSource: locMeta.locationSource,
+            gpsAccuracy: locMeta.gpsAccuracy,
+            locationCapturedAt: locMeta.locationCapturedAt,
+            submittedAt: r.created_at,
+          };
+        }),
     ].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
     // Fetch live evacuation centers for map display if present
@@ -240,16 +295,18 @@ async function getAdminOverview(req, res) {
        ORDER BY name ASC`
     );
 
-    const evacuationCenters = evacCenterRows.map((e) => ({
-      id: e.id,
-      name: e.name,
-      address: e.address,
-      latitude: Number(e.latitude),
-      longitude: Number(e.longitude),
-      capacity: Number(e.capacity || 0),
-      availableSlots: Number(e.available_slots || 0),
-      status: e.status || 'Standby',
-    }));
+    const evacuationCenters = evacCenterRows
+      .filter((e) => !isExcludedEvacuationCenter(e))
+      .map((e) => ({
+        id: e.id,
+        name: e.name,
+        address: e.address,
+        latitude: Number(e.latitude),
+        longitude: Number(e.longitude),
+        capacity: Number(e.capacity || 0),
+        availableSlots: Number(e.available_slots || 0),
+        status: e.status || 'Standby',
+      }));
 
     // Fetch recent operational activity events from audit_logs
     const [activityRows] = await pool.query(
@@ -279,6 +336,9 @@ async function getAdminOverview(req, res) {
       };
     });
 
+    const categoryDistribution = await getReportCategoryDistribution({ clause: '1=1', params: [] });
+    const eocLocation = await getEocLocation(pool);
+
     return res.json({
       summary: {
         totalReports,
@@ -295,7 +355,9 @@ async function getAdminOverview(req, res) {
       },
       mapItems,
       evacuationCenters,
+      eocLocation,
       recentActivities,
+      categoryDistribution,
     });
   } catch (err) {
     console.error('[Admin API] getAdminOverview failed:', err.message);
@@ -306,7 +368,7 @@ async function getAdminOverview(req, res) {
 async function getAdminStats(req, res) {
   try {
     const [sosRows] = await pool.query(
-      "SELECT COUNT(*) AS count FROM reports WHERE status != 'resolved' AND (severity IN ('high', 'critical') OR incident_type = 'SOS')"
+      "SELECT COUNT(*) AS count FROM reports WHERE status != 'resolved' AND incident_type = 'SOS'"
     );
     const [activeRows] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE status != 'resolved'");
     const [totalRows] = await pool.query('SELECT COUNT(*) AS count FROM reports');
@@ -383,14 +445,14 @@ async function getVulnerableResidents(req, res) {
         up.barangay,
         up.medical_notes,
         u.safety_status, u.last_latitude, u.last_longitude, u.battery_level,
-        (SELECT COUNT(*) FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' AND (r.severity IN ('high', 'critical') OR r.incident_type = 'SOS')) AS active_critical_reports,
+        (SELECT COUNT(*) FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' AND r.incident_type = 'SOS') AS active_critical_reports,
         (SELECT r.description FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' ORDER BY r.created_at DESC LIMIT 1) AS latest_incident_description
       FROM users u
       LEFT JOIN user_profiles up ON up.user_id = u.id
       WHERE u.role_id = ?
         AND (
           u.safety_status IN ('need_help', 'injured', 'no_response')
-          OR (SELECT COUNT(*) FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' AND (r.severity IN ('high', 'critical') OR r.incident_type = 'SOS')) > 0
+          OR (SELECT COUNT(*) FROM reports r WHERE r.user_id = u.id AND r.status != 'resolved' AND r.incident_type = 'SOS') > 0
         )
       ORDER BY
         CASE
@@ -415,7 +477,6 @@ async function getAdminReportsList(req, res) {
   try {
     const filter = String(req.query.filter || 'all').toLowerCase();
     const recordTypeFilter = String(req.query.type || 'all').toLowerCase();
-    const severityFilter = String(req.query.severity || 'all').toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
 
     const [incidentRows] = await pool.query(
@@ -464,8 +525,6 @@ async function getAdminReportsList(req, res) {
         location: r.address || 'Barangay Bayanan, Muntinlupa City',
         latitude: r.latitude !== null ? Number(r.latitude) : null,
         longitude: r.longitude !== null ? Number(r.longitude) : null,
-        severity: normalizeSeverityDisplay(r.severity),
-        rawSeverity: r.severity,
         status: r.status,
         statusLabel: normalizeIncidentStatusLabel(r.status),
         filterBucket: mapUnifiedFilterBucket('incident', r.status),
@@ -495,8 +554,6 @@ async function getAdminReportsList(req, res) {
         location: r.address || 'Barangay Bayanan, Muntinlupa City',
         latitude: r.latitude !== null ? Number(r.latitude) : null,
         longitude: r.longitude !== null ? Number(r.longitude) : null,
-        severity: normalizeSeverityDisplay(r.priority),
-        rawSeverity: String(r.priority || 'High').toLowerCase(),
         status: r.status,
         statusLabel: normalizeRescueStatusLabel(r.status),
         filterBucket: mapUnifiedFilterBucket('rescue', r.status),
@@ -511,7 +568,7 @@ async function getAdminReportsList(req, res) {
     ].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
     const counts = {
-      all: unified.length,
+      all: unified.filter((i) => !(i.recordType === 'incident' && i.filterBucket === 'resolved')).length,
       pending: unified.filter((i) => i.filterBucket === 'pending').length,
       under_review: unified.filter((i) => i.filterBucket === 'under_review').length,
       verified: unified.filter((i) => i.filterBucket === 'verified').length,
@@ -521,8 +578,8 @@ async function getAdminReportsList(req, res) {
 
     const filtered = unified.filter((item) => {
       if (recordTypeFilter !== 'all' && item.recordType !== recordTypeFilter) return false;
+      if (filter === 'all' && item.recordType === 'incident' && item.filterBucket === 'resolved') return false;
       if (filter !== 'all' && item.filterBucket !== filter) return false;
-      if (severityFilter !== 'all' && item.severity.toLowerCase() !== severityFilter) return false;
       if (search) {
         const hay = `${item.referenceNumber} ${item.reportType} ${item.category} ${item.reporterName} ${item.location} ${item.description} ${item.statusLabel}`.toLowerCase();
         if (!hay.includes(search)) return false;
@@ -643,8 +700,6 @@ async function getAdminReportDetail(req, res) {
         createdAt: h.created_at,
       }));
 
-      const displaySev = normalizeSeverityDisplay(r.severity);
-
       const detail = {
         uid: `incident-${r.id}`,
         id: r.id,
@@ -660,8 +715,6 @@ async function getAdminReportDetail(req, res) {
         address: r.address || 'Barangay Bayanan, Muntinlupa City',
         latitude: r.latitude !== null ? Number(r.latitude) : null,
         longitude: r.longitude !== null ? Number(r.longitude) : null,
-        severity: displaySev,
-        rawSeverity: r.severity,
         status: r.status,
         rawStatus: r.status,
         statusLabel: normalizeIncidentStatusLabel(r.status),
@@ -687,16 +740,11 @@ async function getAdminReportDetail(req, res) {
           verificationStatus: r.reporter_verification_status || 'Unverified Resident',
           accountStatus: r.reporter_account_status || 'active',
         },
-        priorityDetails: {
-          tier: displaySev,
-        },
         attachments: mappedAttachments,
         history: mappedHistory,
         statusHistory: mappedHistory,
         allowedStatuses: INCIDENT_VALID_STATUSES,
         validStatuses: INCIDENT_VALID_STATUSES,
-        allowedSeverities: INCIDENT_VALID_SEVERITIES,
-        validSeverities: INCIDENT_VALID_SEVERITIES,
         availableResponders: activeResponders,
         activeResponders,
       };
@@ -789,7 +837,8 @@ async function getAdminReportDetail(req, res) {
       createdAt: h.created_at,
     }));
 
-    const displaySev = normalizeSeverityDisplay(r.priority);
+    const rescueLocMeta = parseLocationProvenance(history.map((h) => h.remarks));
+    const hasValidRescueCoords = isValidLatLng(r.latitude, r.longitude);
 
     const detail = {
       uid: `rescue-${r.id}`,
@@ -805,12 +854,13 @@ async function getAdminReportDetail(req, res) {
       peopleCount: r.people_count || 1,
       vulnerableDetails: r.vulnerable_details || 'None specified',
       landmark: r.landmark || 'None specified',
-      location: r.address || 'Barangay Bayanan, Muntinlupa City',
-      address: r.address || 'Barangay Bayanan, Muntinlupa City',
-      latitude: r.latitude !== null ? Number(r.latitude) : null,
-      longitude: r.longitude !== null ? Number(r.longitude) : null,
-      severity: displaySev,
-      rawSeverity: String(r.priority || 'High').toLowerCase(),
+      location: r.address || 'Location not specified',
+      address: r.address || 'Location not specified',
+      latitude: hasValidRescueCoords ? Number(r.latitude) : null,
+      longitude: hasValidRescueCoords ? Number(r.longitude) : null,
+      locationSource: rescueLocMeta.locationSource,
+      gpsAccuracy: rescueLocMeta.gpsAccuracy,
+      locationCapturedAt: rescueLocMeta.locationCapturedAt,
       status: r.status,
       rawStatus: r.status,
       statusLabel: normalizeRescueStatusLabel(r.status),
@@ -838,9 +888,6 @@ async function getAdminReportDetail(req, res) {
         peopleCount: r.people_count || 1,
         vulnerableDetails: r.vulnerable_details || 'None specified',
         landmark: r.landmark || 'None specified',
-      },
-      priorityDetails: {
-        tier: displaySev,
       },
       attachments: mappedAttachments,
       history: mappedHistory,
@@ -875,13 +922,13 @@ async function reviewAdminReport(req, res) {
   const isNumeric = Number.isInteger(parsedInt) && String(parsedInt) === rawParamId && parsedInt > 0;
   const lookupNumeric = isNumeric ? parsedInt : -1;
 
-  const { action, status, severity, assignedTo, reason } = req.body || {};
+  const { action, status, assignedTo, reason } = req.body || {};
   const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
 
   // Rejecting / dismissing or requesting clarification or resolving requires a reason
   const isRejection =
     action === 'reject' ||
-    (recordType === 'incident' && status === 'false_alarm') ||
+    (recordType === 'incident' && ['false_alarm', 'dismissed'].includes(status)) ||
     (recordType === 'rescue' && status === 'Cancelled');
   const isClarification = action === 'clarify';
   const isResolution =
@@ -894,8 +941,8 @@ async function reviewAdminReport(req, res) {
       error: isRejection
         ? 'A reason is required when rejecting or dismissing a report.'
         : isClarification
-        ? 'Please specify what clarification is needed from the reporter.'
-        : 'Please provide resolution remarks before marking this record resolved.',
+          ? 'Please specify what clarification is needed from the reporter.'
+          : 'Please provide resolution remarks before marking this record resolved.',
     });
   }
 
@@ -923,11 +970,6 @@ async function reviewAdminReport(req, res) {
         return res.status(400).json({ error: `Unsupported incident status: ${targetStatus}` });
       }
 
-      const targetSeverity =
-        severity && INCIDENT_VALID_SEVERITIES.includes(String(severity).toLowerCase())
-          ? String(severity).toLowerCase()
-          : current.severity;
-
       let targetAssignee = current.assigned_to;
       if (assignedTo !== undefined) {
         targetAssignee = assignedTo ? parseInt(assignedTo, 10) : null;
@@ -943,8 +985,14 @@ async function reviewAdminReport(req, res) {
         }
       }
 
-      const updates = ['status = ?', 'severity = ?', 'assigned_to = ?'];
-      const params = [targetStatus, targetSeverity, targetAssignee];
+      const updates = ['status = ?', 'assigned_to = ?'];
+      const params = [targetStatus, targetAssignee];
+
+      if (['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(targetStatus)) {
+        updates.push('is_public = 1');
+      } else if (['pending', 'under_review', 'false_alarm', 'dismissed'].includes(targetStatus)) {
+        updates.push('is_public = 0');
+      }
 
       if (targetStatus === 'verified' && current.status !== 'verified') {
         updates.push('verified_by = ?', 'verified_at = NOW()');
@@ -991,7 +1039,6 @@ async function reviewAdminReport(req, res) {
       await insertNotificationForUsers(conn, {
         title: notifTitle,
         message: notifMsg,
-        severity: targetSeverity === 'critical' ? 'Critical' : 'High',
         category: 'Alert',
         createdBy: req.user.id,
         userIds: notifRecipients,
@@ -1002,14 +1049,14 @@ async function reviewAdminReport(req, res) {
         action: isRejection
           ? 'INCIDENT_REPORT_REJECTED'
           : isClarification
-          ? 'INCIDENT_CLARIFICATION_REQUESTED'
-          : targetStatus === 'verified'
-          ? 'INCIDENT_REPORT_VERIFIED'
-          : 'INCIDENT_REPORT_REVIEWED',
+            ? 'INCIDENT_CLARIFICATION_REQUESTED'
+            : targetStatus === 'verified'
+              ? 'INCIDENT_REPORT_VERIFIED'
+              : 'INCIDENT_REPORT_REVIEWED',
         entityType: 'reports',
         entityId: refNum,
-        oldValues: { status: current.status, severity: current.severity, assigned_to: current.assigned_to },
-        newValues: { status: targetStatus, severity: targetSeverity, assigned_to: targetAssignee, reason: historyRemark },
+        oldValues: { status: current.status, assigned_to: current.assigned_to },
+        newValues: { status: targetStatus, assigned_to: targetAssignee, reason: historyRemark },
         req,
       });
 
@@ -1025,15 +1072,44 @@ async function reviewAdminReport(req, res) {
           residentId: current.user_id,
         });
       }
-      emitStatusUpdate({
-        id: recordId,
-        referenceNumber: refNum,
-        recordType: 'incident',
-        status: targetStatus,
-        severity: targetSeverity,
-        assignedTo: targetAssignee,
-        residentId: current.user_id,
-      });
+      if (targetStatus === 'resolved' && current.status !== 'resolved') {
+        emitIncidentResolved({
+          id: recordId,
+          referenceNumber: refNum,
+          residentId: current.user_id,
+          assignedTo: targetAssignee,
+          reason: historyRemark,
+        });
+      } else if (targetStatus === 'verified' || isRejection || isClarification) {
+        emitReportVerificationResult({
+          id: recordId,
+          referenceNumber: refNum,
+          status: targetStatus,
+          decision: isRejection ? 'rejected' : isClarification ? 'clarification' : 'verified',
+          reason: historyRemark,
+          message: notifMsg,
+          residentId: current.user_id,
+        });
+      } else {
+        emitStatusUpdate({
+          id: recordId,
+          referenceNumber: refNum,
+          recordType: 'incident',
+          status: targetStatus,
+          assignedTo: targetAssignee,
+          residentId: current.user_id,
+          reason: historyRemark,
+        });
+      }
+      if (targetStatus === 'verified' && current.status !== 'verified') {
+        emitPublicVerifiedReport({
+          ...current,
+          id: refNum,
+          referenceNumber: refNum,
+          status: 'verified',
+          rawStatus: 'verified',
+        });
+      }
       return res.json({ message: 'Incident report review saved.', status: targetStatus });
     }
 
@@ -1057,17 +1133,8 @@ async function reviewAdminReport(req, res) {
       return res.status(400).json({ error: `Unsupported rescue request status: ${targetStatus}` });
     }
 
-    let targetPriority = current.priority;
-    if (severity) {
-      const normalizedPrio =
-        String(severity).charAt(0).toUpperCase() + String(severity).slice(1).toLowerCase();
-      if (RESCUE_VALID_PRIORITIES.includes(normalizedPrio)) {
-        targetPriority = normalizedPrio;
-      }
-    }
-
-    const updates = ['status = ?', 'priority = ?'];
-    const params = [targetStatus, targetPriority];
+    const updates = ['status = ?'];
+    const params = [targetStatus];
     if (targetStatus === 'Completed' && current.status !== 'Completed') {
       updates.push('resolved_at = NOW()', 'confirmed_by = ?', 'confirmed_resolved_at = NOW()');
       params.push(req.user.id);
@@ -1118,7 +1185,6 @@ async function reviewAdminReport(req, res) {
     await insertNotificationForUsers(conn, {
       title: notifTitle,
       message: notifMsg,
-      severity: targetPriority === 'Critical' ? 'Critical' : 'High',
       category: 'Alert',
       createdBy: req.user.id,
       userIds: notifRecipients,
@@ -1129,14 +1195,14 @@ async function reviewAdminReport(req, res) {
       action: isRejection
         ? 'RESCUE_REQUEST_REJECTED'
         : isClarification
-        ? 'RESCUE_CLARIFICATION_REQUESTED'
-        : action === 'verify'
-        ? 'RESCUE_REQUEST_VERIFIED'
-        : 'RESCUE_REQUEST_REVIEWED',
+          ? 'RESCUE_CLARIFICATION_REQUESTED'
+          : action === 'verify'
+            ? 'RESCUE_REQUEST_VERIFIED'
+            : 'RESCUE_REQUEST_REVIEWED',
       entityType: 'rescue_requests',
       entityId: refNum,
-      oldValues: { status: current.status, priority: current.priority },
-      newValues: { status: targetStatus, priority: targetPriority, reason: historyRemark },
+      oldValues: { status: current.status },
+      newValues: { status: targetStatus, reason: historyRemark },
       req,
     });
 
@@ -1152,18 +1218,27 @@ async function reviewAdminReport(req, res) {
         residentId: current.user_id,
       });
     }
+    if (targetStatus === 'Completed' && current.status !== 'Completed') {
+      emitIncidentResolved({
+        id: recordId,
+        referenceNumber: refNum,
+        recordType: 'rescue',
+        status: 'Completed',
+        residentId: current.user_id,
+        assignedTo: responderId,
+      });
+    }
     emitStatusUpdate({
       id: recordId,
       referenceNumber: refNum,
       recordType: 'rescue',
       status: targetStatus,
-      priority: targetPriority,
       assignedTo: responderId,
       residentId: current.user_id,
     });
     return res.json({ message: 'Rescue request review saved.', status: targetStatus });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     console.error('[Admin API] reviewAdminReport failed:', err.message);
     return res.status(503).json({ error: 'Unable to save report review in database.' });
   } finally {
@@ -1178,6 +1253,7 @@ async function getAdminUsers(req, res) {
   try {
     const roleTab = String(req.query.role || 'resident').toLowerCase();
     const statusFilter = String(req.query.status || 'all').toLowerCase();
+    const locationFilter = String(req.query.locationStatus || 'all').toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(5, parseInt(req.query.limit, 10) || 10));
@@ -1198,11 +1274,16 @@ async function getAdminUsers(req, res) {
       `SELECT u.id, u.user_code, u.name, u.email, u.role_id, u.role AS user_role, r.name AS role_name,
               u.status, u.account_status, u.safety_status, u.last_login_at, u.created_at,
               up.first_name, up.last_name, up.phone_number, up.street_address, up.barangay, up.city,
-              up.verification_status,
-              rp.badge_number, rp.callsign, rp.assigned_unit, rp.department, rp.specialization, rp.availability_status
+              up.verification_status, up.location_verification_status, up.location_verification_method,
+              up.location_accuracy_meters, up.location_boundary_distance_meters,
+              up.location_verified_at, up.location_verified_by, up.location_review_reason,
+              verifier.name AS location_verified_by_name,
+              rp.badge_number, rp.callsign, rp.assigned_unit, rp.department, rp.specialization, rp.availability_status,
+              rp.organization, rp.designation, rp.service_id
        FROM users u
        LEFT JOIN roles r ON r.id = u.role_id
        LEFT JOIN user_profiles up ON up.user_id = u.id
+       LEFT JOIN users verifier ON verifier.id = up.location_verified_by
        LEFT JOIN responder_profiles rp ON rp.user_id = u.id
        WHERE (u.role_id = ? OR (u.role_id IS NULL AND LOWER(u.role) = ?))
        ORDER BY u.created_at DESC, u.id DESC`,
@@ -1222,6 +1303,10 @@ async function getAdminUsers(req, res) {
     const filtered = uniqueUsersList.filter((u) => {
       const acctStatus = String(u.account_status || u.status || 'active').toLowerCase();
       if (statusFilter !== 'all' && acctStatus !== statusFilter) return false;
+      if (locationFilter !== 'all' && targetRoleId === ROLE_IDS.RESIDENT) {
+        const locStatus = String(u.location_verification_status || 'pending_review').toLowerCase();
+        if (locStatus !== locationFilter) return false;
+      }
       if (search) {
         const rawId = String(u.id);
         const userCode = String(u.user_code || '').toLowerCase();
@@ -1256,11 +1341,23 @@ async function getAdminUsers(req, res) {
           ? `${u.street_address}, ${u.barangay || 'Barangay Bayanan'}`
           : 'Barangay Bayanan, Muntinlupa City',
         verificationStatus: u.verification_status || 'Unverified Resident',
+        locationVerificationStatus: u.location_verification_status || 'pending_review',
+        locationVerificationMethod: u.location_verification_method || 'none',
+        locationAccuracyMeters: u.location_accuracy_meters !== null && u.location_accuracy_meters !== undefined ? Number(u.location_accuracy_meters) : null,
+        locationBoundaryDistanceMeters: u.location_boundary_distance_meters !== null && u.location_boundary_distance_meters !== undefined ? Number(u.location_boundary_distance_meters) : null,
+        locationVerifiedAt: u.location_verified_at || null,
+        locationVerifiedBy: u.location_verified_by || null,
+        locationVerifiedByName: u.location_verified_by_name || null,
+        locationReviewReason: u.location_review_reason || null,
         badgeNumber: u.badge_number || null,
         callsign: u.callsign || null,
         assignedUnit: u.assigned_unit || null,
         department: u.department || null,
         specialization: u.specialization || null,
+        organization: u.organization || u.department || 'Barangay Bayanan Emergency Response Team',
+        responderUnit: u.organization || u.assigned_unit || 'Barangay Bayanan Emergency Response Team',
+        designation: u.designation || u.specialization || null,
+        serviceId: u.service_id || u.badge_number || null,
         availabilityStatus: u.availability_status || null,
         lastLoginAt: u.last_login_at,
         registeredAt: u.created_at,
@@ -1294,35 +1391,67 @@ async function createResponderAccount(req, res) {
 
   const {
     first_name,
-    last_name,
     firstName: bodyFirstName,
+    middle_name,
+    middleName: bodyMiddleName,
+    last_name,
     lastName: bodyLastName,
     surname,
     email,
     password,
+    contact_number,
     phone_number,
     phone,
+    organization,
+    custom_organization,
+    organization_name,
+    organizationName,
+    designation,
+    custom_designation,
+    customDesignation,
+    service_id,
+    serviceId,
+    organization_id,
+    organizationId,
     badge_number,
     badgeNumber,
     callsign,
-    assigned_unit,
-    assignedUnit,
-    department,
-    specialization,
+    account_status,
+    status,
   } = req.body || {};
 
+  const FIXED_ORGANIZATION = 'Barangay Bayanan Emergency Response Team';
   const firstName = String(first_name || bodyFirstName || '').trim().slice(0, 80);
+  const middleName = String(middle_name || bodyMiddleName || '').trim().slice(0, 80) || null;
   const lastName = String(last_name || bodyLastName || surname || '').trim().slice(0, 80);
-  const fullName = `${firstName} ${lastName}`.trim();
+  const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
   const normalizedEmail = String(email || '').trim().toLowerCase();
-  const badge = String(badge_number || badgeNumber || '').trim().slice(0, 50);
-  const unit = String(assigned_unit || assignedUnit || '').trim().slice(0, 120);
-  const userPhone = String(phone_number || phone || '').trim().slice(0, 30);
-  const dept = String(department || 'Barangay Bayanan Emergency Operations').trim().slice(0, 120);
+  const contactNo = String(contact_number || phone_number || phone || '').trim().slice(0, 30);
 
-  if (!firstName || !lastName || !badge || !unit) {
+  // Single fixed responder organization for Barangay Bayanan
+  const effectiveOrg = FIXED_ORGANIZATION;
+
+  // Resolve designation / position
+  const rawDesig = String(designation || '').trim().slice(0, 120);
+  const customDesig = String(custom_designation || customDesignation || '').trim().slice(0, 120);
+  const effectiveDesignation = (rawDesig === 'Other' && customDesig)
+    ? customDesig
+    : (rawDesig !== 'Other' && rawDesig ? rawDesig : customDesig);
+
+  const serviceIdVal = String(service_id || serviceId || organization_id || organizationId || badge_number || badgeNumber || '').trim().slice(0, 50) || null;
+  const rawStatus = String(account_status || status || 'active').trim().toLowerCase();
+  const isInactive = rawStatus === 'inactive' || rawStatus === 'deactivated';
+  const finalStatus = isInactive ? 'deactivated' : 'active';
+
+  if (!firstName || !lastName || !normalizedEmail || !contactNo || !effectiveDesignation) {
     return res.status(400).json({
-      error: 'First name, surname, badge number, and assigned unit are required for Responder accounts.',
+      error: 'First name, last name, email, contact number, and designation are required for Responder accounts.',
+    });
+  }
+
+  if (rawDesig === 'Other' && !customDesig) {
+    return res.status(400).json({
+      error: 'Please specify the custom designation / position when "Other" is selected.',
     });
   }
 
@@ -1336,40 +1465,53 @@ async function createResponderAccount(req, res) {
       return res.status(409).json({ error: 'Email address is already registered.' });
     }
 
-    const [dupBadge] = await conn.query(
-      'SELECT id FROM responder_profiles WHERE badge_number = ? LIMIT 1 FOR UPDATE',
-      [badge]
-    );
-    if (dupBadge.length > 0) {
-      await conn.rollback();
-      return res.status(409).json({ error: 'Badge number is already assigned to another Responder.' });
+    if (serviceIdVal) {
+      const [dupServiceId] = await conn.query(
+        'SELECT id FROM responder_profiles WHERE service_id = ? OR badge_number = ? LIMIT 1 FOR UPDATE',
+        [serviceIdVal, serviceIdVal]
+      );
+      if (dupServiceId.length > 0) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Organization ID / Service ID is already assigned to another Responder.' });
+      }
     }
 
+    // Automatically generate unique Responder ID via the centralized ID-generation system (e.g. RSPDR-0001)
     const { userCode } = await generateNextUserCode(conn, ROLE_IDS.RESPONDER);
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+    // Always generate secure temporary credentials on the server (never allow admin to set permanent password)
+    const temporaryPassword = `GS@${crypto.randomBytes(4).toString('hex')}#${crypto.randomInt(100, 1000)}`;
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS);
+    const badge = serviceIdVal || userCode;
+
     const [insertRes] = await conn.query(
-      `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
-       VALUES (?, ?, ?, ?, ?, 'responder', 'active', 'active')`,
-      [userCode, fullName, normalizedEmail, passwordHash, ROLE_IDS.RESPONDER]
+      `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status, must_change_password)
+       VALUES (?, ?, ?, ?, ?, 'responder', ?, ?, TRUE)`,
+      [userCode, fullName, normalizedEmail, passwordHash, ROLE_IDS.RESPONDER, finalStatus, finalStatus]
     );
     const newResponderId = insertRes.insertId;
 
     await conn.query(
-      `INSERT INTO user_profiles (user_id, first_name, last_name, phone_number, barangay, city, province, verification_status)
-       VALUES (?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', 'Verified Resident')`,
-      [newResponderId, firstName, lastName, userPhone || null]
+      `INSERT INTO user_profiles (user_id, first_name, middle_name, last_name, phone_number, barangay, city, province, verification_status)
+       VALUES (?, ?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', 'Verified Resident')`,
+      [newResponderId, firstName, middleName, lastName, contactNo || null]
     );
 
     await conn.query(
-      `INSERT INTO responder_profiles (user_id, badge_number, callsign, assigned_unit, department, specialization, availability_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Off Duty')`,
+      `INSERT INTO responder_profiles (user_id, badge_number, callsign, assigned_unit, department, specialization, organization, custom_organization, designation, service_id, availability_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
       [
         newResponderId,
         badge,
-        callsign ? String(callsign).trim().slice(0, 50) : null,
-        unit,
-        dept,
-        specialization ? String(specialization).trim().slice(0, 100) : null,
+        callsign ? String(callsign).trim().slice(0, 50) : userCode,
+        FIXED_ORGANIZATION,
+        FIXED_ORGANIZATION,
+        effectiveDesignation,
+        FIXED_ORGANIZATION,
+        effectiveDesignation,
+        serviceIdVal,
+        finalStatus === 'active' ? 'Off Duty' : 'Unavailable',
       ]
     );
 
@@ -1384,31 +1526,52 @@ async function createResponderAccount(req, res) {
         name: fullName,
         email: normalizedEmail,
         role_id: ROLE_IDS.RESPONDER,
+        organization: effectiveOrg,
+        designation: effectiveDesignation,
+        service_id: serviceIdVal,
         badge_number: badge,
-        assigned_unit: unit,
+        status: finalStatus,
       },
       req,
     });
 
     await conn.commit();
+
+    const responderData = {
+      id: newResponderId,
+      responderId: userCode,
+      user_code: userCode,
+      userCode: userCode,
+      userId: userCode,
+      firstName,
+      middleName,
+      lastName,
+      name: fullName,
+      email: normalizedEmail,
+      contactNumber: contactNo,
+      phone: contactNo,
+      organization: effectiveOrg,
+      responderUnit: effectiveOrg,
+      assignedUnit: effectiveOrg,
+      designation: effectiveDesignation,
+      specialization: effectiveDesignation,
+      serviceId: serviceIdVal,
+      roleId: ROLE_IDS.RESPONDER,
+      roleName: 'Responder',
+      badgeNumber: badge,
+      status: finalStatus,
+      account_status: finalStatus,
+      mustChangePassword: true,
+      temporaryPassword,
+    };
+
     return res.status(201).json({
-      message: 'Responder account created.',
-      user: {
-        id: newResponderId,
-        user_code: userCode,
-        userCode: userCode,
-        userId: userCode,
-        name: fullName,
-        email: normalizedEmail,
-        roleId: ROLE_IDS.RESPONDER,
-        roleName: 'Responder',
-        badgeNumber: badge,
-        assignedUnit: unit,
-        status: 'active',
-      },
+      message: 'Responder account created successfully.',
+      responder: responderData,
+      user: responderData,
     });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     console.error('[Admin API] createResponderAccount failed:', err.message);
     return res.status(503).json({ error: 'Unable to create Responder account.' });
   } finally {
@@ -1500,9 +1663,118 @@ async function updateAdminUserStatus(req, res) {
       },
     });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     console.error('[Admin API] updateAdminUserStatus failed:', err.message);
     return res.status(503).json({ error: 'Unable to update account status.' });
+  } finally {
+    conn.release();
+  }
+}
+
+async function reviewResidentLocationVerification(req, res) {
+  const targetUserId = parseInt(req.params.id, 10);
+  if (!Number.isFinite(targetUserId)) {
+    return res.status(400).json({ error: 'Invalid user ID.' });
+  }
+
+  const decision = String((req.body && req.body.decision) || '').trim().toLowerCase();
+  const reason = String((req.body && req.body.reason) || '').trim();
+
+  if (!['approve', 'reject'].includes(decision)) {
+    return res.status(400).json({ error: 'Decision must be either "approve" or "reject".' });
+  }
+  if (!reason || reason.length < 3) {
+    return res.status(400).json({ error: 'A concise reason (minimum 3 characters) is required for manual verification decisions.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT u.id, u.name, u.email, u.role_id,
+              up.verification_status, up.location_verification_status, up.location_verification_method,
+              up.location_review_reason
+       FROM users u
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE u.id = ? LIMIT 1`,
+      [targetUserId]
+    );
+
+    if (!rows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Resident user not found.' });
+    }
+
+    const target = rows[0];
+    if (Number(target.role_id) !== ROLE_IDS.RESIDENT) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Location verification review applies only to Resident accounts.' });
+    }
+
+    const newLocStatus = decision === 'approve' ? 'verified' : 'outside_boundary';
+    const newVerifStatus = decision === 'approve' ? 'Verified Resident' : 'Unverified Resident';
+    const cleanReason = reason.slice(0, 500);
+
+    await conn.query(
+      `UPDATE user_profiles
+       SET location_verification_status = ?,
+           verification_status = ?,
+           location_verification_method = 'manual_admin',
+           location_verified_by = ?,
+           location_verified_at = CURRENT_TIMESTAMP,
+           location_review_reason = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`,
+      [newLocStatus, newVerifStatus, req.user.id, cleanReason, targetUserId]
+    );
+
+    const auditAction = decision === 'approve'
+      ? 'RESIDENT_LOCATION_VERIFICATION_APPROVED'
+      : 'RESIDENT_LOCATION_VERIFICATION_REJECTED';
+
+    await writeAuditLog(conn, {
+      userId: req.user.id,
+      action: auditAction,
+      entityType: 'USER_MANAGEMENT',
+      entityId: String(targetUserId),
+      oldValues: {
+        verification_status: target.verification_status || 'Unverified Resident',
+        location_verification_status: target.location_verification_status || 'pending_review',
+        location_verification_method: target.location_verification_method || 'none',
+        location_review_reason: target.location_review_reason || null,
+      },
+      newValues: {
+        verification_status: newVerifStatus,
+        location_verification_status: newLocStatus,
+        location_verification_method: 'manual_admin',
+        reviewed_by_admin_id: req.user.id,
+        decision,
+        reason: cleanReason,
+      },
+      req,
+    });
+
+    await conn.commit();
+    return res.json({
+      message: decision === 'approve'
+        ? 'Resident location verification approved.'
+        : 'Resident location verification rejected.',
+      resident: {
+        id: target.id,
+        name: target.name,
+        email: target.email,
+        verificationStatus: newVerifStatus,
+        locationVerificationStatus: newLocStatus,
+        locationVerificationMethod: 'manual_admin',
+        locationVerifiedBy: req.user.id,
+        locationReviewReason: cleanReason,
+      },
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Admin API] reviewResidentLocationVerification failed:', err.message);
+    return res.status(503).json({ error: 'Unable to update resident location verification.' });
   } finally {
     conn.release();
   }
@@ -1577,7 +1849,7 @@ async function getAdminAuditLogs(req, res) {
         if (row.new_values) {
           try {
             meta = typeof row.new_values === 'string' ? JSON.parse(row.new_values) : row.new_values;
-          } catch (_) {}
+          } catch (_) { }
         }
         const activityName = (row.action === 'RESIDENT_SELF_REGISTERED' || row.action === 'ADMIN_CREATE_RESIDENT')
           ? 'USER_REGISTERED'
@@ -1682,10 +1954,12 @@ async function getAdminRespondersList(req, res) {
     const [rows] = await pool.query(
       `SELECT 
          u.id AS user_id,
+         u.user_code,
          u.email,
          u.status AS account_status,
          u.created_at AS registered_at,
          up.first_name,
+         up.middle_name,
          up.last_name,
          up.phone_number,
          rp.badge_number,
@@ -1693,6 +1967,10 @@ async function getAdminRespondersList(req, res) {
          rp.assigned_unit,
          rp.department,
          rp.specialization,
+         rp.organization,
+         rp.custom_organization,
+         rp.designation,
+         rp.service_id,
          rp.availability_status,
          rp.current_latitude,
          rp.current_longitude,
@@ -1720,15 +1998,23 @@ async function getAdminRespondersList(req, res) {
     const responders = rows.map((r) => {
       const activeInc = Number(r.active_incident_assignments || 0);
       const activeRes = Number(r.active_rescue_assignments || 0);
+      const effectiveOrg = (r.organization === 'Other' && r.custom_organization) ? r.custom_organization : (r.organization || r.department || 'Emergency Operations');
       return {
         id: r.user_id,
+        userCode: r.user_code || r.badge_number,
+        responderId: r.user_code || r.badge_number,
         badgeNumber: r.badge_number,
+        serviceId: r.service_id || '',
         callsign: r.callsign || '',
-        assignedUnit: r.assigned_unit,
+        assignedUnit: r.assigned_unit || r.designation || '',
         department: r.department,
-        specialization: r.specialization || 'Emergency Operations',
-        fullName: [r.first_name, r.last_name].filter(Boolean).join(' ') || r.badge_number,
+        organization: effectiveOrg,
+        rawOrganization: r.organization || '',
+        designation: r.designation || r.assigned_unit || '',
+        specialization: r.specialization || effectiveOrg,
+        fullName: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' ') || r.badge_number,
         firstName: r.first_name || '',
+        middleName: r.middle_name || '',
         lastName: r.last_name || '',
         email: r.email,
         phone: r.phone_number || '',
@@ -1798,6 +2084,20 @@ async function assignResponder(req, res) {
         await conn.rollback();
         return res.status(404).json({ error: 'Incident report not found.' });
       }
+      if (['resolved', 'false_alarm', 'dismissed'].includes(String(report.status || '').toLowerCase())) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Cannot dispatch a responder to a closed incident report.' });
+      }
+      const [[existingIncAssign]] = await conn.query(
+        `SELECT id FROM incident_assignments
+         WHERE report_id = ? AND assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene')
+         LIMIT 1`,
+        [idToAssign]
+      );
+      if (existingIncAssign || report.assigned_to) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This incident report already has an active responder assigned.' });
+      }
       const refNum = report.reference_number || `INC-${idToAssign}`;
 
       const [assignRes] = await conn.query(
@@ -1827,7 +2127,6 @@ async function assignResponder(req, res) {
       await insertNotificationForUsers(conn, {
         title: `Responder Dispatched: ${refNum}`,
         message: `Responder ${responderName} (${responderUser.badge_number}) has been assigned to incident ${refNum}.`,
-        severity: 'High',
         category: 'Alert',
         createdBy: req.user.id,
         userIds: [report.user_id, respUserId],
@@ -1865,7 +2164,7 @@ async function assignResponder(req, res) {
           badgeNumber: responderUser.badge_number,
           residentId: report.user_id,
         });
-      } catch (e) {}
+      } catch (e) { }
 
       return res.json({
         message: `Assigned responder ${responderName} to incident ${refNum}.`,
@@ -1877,6 +2176,20 @@ async function assignResponder(req, res) {
       if (!rescue) {
         await conn.rollback();
         return res.status(404).json({ error: 'Rescue request not found.' });
+      }
+      if (['Completed', 'Cancelled'].includes(rescue.status)) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Cannot dispatch a responder to a closed rescue request.' });
+      }
+      const [[existingResAssign]] = await conn.query(
+        `SELECT id FROM rescue_assignments
+         WHERE rescue_id = ? AND assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene')
+         LIMIT 1`,
+        [idToAssign]
+      );
+      if (existingResAssign) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This rescue request already has an active responder assigned.' });
       }
       const refNum = rescue.reference_number || `RES-${idToAssign}`;
 
@@ -1906,7 +2219,6 @@ async function assignResponder(req, res) {
       await insertNotificationForUsers(conn, {
         title: `Rescue Team Dispatched: ${refNum}`,
         message: `Responder ${responderName} (${responderUser.badge_number}) has been assigned to rescue request ${refNum}.`,
-        severity: 'Critical',
         category: 'Alert',
         createdBy: req.user.id,
         userIds: [rescue.user_id, respUserId],
@@ -1944,7 +2256,7 @@ async function assignResponder(req, res) {
           badgeNumber: responderUser.badge_number,
           residentId: rescue.user_id,
         });
-      } catch (e) {}
+      } catch (e) { }
 
       return res.json({
         message: `Assigned responder ${responderName} to rescue ${refNum}.`,
@@ -2038,6 +2350,50 @@ async function createResidentAccount(req, res) {
 // 7. EMERGENCY BROADCASTS (GET & POST /api/admin/broadcasts)
 // ============================================================================
 
+async function getBroadcastCategories(req, res) {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, slug, badge_color, priority, description, is_active
+       FROM broadcast_categories
+       WHERE is_active = TRUE
+       ORDER BY priority ASC, name ASC`
+    );
+    return res.json({ categories: rows });
+  } catch (err) {
+    console.error('[Admin API] getBroadcastCategories failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load broadcast categories.' });
+  }
+}
+
+async function createBroadcastCategory(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+  const name = String(req.body.name || '').trim();
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `cat-${Date.now()}`;
+  const badgeColor = String(req.body.badge_color || defaultColorForName(name)).trim().toLowerCase();
+  const priority = Math.min(5, Math.max(1, parseInt(req.body.priority, 10) || 4));
+  const description = req.body.description ? String(req.body.description).trim() : null;
+
+  try {
+    const [existing] = await pool.query('SELECT id FROM broadcast_categories WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'A broadcast category with this name already exists.' });
+    }
+    const [ins] = await pool.query(
+      `INSERT INTO broadcast_categories (name, slug, badge_color, priority, description, is_active)
+       VALUES (?, ?, ?, ?, ?, TRUE)`,
+      [name, slug, badgeColor, priority, description]
+    );
+    const [[created]] = await pool.query('SELECT * FROM broadcast_categories WHERE id = ?', [ins.insertId]);
+    return res.status(201).json({ category: created });
+  } catch (err) {
+    console.error('[Admin API] createBroadcastCategory failed:', err.message);
+    return res.status(500).json({ error: 'Unable to create broadcast category.' });
+  }
+}
+
 async function getEmergencyBroadcasts(req, res) {
   try {
     const [rows] = await pool.query(
@@ -2045,6 +2401,8 @@ async function getEmergencyBroadcasts(req, res) {
          ebl.id,
          ebl.title,
          ebl.message,
+         ebl.category_id,
+         ebl.advisory_type,
          ebl.severity,
          ebl.target_scope,
          ebl.target_zones,
@@ -2053,30 +2411,42 @@ async function getEmergencyBroadcasts(req, res) {
          ebl.broadcasted_at,
          ebl.expires_at,
          ebl.is_active,
+         bc.name AS category_name,
+         bc.badge_color AS category_color,
+         bc.priority AS category_priority,
          u.email AS author_email,
          up.first_name AS author_first_name,
          up.last_name AS author_last_name
        FROM emergency_broadcast_logs ebl
+       LEFT JOIN broadcast_categories bc ON ebl.category_id = bc.id
        LEFT JOIN users u ON ebl.authorized_by = u.id
        LEFT JOIN user_profiles up ON u.id = up.user_id
        ORDER BY ebl.broadcasted_at DESC
        LIMIT 100`
     );
 
-    const broadcasts = rows.map((b) => ({
-      id: b.id,
-      referenceNumber: `BRD-${String(b.id).padStart(4, '0')}`,
-      title: b.title,
-      message: b.message,
-      severity: b.severity,
-      targetScope: b.target_scope,
-      targetZones: b.target_zones || '',
-      recipientsCount: Number(b.recipients_count || 0),
-      authorizedBy: [b.author_first_name, b.author_last_name].filter(Boolean).join(' ') || b.author_email || 'Administrator',
-      broadcastedAt: b.broadcasted_at,
-      expiresAt: b.expires_at,
-      isActive: Boolean(b.is_active),
-    }));
+    const broadcasts = rows.map((b) => {
+      const categoryName = b.category_name || b.advisory_type || 'Other';
+      return {
+        id: b.id,
+        referenceNumber: `BRD-${String(b.id).padStart(4, '0')}`,
+        title: b.title,
+        message: b.message,
+        categoryId: b.category_id || null,
+        categoryName,
+        advisoryType: categoryName,
+        badgeColor: b.category_color || defaultColorForName(categoryName),
+        priority: Number(b.category_priority || 5),
+        severity: b.severity || 'medium',
+        targetScope: b.target_scope,
+        targetZones: b.target_zones || '',
+        recipientsCount: Number(b.recipients_count || 0),
+        authorizedBy: [b.author_first_name, b.author_last_name].filter(Boolean).join(' ') || b.author_email || 'Administrator',
+        broadcastedAt: b.broadcasted_at,
+        expiresAt: b.expires_at,
+        isActive: Boolean(b.is_active),
+      };
+    });
 
     return res.json({ broadcasts, total: broadcasts.length });
   } catch (err) {
@@ -2091,44 +2461,41 @@ async function createEmergencyBroadcast(req, res) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { title, message, severity, target_scope, targetScope, target_zones, targetZones } = req.body;
+  const { title, message, category_id, advisory_type, advisoryType: bodyAdvisoryType, category, target_scope, targetScope, target_zones, targetZones } = req.body;
   const broadcastTitle = String(title || '').trim();
   const broadcastMsg = String(message || '').trim();
-  const rawSev = String(severity || 'Advisory').trim();
+  const rawCategoryName = String(advisory_type || bodyAdvisoryType || category || '').trim();
   const scope = target_scope || targetScope || 'All Barangay Bayanan';
   const zones = target_zones || targetZones || null;
 
-  // Support manual alert levels (Critical, High, Moderate) as well as broadcast ENUM labels
-  const sevLower = rawSev.toLowerCase();
-  let broadcastSeverity = 'Advisory';
-  let mappedAlertSeverity = 'medium';
-  let displayLevel = 'Moderate';
-
-  if (sevLower === 'critical' || sevLower === 'critical evacuation') {
-    broadcastSeverity = 'Critical Evacuation';
-    mappedAlertSeverity = 'critical';
-    displayLevel = 'Critical';
-  } else if (sevLower === 'high' || sevLower === 'warning') {
-    broadcastSeverity = 'Warning';
-    mappedAlertSeverity = 'high';
-    displayLevel = 'High';
-  } else if (sevLower === 'moderate' || sevLower === 'medium' || sevLower === 'watch') {
-    broadcastSeverity = 'Watch';
-    mappedAlertSeverity = 'medium';
-    displayLevel = 'Moderate';
-  } else if (sevLower === 'low' || sevLower === 'advisory') {
-    broadcastSeverity = 'Advisory';
-    mappedAlertSeverity = 'low';
-    displayLevel = 'Moderate';
-  } else {
-    return res.status(400).json({
-      error: 'Invalid severity. Must be one of: Critical, High, Moderate, Advisory, Watch, Warning, Critical Evacuation',
-    });
+  let categoryRow = null;
+  if (category_id !== undefined && category_id !== null && String(category_id).trim() !== '') {
+    const parsedId = parseInt(category_id, 10);
+    if (Number.isInteger(parsedId) && parsedId > 0) {
+      const [catRows] = await pool.query('SELECT * FROM broadcast_categories WHERE id = ? AND is_active = TRUE LIMIT 1', [parsedId]);
+      categoryRow = catRows[0] || null;
+    }
+  } else if (rawCategoryName) {
+    const [catRows] = await pool.query('SELECT * FROM broadcast_categories WHERE LOWER(name) = LOWER(?) AND is_active = TRUE LIMIT 1', [rawCategoryName]);
+    categoryRow = catRows[0] || null;
   }
+
+  if (!categoryRow) {
+    return res.status(400).json({ error: 'Invalid or inactive advisory category selected.' });
+  }
+  const advisoryType = categoryRow.name;
+  const broadcastSeverity = broadcastSeverityForCategory(categoryRow);
+  const alertSeverity = alertSeverityForCategory(categoryRow);
 
   const validScopes = ['All Barangay Bayanan', 'Lakeshore Zone', 'Specific Purok', 'Responders Only'];
   if (!validScopes.includes(scope)) {
     return res.status(400).json({ error: `Invalid target scope. Must be one of: ${validScopes.join(', ')}` });
+  }
+  if (!broadcastTitle || !broadcastMsg) {
+    return res.status(400).json({ error: 'Both alert title and emergency message details are required.' });
+  }
+  if (scope === 'Specific Purok' && !String(zones || '').trim()) {
+    return res.status(400).json({ error: 'Please specify the affected Purok or specific zones.' });
   }
 
   const conn = await pool.getConnection();
@@ -2138,37 +2505,75 @@ async function createEmergencyBroadcast(req, res) {
     let recipientRows = [];
     if (scope === 'Responders Only') {
       const [rows] = await conn.query(
-        "SELECT id FROM users WHERE role_id = ? AND status = 'active'",
-        [ROLE_IDS.RESPONDER]
+        "SELECT id FROM users WHERE role_id = ? AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
+        [ROLE_IDS.RESPONDER, req.user.id]
       );
       recipientRows = rows;
+    } else if ((scope === 'Lakeshore Zone' || scope === 'Specific Purok') && String(zones || '').trim()) {
+      const zoneTokens = String(zones)
+        .split(/[,;/]+/)
+        .map((z) => z.trim())
+        .filter(Boolean);
+      let residentRows = [];
+      if (zoneTokens.length > 0) {
+        const likeClauses = zoneTokens.map(() => 'LOWER(COALESCE(up.street_address, \'\')) LIKE ?').join(' OR ');
+        const likeParams = zoneTokens.map((z) => `%${z.toLowerCase()}%`);
+        const [matchedRows] = await conn.query(
+          `SELECT u.id
+           FROM users u
+           LEFT JOIN user_profiles up ON u.id = up.user_id
+           WHERE u.role_id = ?
+             AND u.status = 'active'
+             AND LOWER(u.account_status) = 'active'
+             AND u.id <> ?
+             AND (${likeClauses})`,
+          [ROLE_IDS.RESIDENT, req.user.id, ...likeParams]
+        );
+        residentRows = matchedRows;
+      }
+      if (residentRows.length === 0) {
+        const [allResidents] = await conn.query(
+          "SELECT id FROM users WHERE role_id = ? AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
+          [ROLE_IDS.RESIDENT, req.user.id]
+        );
+        residentRows = allResidents;
+      }
+      const [responderRows] = await conn.query(
+        "SELECT id FROM users WHERE role_id = ? AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
+        [ROLE_IDS.RESPONDER, req.user.id]
+      );
+      recipientRows = [...residentRows, ...responderRows];
     } else {
-      const [rows] = await conn.query("SELECT id FROM users WHERE status = 'active'");
+      const [rows] = await conn.query(
+        "SELECT id FROM users WHERE role_id IN (?, ?) AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
+        [ROLE_IDS.RESIDENT, ROLE_IDS.RESPONDER, req.user.id]
+      );
       recipientRows = rows;
     }
-    const recipientCount = recipientRows.length;
+    const uniqueRecipientIds = Array.from(new Set(recipientRows.map((u) => Number(u.id)).filter((id) => id > 0)));
+    const recipientCount = uniqueRecipientIds.length;
 
     const [bRes] = await conn.query(
       `INSERT INTO emergency_broadcast_logs 
-         (title, message, severity, target_scope, target_zones, recipients_count, authorized_by, broadcasted_at, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), 1)`,
-      [broadcastTitle, broadcastMsg, broadcastSeverity, scope, zones, recipientCount, req.user.id]
+         (title, message, category_id, advisory_type, severity, target_scope, target_zones, recipients_count, authorized_by, broadcasted_at, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), TRUE)`,
+      [broadcastTitle, broadcastMsg, categoryRow.id, advisoryType, broadcastSeverity, scope, zones ? String(zones).trim() : null, recipientCount, req.user.id]
     );
     const broadcastId = bRes.insertId;
 
     const [alertRes] = await conn.query(
       `INSERT INTO alerts (message, severity, created_by, created_at)
        VALUES (?, ?, ?, NOW())`,
-      [`[${displayLevel.toUpperCase()}] ${broadcastTitle}: ${broadcastMsg}`, mappedAlertSeverity, req.user.id]
+      [`${broadcastTitle}: ${broadcastMsg}`, alertSeverity, req.user.id]
     );
 
     await insertNotificationForUsers(conn, {
-      title: `[${displayLevel}] ${broadcastTitle}`,
+      title: broadcastTitle,
       message: broadcastMsg,
-      severity: mappedAlertSeverity === 'critical' ? 'Critical' : 'High',
       category: 'Alert',
+      advisoryType,
       createdBy: req.user.id,
-      userIds: recipientRows.map((u) => u.id),
+      userIds: uniqueRecipientIds,
     });
 
     await writeAuditLog(conn, {
@@ -2176,7 +2581,7 @@ async function createEmergencyBroadcast(req, res) {
       action: 'CREATE_EMERGENCY_BROADCAST',
       entityType: 'emergency_broadcast_logs',
       entityId: broadcastId,
-      newValues: { title: broadcastTitle, severity: broadcastSeverity, level: displayLevel, target_scope: scope, recipients_count: recipientCount },
+      newValues: { title: broadcastTitle, category_id: categoryRow.id, advisory_type: advisoryType, target_scope: scope, recipients_count: recipientCount },
       req,
     });
 
@@ -2189,11 +2594,17 @@ async function createEmergencyBroadcast(req, res) {
       title: broadcastTitle,
       message: broadcastMsg,
       description: broadcastMsg,
-      severity: displayLevel,
-      broadcastSeverity,
-      rawSeverity: mappedAlertSeverity,
+      categoryId: categoryRow.id,
+      categoryName: advisoryType,
+      advisoryType,
+      badgeColor: categoryRow.badge_color,
+      priority: Number(categoryRow.priority || 5),
+      severity: broadcastSeverity,
       targetScope: scope,
+      targetZones: zones ? String(zones).trim() : '',
       recipientsCount: recipientCount,
+      actorUserId: req.user.id,
+      authorizedById: req.user.id,
       broadcastedAt: new Date().toISOString(),
     };
 
@@ -2207,6 +2618,9 @@ async function createEmergencyBroadcast(req, res) {
   } catch (err) {
     await conn.rollback();
     console.error('[Admin API] createEmergencyBroadcast failed:', err.message);
+    if (err.code === '23514' || err.code === '23502' || err.code === '22P02') {
+      return res.status(400).json({ error: 'Invalid broadcast field value. Please verify category, target scope, and message fields.' });
+    }
     return res.status(500).json({ error: 'Unable to save emergency broadcast.' });
   } finally {
     conn.release();
@@ -2254,56 +2668,72 @@ function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
   return { clause: '1=1', params: [] };
 }
 
+/**
+ * Aggregate genuine incident reports grouped by disaster category via incident_categories join.
+ * Prevents join-induced duplicates with COUNT(DISTINCT r.id) and computes exact percentages.
+ */
+async function getReportCategoryDistribution(dateFilter = { clause: '1=1', params: [] }) {
+  const [groupedRows] = await pool.query(
+    `SELECT
+       COALESCE(ic.name, NULLIF(TRIM(r.incident_type), ''), 'Uncategorized') AS name,
+       COUNT(DISTINCT r.id)::int AS count
+     FROM reports r
+     LEFT JOIN incident_categories ic ON ic.id = r.category_id
+     WHERE ${dateFilter.clause}
+     GROUP BY COALESCE(ic.name, NULLIF(TRIM(r.incident_type), ''), 'Uncategorized')
+     ORDER BY count DESC, name ASC`,
+    dateFilter.params
+  );
+
+  const [activeCatRows] = await pool.query(
+    `SELECT name FROM incident_categories WHERE is_active = true ORDER BY id ASC`
+  );
+
+  const totalReports = groupedRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+
+  const categories = groupedRows
+    .map((row) => {
+      const count = Number(row.count || 0);
+      const percentage = totalReports > 0 ? Number(((count / totalReports) * 100).toFixed(1)) : 0;
+      return { name: row.name, count, percentage };
+    })
+    .filter((row) => row.count > 0);
+
+  const countMap = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
+  const allCategories = [...categories];
+  for (const cat of activeCatRows) {
+    if (!countMap.has(String(cat.name || '').toLowerCase())) {
+      allCategories.push({ name: cat.name, count: 0, percentage: 0 });
+    }
+  }
+
+  return { totalReports, categories, allCategories };
+}
+
 async function getAdminAnalytics(req, res) {
   try {
     const period = String(req.query.period || 'all').toLowerCase();
     const { from, to } = req.query;
 
-    const repDateFilter = buildDateFilterClause(period, from, to, 'created_at');
+    const repDateFilter = buildDateFilterClause(period, from, to, 'r.created_at');
     const resqDateFilter = buildDateFilterClause(period, from, to, 'created_at');
 
-    const [[repCountRow]] = await pool.query(
-      `SELECT COUNT(*) AS count FROM reports WHERE ${repDateFilter.clause}`,
-      repDateFilter.params
-    );
+    const categoryDistribution = await getReportCategoryDistribution(repDateFilter);
+    const totalReports = categoryDistribution.totalReports;
+    const categories = categoryDistribution.categories;
+
     const [[resqCountRow]] = await pool.query(
       `SELECT COUNT(*) AS count FROM rescue_requests WHERE ${resqDateFilter.clause}`,
       resqDateFilter.params
     );
-    const totalReports = Number((repCountRow && repCountRow.count) || 0);
     const totalRescues = Number((resqCountRow && resqCountRow.count) || 0);
 
-    const [categories] = await pool.query(
-      `SELECT COALESCE(NULLIF(incident_type, ''), 'General Incident') AS name, COUNT(*) AS count
-       FROM reports
-       WHERE ${repDateFilter.clause}
-       GROUP BY name
-       ORDER BY count DESC`,
-      repDateFilter.params
-    );
-
-    const [severities] = await pool.query(
-      `SELECT severity, COUNT(*) AS count
-       FROM reports
-       WHERE ${repDateFilter.clause}
-       GROUP BY severity`,
-      repDateFilter.params
-    );
-
     const [statuses] = await pool.query(
-      `SELECT status, COUNT(*) AS count
-       FROM reports
+      `SELECT r.status, COUNT(DISTINCT r.id)::int AS count
+       FROM reports r
        WHERE ${repDateFilter.clause}
-       GROUP BY status`,
+       GROUP BY r.status`,
       repDateFilter.params
-    );
-
-    const [rescuePriorities] = await pool.query(
-      `SELECT priority, status, COUNT(*) AS count
-       FROM rescue_requests
-       WHERE ${resqDateFilter.clause}
-       GROUP BY priority, status`,
-      resqDateFilter.params
     );
 
     const monthExpr = pool.isPostgres
@@ -2321,8 +2751,8 @@ async function getAdminAnalytics(req, res) {
     );
 
     const [locations] = await pool.query(
-      `SELECT COALESCE(NULLIF(address, ''), 'Barangay Bayanan') AS location_name, COUNT(*) AS count
-       FROM reports
+      `SELECT COALESCE(NULLIF(r.address, ''), 'Barangay Bayanan') AS location_name, COUNT(DISTINCT r.id)::int AS count
+       FROM reports r
        WHERE ${repDateFilter.clause}
        GROUP BY location_name
        ORDER BY count DESC
@@ -2330,13 +2760,31 @@ async function getAdminAnalytics(req, res) {
       repDateFilter.params
     );
 
-    const [[assignStatsRow]] = await pool.query(
+    const [[incAssignRow]] = await pool.query(
       `SELECT 
-         COUNT(*) AS total_assignments,
-         SUM(CASE WHEN assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene') THEN 1 ELSE 0 END) AS active_assignments,
-         SUM(CASE WHEN assignment_status = 'Completed' THEN 1 ELSE 0 END) AS completed_assignments
+         COUNT(DISTINCT report_id) AS total_assignments,
+         COUNT(DISTINCT CASE WHEN assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene') THEN report_id END) AS active_assignments,
+         COUNT(DISTINCT CASE WHEN assignment_status = 'Completed' THEN report_id END) AS completed_assignments
        FROM incident_assignments`
     );
+
+    const [[resAssignRow]] = await pool.query(
+      `SELECT 
+         COUNT(DISTINCT rescue_id) AS total_assignments,
+         COUNT(DISTINCT CASE WHEN assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene') THEN rescue_id END) AS active_assignments,
+         COUNT(DISTINCT CASE WHEN assignment_status = 'Completed' THEN rescue_id END) AS completed_assignments
+       FROM rescue_assignments`
+    );
+
+    const totalAssignments =
+      Number((incAssignRow && incAssignRow.total_assignments) || 0) +
+      Number((resAssignRow && resAssignRow.total_assignments) || 0);
+    const activeAssignments =
+      Number((incAssignRow && incAssignRow.active_assignments) || 0) +
+      Number((resAssignRow && resAssignRow.active_assignments) || 0);
+    const completedAssignments =
+      Number((incAssignRow && incAssignRow.completed_assignments) || 0) +
+      Number((resAssignRow && resAssignRow.completed_assignments) || 0);
 
     return res.json({
       period,
@@ -2344,14 +2792,15 @@ async function getAdminAnalytics(req, res) {
         totalReports,
         totalRescues,
         totalEvents: totalReports + totalRescues,
-        totalAssignments: Number((assignStatsRow && assignStatsRow.total_assignments) || 0),
-        activeAssignments: Number((assignStatsRow && assignStatsRow.active_assignments) || 0),
-        completedAssignments: Number((assignStatsRow && assignStatsRow.completed_assignments) || 0),
+        totalAssignments,
+        activeAssignments,
+        completedAssignments,
       },
       categories,
-      severities,
+      categoryDistribution,
+      severities: [],
       statuses,
-      rescuePriorities,
+      rescuePriorities: [],
       monthlyTrends,
       locations,
     });
@@ -2375,7 +2824,6 @@ async function exportAdminAnalyticsCsv(req, res) {
          'Incident' AS record_type,
          r.incident_type AS category,
          r.title,
-         r.severity,
          r.status,
          r.address,
          r.latitude,
@@ -2398,7 +2846,6 @@ async function exportAdminAnalyticsCsv(req, res) {
          'Rescue' AS record_type,
          rq.emergency_type AS category,
          CONCAT('Rescue (', rq.people_count, ' persons)') AS title,
-         rq.priority AS severity,
          rq.status,
          rq.address,
          rq.latitude,
@@ -2426,7 +2873,6 @@ async function exportAdminAnalyticsCsv(req, res) {
       'Record Type',
       'Category',
       'Title / Description',
-      'Severity',
       'Status',
       'Location Address',
       'Latitude',
@@ -2446,7 +2892,6 @@ async function exportAdminAnalyticsCsv(req, res) {
         escapeCsv(row.record_type),
         escapeCsv(row.category),
         escapeCsv(row.title),
-        escapeCsv(row.severity),
         escapeCsv(row.status),
         escapeCsv(row.address),
         escapeCsv(row.latitude),
@@ -2528,6 +2973,18 @@ async function updateAdminSystemSetting(req, res) {
   if (!key) {
     return res.status(400).json({ error: 'Setting key is required.' });
   }
+  if (key === 'eoc_latitude') {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < -90 || num > 90) {
+      return res.status(400).json({ error: 'EOC latitude must be a valid number between -90 and 90.' });
+    }
+  }
+  if (key === 'eoc_longitude') {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < -180 || num > 180) {
+      return res.status(400).json({ error: 'EOC longitude must be a valid number between -180 and 180.' });
+    }
+  }
 
   const conn = await pool.getConnection();
   try {
@@ -2583,11 +3040,14 @@ module.exports = {
   createResponderAccount,
   createResidentAccount,
   updateAdminUserStatus,
+  reviewResidentLocationVerification,
   getAdminAuditLogs,
   getAdminRespondersList,
   assignResponder,
   getEmergencyBroadcasts,
   createEmergencyBroadcast,
+  getBroadcastCategories,
+  createBroadcastCategory,
   getAdminAnalytics,
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,

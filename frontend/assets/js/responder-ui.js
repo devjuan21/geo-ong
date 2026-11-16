@@ -83,12 +83,154 @@ const GeoSafeResponderUI = {
   },
 
   /**
+   * Inject shared responsive CSS for Desktop Sidebar (1024px+),
+   * Mobile/Tablet Fixed Bottom Nav (<1024px), and safe-area spacing.
+   */
+  injectResponsiveLayoutStyles() {
+    if (document.getElementById('geosafe-responder-layout-css')) return;
+    const style = document.createElement('style');
+    style.id = 'geosafe-responder-layout-css';
+    style.textContent = `
+      :root {
+        --gs-resp-sidebar-width: 240px;
+        --gs-resp-sidebar-collapsed-width: 76px;
+        --gs-resp-bottom-nav-height: 64px;
+      }
+
+      /* Guarantee Operations Map container never collapses to 0px height */
+      main.gs-resp-map-main {
+        position: relative;
+        width: 100%;
+        min-height: 360px;
+      }
+      #responder-operational-map {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        min-height: 360px;
+      }
+      #responder-operational-map .leaflet-top {
+        top: 3.75rem;
+      }
+
+      /* Desktop (1024px+): Fixed Left Sidebar + Offset Body */
+      @media (min-width: 1024px) {
+        body.gs-resp-shell {
+          padding-left: var(--gs-resp-sidebar-width);
+          transition: padding-left 250ms cubic-bezier(0.4, 0, 0.2, 1);
+          overflow-x: hidden;
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed {
+          padding-left: var(--gs-resp-sidebar-collapsed-width);
+        }
+
+        #geosafe-responder-sidebar {
+          display: flex;
+          flex-direction: column;
+          position: fixed;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: var(--gs-resp-sidebar-width);
+          background-color: #ffffff;
+          border-right: 1px solid #EEEEEE;
+          z-index: 40;
+          transition: width 250ms cubic-bezier(0.4, 0, 0.2, 1);
+          overflow: hidden;
+          box-shadow: 2px 0 12px rgba(32, 32, 32, 0.03);
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed #geosafe-responder-sidebar {
+          width: var(--gs-resp-sidebar-collapsed-width);
+        }
+
+        body.gs-resp-shell.gs-resp-sidebar-collapsed .gs-resp-sidebar-text {
+          display: none;
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed .gs-resp-sidebar-brand {
+          justify-content: center;
+          padding-left: 0.5rem;
+          padding-right: 0.5rem;
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed .gs-resp-sidebar-link {
+          justify-content: center;
+          padding-left: 0;
+          padding-right: 0;
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed .gs-resp-sidebar-footer-card {
+          justify-content: center;
+          padding: 0.5rem;
+        }
+
+        #geosafe-responder-bottom-nav {
+          display: none !important;
+        }
+        .gs-resp-header-brand {
+          display: none !important;
+        }
+        .gs-resp-sidebar-toggle {
+          display: inline-flex !important;
+        }
+        main.gs-resp-main {
+          padding-bottom: 2.5rem !important;
+        }
+        main.gs-resp-map-main {
+          height: calc(100vh - 3.5rem) !important;
+          height: calc(100dvh - 3.5rem) !important;
+          padding-bottom: 0 !important;
+        }
+      }
+
+      /* Mobile & Tablet (<1024px): Hidden Sidebar + Fixed Bottom Navigation */
+      @media (max-width: 1023.98px) {
+        body.gs-resp-shell {
+          padding-left: 0 !important;
+          overflow-x: hidden;
+        }
+        #geosafe-responder-sidebar {
+          display: none !important;
+        }
+        #geosafe-responder-bottom-nav {
+          display: block !important;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .gs-resp-sidebar-toggle {
+          display: none !important;
+        }
+        main.gs-resp-main {
+          padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px)) !important;
+        }
+        main.gs-resp-map-main {
+          height: calc(100vh - 3.5rem - var(--gs-resp-bottom-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+          height: calc(100dvh - 3.5rem - var(--gs-resp-bottom-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+          padding-bottom: 0 !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  },
+
+  /**
    * Initialize navigation and shell for the active page
    */
   async init(activePageId, pageTitle = '') {
     const resolvedActiveId = this.resolveActivePageId(activePageId);
     this.activePageId = resolvedActiveId;
 
+    this.injectResponsiveLayoutStyles();
+    document.body.classList.add('gs-resp-shell');
+
+    const savedCollapsed = localStorage.getItem('geosafe_responder_sidebar_collapsed') === 'true';
+    if (savedCollapsed) {
+      document.body.classList.add('gs-resp-sidebar-collapsed');
+    }
+
+    const mainEl = document.querySelector('main');
+    if (mainEl && !mainEl.classList.contains('gs-resp-map-main')) {
+      mainEl.classList.add('gs-resp-main');
+    }
+
+    this.renderDesktopSidebar(resolvedActiveId);
     this.renderTopNav(resolvedActiveId);
     this.renderMobileBottomNav(resolvedActiveId);
     this.setupToastContainer();
@@ -102,84 +244,185 @@ const GeoSafeResponderUI = {
     window.addEventListener('geosafe:responder-availability', (e) => {
       this.updateAvailabilityBadges(e.detail.status);
     });
+
+    if (!this._realtimeNotifBound) {
+      this._realtimeNotifBound = true;
+      window.addEventListener('geosafe:realtime-update', () => {
+        this.syncHeaderResponderData();
+        const modal = document.getElementById('responder-notif-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+          this.openNotificationsModal();
+        }
+      });
+    }
   },
 
   /**
-   * Render Top Navigation Bar for Desktop & Tablet, and Mobile Header
+   * Toggle Desktop Sidebar Expanded/Collapsed state via Header Hamburger Button
+   */
+  toggleDesktopSidebar() {
+    const isCollapsed = document.body.classList.toggle('gs-resp-sidebar-collapsed');
+    localStorage.setItem('geosafe_responder_sidebar_collapsed', String(isCollapsed));
+
+    const toggleBtn = document.getElementById('responder-sidebar-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      toggleBtn.setAttribute('title', isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar');
+    }
+
+    // Notify Leaflet maps after transition so map tiles/viewport resize cleanly
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 260);
+  },
+
+  /**
+   * Render Desktop Fixed Left Sidebar (1024px+)
+   */
+  renderDesktopSidebar(activeId) {
+    let sidebar = document.getElementById('geosafe-responder-sidebar');
+    if (!sidebar) {
+      sidebar = document.createElement('aside');
+      sidebar.id = 'geosafe-responder-sidebar';
+      sidebar.setAttribute('aria-label', 'Responder Navigation');
+      document.body.insertBefore(sidebar, document.body.firstChild);
+    }
+
+    const navLinksHtml = this.navItems.map(item => {
+      const isActive = item.id === activeId;
+      return `
+        <a
+          href="${item.href}"
+          title="${item.label}"
+          class="gs-resp-sidebar-link flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm transition-all duration-200 ${
+            isActive
+              ? 'bg-[#F5B900] text-[#202020] font-bold shadow-sm'
+              : 'text-[#777777] font-semibold hover:text-[#202020] hover:bg-[#FFF9E8]'
+          }"
+        >
+          <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">
+            ${this.getIcon(item.icon, 'w-5 h-5')}
+          </span>
+          <span class="gs-resp-sidebar-text truncate whitespace-nowrap">${item.label}</span>
+        </a>
+      `;
+    }).join('');
+
+    sidebar.innerHTML = `
+      <!-- Top Brand & Responder Identification -->
+      <div class="gs-resp-sidebar-brand h-14 px-4 border-b border-[#EEEEEE] flex items-center gap-2.5 flex-shrink-0">
+        <a href="responder-dashboard.html" class="flex items-center gap-2.5 min-w-0 group" title="GeoSafe Responder Portal">
+          <div class="w-9 h-9 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
+            <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+          </div>
+          <div class="gs-resp-sidebar-text min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="font-black text-sm tracking-tight text-[#202020]">GeoSafe</span>
+              <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase">Responder</span>
+            </div>
+            <span id="sidebar-responder-unit" class="text-[10px] text-[#777777] font-medium block leading-tight truncate">Emergency Operations</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Navigation Section -->
+      <div class="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 custom-scrollbar">
+        <div class="gs-resp-sidebar-text px-3 pb-1 text-[10px] font-bold text-[#777777] uppercase tracking-wider">
+          Responder Portal
+        </div>
+        <nav class="space-y-1" aria-label="Primary Responder Navigation">
+          ${navLinksHtml}
+        </nav>
+      </div>
+
+      <!-- Bottom Unit Card -->
+      <div class="p-3 border-t border-[#EEEEEE] flex-shrink-0">
+        <div class="gs-resp-sidebar-footer-card flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-[#FFFDF7] border border-[#EEEEEE]">
+          <span class="w-2.5 h-2.5 rounded-full bg-[#278653] flex-shrink-0"></span>
+          <div class="gs-resp-sidebar-text min-w-0">
+            <span class="text-xs font-bold text-[#202020] block truncate">Barangay Bayanan</span>
+            <span class="text-[10px] text-[#777777] font-medium block truncate">Emergency Response</span>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Render Top Operational Header Bar (Aligned with content area)
    */
   renderTopNav(activeId) {
     const container = document.getElementById('geosafe-responder-nav-container');
     if (!container) return;
 
-    const navLinksHtml = this.navItems.map(item => {
-      const isActive = item.id === activeId;
-      return `
-        <a href="${item.href}" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm transition-all font-semibold ${
-          isActive
-            ? 'bg-[#F5B900] text-[#202020] shadow-sm font-bold ring-1 ring-[#F5B900]'
-            : 'text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]'
-        }">
-          <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-4 h-4')}</span>
-          <span>${item.label}</span>
-        </a>
-      `;
-    }).join('');
+    const isCollapsed = document.body.classList.contains('gs-resp-sidebar-collapsed');
 
     container.innerHTML = `
       <header class="bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] sticky top-0 z-30 shadow-subtle">
-        <div class="max-w-7xl mx-auto px-3 sm:px-5 lg:px-8">
-          <div class="flex items-center justify-between h-13 sm:h-14 gap-2">
+        <div class="w-full px-3 sm:px-5 lg:px-6">
+          <div class="flex items-center justify-between h-14 gap-2">
             
-            <!-- Left: Logo & Responder Unit -->
-            <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
-              <a href="responder-dashboard.html" class="flex items-center gap-2 group flex-shrink-0">
-                <div class="w-8 h-8 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-xs shadow-subtle ring-2 ring-[#FFE872]">
+            <!-- Left: Desktop Hamburger Toggle + Mobile Brand + Responder Identity -->
+            <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-hidden">
+              <!-- Single Desktop Sidebar Toggle Button (1024px+ only) -->
+              <button
+                type="button"
+                id="responder-sidebar-toggle-btn"
+                onclick="GeoSafeResponderUI.toggleDesktopSidebar()"
+                class="gs-resp-sidebar-toggle hidden items-center justify-center w-9 h-9 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] text-[#202020] transition-colors focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 flex-shrink-0"
+                aria-label="Toggle navigation sidebar"
+                aria-expanded="${String(!isCollapsed)}"
+                title="${isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+              </button>
+
+              <!-- Mobile/Tablet Brand (<1024px only; Desktop shows brand in Sidebar) -->
+              <a href="responder-dashboard.html" class="gs-resp-header-brand flex items-center gap-2 group min-w-0 flex-1 lg:flex-initial">
+                <div class="w-8 h-8 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
                   <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 </div>
-                <div>
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-black text-sm tracking-tight text-[#202020]">GeoSafe</span>
-                    <span class="text-[9px] font-black px-1.5 py-0.2 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase">Responder</span>
+                <div class="min-w-0 flex-1 overflow-hidden">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="font-black text-sm tracking-tight text-[#202020] truncate">GeoSafe</span>
+                    <span class="hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase flex-shrink-0">Responder</span>
                   </div>
-                  <span id="header-responder-unit" class="text-[10px] text-[#777777] font-medium block leading-none">Emergency Operations</span>
+                  <span id="header-responder-unit" class="text-[10px] text-[#777777] font-medium block leading-tight truncate">Emergency Operations</span>
                 </div>
               </a>
 
-              <!-- Responder Identity Display (Compact) -->
-              <div class="hidden sm:block border-l border-[#EEEEEE] pl-2.5">
+              <!-- Responder Identity Display -->
+              <div class="hidden sm:block lg:border-l-0 border-l border-[#EEEEEE] pl-2.5 lg:pl-0 min-w-0">
                 <span class="text-[9px] text-[#777777] uppercase font-bold tracking-wider block">Responder</span>
-                <span id="header-responder-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[140px]">—</span>
+                <span id="header-responder-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[180px]">—</span>
               </div>
             </div>
 
-            <!-- Center: Desktop & Tablet Navigation (Exactly 4 Items) -->
-            <nav class="hidden md:flex items-center gap-1 lg:gap-1.5">
-              ${navLinksHtml}
-            </nav>
-
             <!-- Right: Interactive Duty Status, Notifications & Profile Avatar -->
-            <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
               
               <!-- Interactive Duty Status Pill -->
-              <button type="button" onclick="GeoSafeResponderUI.openDutyStatusModal()" id="header-duty-btn" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-subtle border cursor-pointer bg-slate-100 text-[#777777] border-slate-200 hover:bg-slate-200" title="Change Duty Availability">
-                <span id="header-duty-dot" class="w-2 h-2 rounded-full bg-[#777777]"></span>
+              <button type="button" onclick="GeoSafeResponderUI.openDutyStatusModal()" id="header-duty-btn" class="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl text-[11px] sm:text-xs font-bold transition-all shadow-subtle border cursor-pointer bg-slate-100 text-[#777777] border-slate-200 hover:bg-slate-200 whitespace-nowrap" title="Change Duty Availability">
+                <span id="header-duty-dot" class="w-2 h-2 rounded-full bg-[#777777] flex-shrink-0"></span>
                 <span id="header-duty-label">Not Configured</span>
-                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg class="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
               </button>
 
               <!-- Notification Bell with Unread Badge -->
-              <button onclick="GeoSafeResponderUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-xl text-[#202020] hover:bg-[#FFF9E8] transition-colors focus:outline-none" title="Notifications">
+              <button onclick="GeoSafeResponderUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-xl text-[#202020] hover:bg-[#FFF9E8] transition-colors focus:outline-none flex-shrink-0" title="Notifications">
                 ${this.getIcon('bell', 'w-4 h-4 sm:w-5 sm:h-5')}
                 <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D93636] ring-2 ring-white"></span>
               </button>
 
               <!-- Interactive Responder Profile Section & Dropdown -->
-              <div class="relative" id="responder-header-profile-wrapper">
+              <div class="relative flex-shrink-0" id="responder-header-profile-wrapper">
                 <button
                   type="button"
                   id="responder-profile-menu-btn"
                   onclick="GeoSafeResponderUI.toggleProfileDropdown(event)"
-                  class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
+                  class="flex items-center gap-1 sm:gap-2 p-0.5 sm:p-1 sm:pl-1.5 sm:pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
                   aria-haspopup="true"
                   aria-expanded="false"
                   title="Account menu"
@@ -254,7 +497,7 @@ const GeoSafeResponderUI = {
       document.body.appendChild(bottomNavContainer);
     }
 
-    bottomNavContainer.className = 'md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#EEEEEE] shadow-[0_-4px_20px_rgba(32,32,32,0.06)]';
+    bottomNavContainer.className = 'fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#EEEEEE] shadow-[0_-4px_20px_rgba(32,32,32,0.06)]';
 
     const itemsHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
@@ -280,7 +523,7 @@ const GeoSafeResponderUI = {
     }).join('');
 
     bottomNavContainer.innerHTML = `
-      <div class="max-w-md mx-auto flex items-center justify-around h-16 px-2 safe-area-bottom">
+      <div class="max-w-lg mx-auto flex items-center justify-around h-16 px-2">
         ${itemsHtml}
       </div>
     `;
@@ -351,11 +594,13 @@ const GeoSafeResponderUI = {
 
       const nameEl = document.getElementById('header-responder-name');
       const unitEl = document.getElementById('header-responder-unit');
+      const sidebarUnitEl = document.getElementById('sidebar-responder-unit');
       const avatarEl = document.getElementById('header-profile-avatar');
 
       if (!profile || profile.role !== 'Responder') {
         if (nameEl) nameEl.textContent = 'Not Signed In';
         if (unitEl) unitEl.textContent = 'Access Restricted';
+        if (sidebarUnitEl) sidebarUnitEl.textContent = 'Access Restricted';
         if (avatarEl) avatarEl.textContent = '—';
         this.updateAvailabilityBadges('Not Set');
         return;
@@ -377,8 +622,12 @@ const GeoSafeResponderUI = {
       if (dropdownRole) dropdownRole.textContent = roleName;
       if (dropdownRoleMobile) dropdownRoleMobile.textContent = roleName;
 
+      const unitLabel = profile.assignedUnit || profile.department || 'Emergency Operations';
       if (unitEl) {
-        unitEl.textContent = profile.assignedUnit || profile.department || 'Emergency Operations';
+        unitEl.textContent = unitLabel;
+      }
+      if (sidebarUnitEl) {
+        sidebarUnitEl.textContent = unitLabel;
       }
       if (avatarEl) {
         let initials = '';
@@ -620,30 +869,84 @@ const GeoSafeResponderUI = {
     const listEl = document.getElementById('responder-notif-list');
     if (!listEl) return;
 
+    const escapeTxt = (val) => String(val || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
     try {
       const notifs = await window.geoSafeStore.getNotifications('All');
-      if (!notifs || notifs.length === 0) {
+      this._loadedNotifs = Array.isArray(notifs) ? notifs : [];
+      if (this._loadedNotifs.length === 0) {
         listEl.innerHTML = `
           <div class="py-8 text-center text-xs text-[#777777]">
             <p class="font-semibold text-[#202020]">No notifications available.</p>
-            <p class="text-[11px] mt-0.5">New dispatch assignments will trigger alerts here.</p>
+            <p class="text-[11px] mt-0.5">Dispatch assignments and emergency broadcasts will appear here.</p>
           </div>
         `;
         return;
       }
 
-      listEl.innerHTML = notifs.map(n => `
-        <div class="p-3 rounded-2xl border ${n.read ? 'bg-white border-[#EEEEEE]' : 'bg-[#FFFDF7] border-[#FFE872] shadow-subtle'} space-y-1">
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-bold text-xs text-[#202020]">${n.title}</span>
-            <span class="text-[9px] text-[#777777] whitespace-nowrap">${GeoSafeResponderUI.formatRelativeTime(n.timestamp)}</span>
+      listEl.innerHTML = this._loadedNotifs.map(n => {
+        const badgeLabel = n.advisoryType || (n.category ? n.category.toUpperCase() : 'ALERT');
+        const isUnread = !n.read;
+        return `
+          <div onclick="GeoSafeResponderUI.viewNotificationDetail('${escapeTxt(n.id)}')" role="button" tabindex="0"
+            class="p-3 rounded-2xl border cursor-pointer transition-all hover:border-[#F5B900] ${isUnread ? 'bg-[#FFFDF7] border-[#FFE872] shadow-subtle' : 'bg-white border-[#EEEEEE]'} space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] uppercase flex-shrink-0">${escapeTxt(badgeLabel)}</span>
+                ${isUnread ? '<span class="w-2 h-2 rounded-full bg-[#D93636] flex-shrink-0" title="Unread"></span>' : ''}
+              </div>
+              <span class="text-[9px] text-[#777777] whitespace-nowrap">${GeoSafeResponderUI.formatRelativeTime(n.timestamp)}</span>
+            </div>
+            <div class="font-bold text-xs text-[#202020]">${escapeTxt(n.title)}</div>
+            <p class="text-[11px] text-[#555555] leading-relaxed line-clamp-2">${escapeTxt(n.description)}</p>
           </div>
-          <p class="text-[11px] text-[#555555] leading-relaxed">${n.description}</p>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     } catch (err) {
       listEl.innerHTML = `<div class="py-4 text-center text-xs text-[#D93636]">Could not load notifications.</div>`;
     }
+  },
+
+  async viewNotificationDetail(notifId) {
+    const listEl = document.getElementById('responder-notif-list');
+    const n = (this._loadedNotifs || []).find((item) => String(item.id) === String(notifId));
+    if (!listEl || !n) return;
+
+    const escapeTxt = (val) => String(val || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    if (!n.read && window.geoSafeStore) {
+      try {
+        await window.geoSafeStore.markNotificationAsRead(n.id);
+        n.read = true;
+        await this.syncHeaderResponderData();
+      } catch (_) {}
+    }
+
+    const badgeLabel = n.advisoryType || (n.category ? n.category.toUpperCase() : 'ALERT');
+    listEl.innerHTML = `
+      <div class="space-y-3">
+        <button type="button" onclick="GeoSafeResponderUI.openNotificationsModal()"
+          class="inline-flex items-center gap-1 text-xs font-bold text-[#8A6800] hover:text-[#202020]">
+          <span>← Back to Notifications</span>
+        </button>
+        <div class="p-4 rounded-2xl bg-[#FFFDF7] border border-[#FFE872] space-y-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] uppercase">${escapeTxt(badgeLabel)}</span>
+            <span class="text-[10px] text-[#777777]">${GeoSafeResponderUI.formatRelativeTime(n.timestamp)}</span>
+          </div>
+          <h4 class="text-sm font-black text-[#202020]">${escapeTxt(n.title)}</h4>
+          <p class="text-xs text-[#333333] whitespace-pre-line leading-relaxed">${escapeTxt(n.description)}</p>
+        </div>
+      </div>
+    `;
   },
 
   closeNotificationsModal() {

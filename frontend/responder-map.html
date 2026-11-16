@@ -17,10 +17,36 @@
   <div id="geosafe-responder-nav-container"></div>
 
   <!-- Map Layout (Full Screen / Operational Mode) -->
-  <main class="flex-1 relative flex flex-col w-full pb-28 md:pb-0 h-[calc(100vh-3.5rem)] overflow-hidden">
+  <main class="flex-1 relative flex flex-col w-full gs-resp-map-main h-[calc(100vh-3.5rem)] overflow-hidden" style="min-height: 420px;">
 
     <!-- Leaflet Operational Map Viewport -->
-    <div id="responder-operational-map" class="w-full h-full z-10"></div>
+    <div id="responder-operational-map" class="absolute inset-0 w-full h-full z-10"></div>
+
+    <!-- Empty Operational Targets Pill (non-blocking, keeps base map visible) -->
+    <div id="map-empty-state-pill" class="hidden absolute bottom-4 left-3 z-20 px-3.5 py-2 rounded-2xl bg-white/95 backdrop-blur-md border border-[#EEEEEE] shadow-card text-xs font-semibold text-[#555555] flex items-center gap-2 pointer-events-none">
+      <span class="w-2 h-2 rounded-full bg-[#F5B900] flex-shrink-0"></span>
+      <span id="map-empty-state-text">No active operational targets.</span>
+    </div>
+
+    <!-- Tile Loading Error Banner -->
+    <div id="map-tile-error-banner" class="hidden absolute top-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-80 z-30 p-3 rounded-2xl bg-amber-50/95 backdrop-blur-md border border-amber-200 shadow-card text-xs text-amber-900 flex items-start gap-2">
+      <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      <div>
+        <strong class="block font-bold">Map tiles failed to load</strong>
+        <span class="text-[11px] text-amber-800">Check your internet connection or OpenStreetMap tile availability.</span>
+      </div>
+    </div>
+
+    <!-- Backend Data Error Banner -->
+    <div id="map-data-error-banner" class="hidden absolute top-16 left-3 z-30 max-w-sm p-3 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] shadow-card text-xs text-[#D93636] flex items-center justify-between gap-3">
+      <div>
+        <strong class="block font-bold">Unable to load operational records</strong>
+        <span id="map-data-error-text" class="text-[11px] text-[#B82828]">Database or API request failed.</span>
+      </div>
+      <button type="button" onclick="loadMapData()" class="px-2.5 py-1 rounded-xl bg-white border border-[#FFC2C2] text-[#D93636] font-bold text-[11px] hover:bg-[#FFF9E8] flex-shrink-0">
+        Retry
+      </button>
+    </div>
 
     <!-- Floating Top Controls Bar (Filters & GPS status) -->
     <div class="absolute top-3 left-3 right-3 z-20 flex items-center justify-between gap-2 pointer-events-none">
@@ -62,7 +88,6 @@
         <div class="flex items-center gap-2">
           <span id="sheet-ref" class="font-mono text-xs font-black text-[#202020]">REF-000</span>
           <span id="sheet-type-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]">Rescue</span>
-          <span id="sheet-prio-badge" class="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-slate-100 text-slate-700">High</span>
         </div>
         <button onclick="closeTaskBottomSheet()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8]">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -121,7 +146,6 @@
   <!-- Scripts -->
   <script src="./assets/vendor/leaflet/leaflet.js"></script>
   <script src="./assets/js/mapping-service.js"></script>
-  <script src="./assets/js/mock-data.js"></script>
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/responder-ui.js"></script>

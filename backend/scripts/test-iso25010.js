@@ -113,13 +113,17 @@ async function runTestSuite() {
     assert(dist > 0.3 && dist < 0.6, `Distance should be approximately 0.43km, got: ${dist.toFixed(3)}km`);
   });
 
-  console.log('\n[Module 3] Manual Hazard Alert Levels & Chronological Ordering');
+  console.log('\n[Module 3] Emergency Advisory & Chronological Alert Ordering');
 
-  runTest('Canonical Alert Severity Levels Validation (Critical, High, Moderate)', () => {
-    const canonicalLevels = ['Critical', 'High', 'Moderate'];
-    assert(canonicalLevels.includes('Critical'), 'Critical level supported');
-    assert(canonicalLevels.includes('High'), 'High level supported');
-    assert(canonicalLevels.includes('Moderate'), 'Moderate level supported');
+  runTest('Hazard Alert Chronological Ordering & Category Structure', () => {
+    const alerts = [
+      { id: 1, title: 'Advisory 1', category: 'Flood', created_at: '2026-11-15T08:00:00Z' },
+      { id: 2, title: 'Advisory 2', category: 'Typhoon', created_at: '2026-11-15T09:00:00Z' }
+    ];
+    const sorted = [...alerts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    assert.strictEqual(sorted[0].id, 2, 'Latest advisory ordered first');
+    assert.strictEqual(sorted[1].id, 1, 'Older advisory ordered second');
+    assert.strictEqual(sorted[0].category, 'Typhoon', 'Category accurately recorded');
   });
 
   console.log('\n[Module 4] Security Measures (Encryption, Token Auth, Data Sanitization)');

@@ -2,72 +2,36 @@ const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { emitAlertBroadcast } = require('../services/socketService');
 
-function mapAlertSeverity(raw) {
-  const s = String(raw || 'Moderate').trim().toLowerCase();
-  if (s === 'critical' || s === 'critical evacuation') {
-    return {
-      alertSeverity: 'critical',
-      broadcastSeverity: 'Critical Evacuation',
-      notificationSeverity: 'Critical',
-      label: 'Critical',
-    };
-  }
-  if (s === 'high' || s === 'warning') {
-    return {
-      alertSeverity: 'high',
-      broadcastSeverity: 'Warning',
-      notificationSeverity: 'High',
-      label: 'High',
-    };
-  }
-  if (s === 'low' || s === 'advisory') {
-    return {
-      alertSeverity: 'low',
-      broadcastSeverity: 'Advisory',
-      notificationSeverity: 'High',
-      label: 'Low',
-    };
-  }
-  return {
-    alertSeverity: 'medium',
-    broadcastSeverity: 'Watch',
-    notificationSeverity: 'High',
-    label: 'Moderate',
-  };
-}
-
 async function createAlert(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
 
-  const { title, message, severity, level, targetScope } = req.body;
-  const mapped = mapAlertSeverity(severity || level || 'Moderate');
-  const alertTitle = String(title || `Emergency Alert (${mapped.label})`).trim().slice(0, 150);
+  const { title, message, targetScope } = req.body;
+  const alertTitle = String(title || 'Emergency Alert').trim().slice(0, 150);
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
     const [result] = await connection.query(
-      'INSERT INTO alerts (message, severity, created_by) VALUES (?, ?, ?)',
-      [message, mapped.alertSeverity, req.user.id]
+      'INSERT INTO alerts (message, created_by) VALUES (?, ?)',
+      [message, req.user.id]
     );
 
     const [activeUsers] = await connection.query(
       "SELECT id FROM users WHERE LOWER(account_status) = 'active'"
     );
 
-    // Record immutable emergency broadcast audit trail
+    // Record emergency broadcast audit trail
     await connection.query(
       `INSERT INTO emergency_broadcast_logs
-         (title, message, severity, target_scope, recipients_count, authorized_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (title, message, target_scope, recipients_count, authorized_by)
+       VALUES (?, ?, ?, ?, ?)`,
       [
         alertTitle,
         message,
-        mapped.broadcastSeverity,
         targetScope ? String(targetScope).slice(0, 100) : 'All Barangay Bayanan',
         activeUsers.length,
         req.user.id,
@@ -77,9 +41,9 @@ async function createAlert(req, res) {
     // Save notification for residents and responders
     try {
       const [notifRes] = await connection.query(
-        `INSERT INTO notifications (title, message, severity, category, created_by)
-         VALUES (?, ?, ?, 'Alert', ?)`,
-        [alertTitle, message, mapped.notificationSeverity, req.user.id]
+        `INSERT INTO notifications (title, message, category, created_by)
+         VALUES (?, ?, 'Alert', ?)`,
+        [alertTitle, message, req.user.id]
       );
       if (notifRes.insertId && activeUsers.length > 0) {
         const placeholders = activeUsers.map(() => '(?, ?, ?)').join(', ');
@@ -94,7 +58,7 @@ async function createAlert(req, res) {
     }
 
     const [rows] = await connection.query(
-      `SELECT a.*, u.name AS created_by_name
+      `SELECT a.id, a.message, a.created_by, a.created_at, u.name AS created_by_name
        FROM alerts a JOIN users u ON a.created_by = u.id WHERE a.id = ?`,
       [result.insertId]
     );
@@ -103,7 +67,6 @@ async function createAlert(req, res) {
     const alert = {
       ...rows[0],
       title: alertTitle,
-      level: mapped.label,
     };
     emitAlertBroadcast(alert);
     return res.status(201).json({ message: 'Alert broadcast', alert });
@@ -119,7 +82,7 @@ async function createAlert(req, res) {
 async function getAlerts(req, res) {
   try {
     const [rows] = await pool.query(
-      `SELECT a.*, u.name AS created_by_name
+      `SELECT a.id, a.message, a.created_by, a.created_at, u.name AS created_by_name
        FROM alerts a JOIN users u ON a.created_by = u.id
        ORDER BY a.created_at DESC LIMIT 50`
     );

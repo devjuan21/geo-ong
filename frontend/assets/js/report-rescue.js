@@ -15,12 +15,15 @@
 
 let reportMap = null;
 let reportMarker = null;
-let reportCoords = { lat: 14.4075, lng: 121.0475 };
+let reportCoords = { lat: null, lng: null };
+let reportLocAutoFilled = false;
 let reportPhotoBase64 = null;
 
 let rescueMap = null;
 let rescueMarker = null;
-let rescueCoords = { lat: 14.4075, lng: 121.0475 };
+let rescueCoords = { lat: null, lng: null, accuracy: null, source: null, capturedAt: null };
+let rescueGpsAutoAttempted = false;
+let rescueLocAutoFilled = false;
 let rescuePhotoBase64 = null;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -42,6 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     switchActionTab('report');
   }
+
+  // Load authenticated resident's genuine submitted reports & rescue requests
+  loadSubmittedReports();
+  window.addEventListener('geosafe:realtime-update', loadSubmittedReports);
 });
 
 /**
@@ -81,6 +88,10 @@ window.switchActionTab = function (tab) {
 
     setTimeout(() => {
       if (rescueMap) rescueMap.invalidateSize();
+      if (rescueCoords.lat === null && !rescueGpsAutoAttempted) {
+        rescueGpsAutoAttempted = true;
+        window.acquireGpsForRescue(true);
+      }
     }, 150);
   } else {
     if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-3xl bg-white border-2 border-[#F5B900] shadow-card text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
@@ -107,19 +118,7 @@ function initReportMapPicker() {
       scrollWheelZoom: false
     });
 
-    const icon = GeoSafeMapping.createCustomIcon('incident');
-    reportMarker = L.marker([reportCoords.lat, reportCoords.lng], {
-      icon,
-      draggable: true
-    }).addTo(reportMap);
-
-    reportMarker.on('dragend', async (e) => {
-      const pos = e.target.getLatLng();
-      await updateReportPosition(pos.lat, pos.lng);
-    });
-
     reportMap.on('click', async (e) => {
-      reportMarker.setLatLng(e.latlng);
       await updateReportPosition(e.latlng.lat, e.latlng.lng);
     });
   } catch (err) {
@@ -139,20 +138,8 @@ function initRescueMapPicker() {
       scrollWheelZoom: false
     });
 
-    const icon = GeoSafeMapping.createCustomIcon('incident');
-    rescueMarker = L.marker([rescueCoords.lat, rescueCoords.lng], {
-      icon,
-      draggable: true
-    }).addTo(rescueMap);
-
-    rescueMarker.on('dragend', async (e) => {
-      const pos = e.target.getLatLng();
-      await updateRescuePosition(pos.lat, pos.lng);
-    });
-
     rescueMap.on('click', async (e) => {
-      rescueMarker.setLatLng(e.latlng);
-      await updateRescuePosition(e.latlng.lat, e.latlng.lng);
+      await updateRescuePosition(e.latlng.lat, e.latlng.lng, { source: 'manual' });
     });
   } catch (err) {
     console.error('Failed to initialize rescue map picker:', err);
@@ -162,40 +149,154 @@ function initRescueMapPicker() {
 /**
  * Update Report coordinates and reverse geocode
  */
+function setReportMarkerPosition(lat, lng) {
+  if (!reportMap) return;
+  if (!reportMarker) {
+    const icon = GeoSafeMapping.createCustomIcon('incident');
+    reportMarker = L.marker([lat, lng], {
+      icon,
+      draggable: true
+    }).addTo(reportMap);
+
+    reportMarker.on('dragend', async (e) => {
+      const pos = e.target.getLatLng();
+      await updateReportPosition(pos.lat, pos.lng);
+    });
+  } else {
+    reportMarker.setLatLng([lat, lng]);
+  }
+}
+
+function resetReportCoordinates() {
+  reportCoords = { lat: null, lng: null };
+  reportLocAutoFilled = false;
+  if (reportMarker && reportMap) {
+    reportMap.removeLayer(reportMarker);
+    reportMarker = null;
+  }
+  const latDisp = document.getElementById('rep-lat-display');
+  const lngDisp = document.getElementById('rep-lng-display');
+  if (latDisp) latDisp.textContent = 'Not captured';
+  if (lngDisp) lngDisp.textContent = 'Not captured';
+}
+
 async function updateReportPosition(lat, lng) {
-  reportCoords.lat = lat;
-  reportCoords.lng = lng;
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  if (
+    !Number.isFinite(numLat) ||
+    !Number.isFinite(numLng) ||
+    numLat < -90 ||
+    numLat > 90 ||
+    numLng < -180 ||
+    numLng > 180 ||
+    (numLat === 0 && numLng === 0)
+  ) {
+    return;
+  }
+
+  reportCoords.lat = numLat;
+  reportCoords.lng = numLng;
+  setReportMarkerPosition(numLat, numLng);
 
   const latDisp = document.getElementById('rep-lat-display');
   const lngDisp = document.getElementById('rep-lng-display');
   const locInput = document.getElementById('rep-loc');
 
-  if (latDisp) latDisp.textContent = lat.toFixed(5);
-  if (lngDisp) lngDisp.textContent = lng.toFixed(5);
+  if (latDisp) latDisp.textContent = numLat.toFixed(6);
+  if (lngDisp) lngDisp.textContent = numLng.toFixed(6);
 
-  const address = await GeoSafeMapping.reverseGeocode(lat, lng);
-  if (locInput && (!locInput.value || locInput.value.includes('Bayanan'))) {
+  const address = await GeoSafeMapping.reverseGeocode(numLat, numLng);
+  if (locInput && address && (!locInput.value.trim() || reportLocAutoFilled)) {
     locInput.value = address;
+    reportLocAutoFilled = true;
   }
 }
 
 /**
  * Update Rescue coordinates and reverse geocode
  */
-async function updateRescuePosition(lat, lng) {
-  rescueCoords.lat = lat;
-  rescueCoords.lng = lng;
+function setRescueMarkerPosition(lat, lng) {
+  if (!rescueMap) return;
+  if (!rescueMarker) {
+    const icon = GeoSafeMapping.createCustomIcon('rescue');
+    rescueMarker = L.marker([lat, lng], {
+      icon,
+      draggable: true
+    }).addTo(rescueMap);
+
+    rescueMarker.on('dragend', async (e) => {
+      const pos = e.target.getLatLng();
+      await updateRescuePosition(pos.lat, pos.lng, { source: 'manual' });
+    });
+  } else {
+    rescueMarker.setLatLng([lat, lng]);
+  }
+}
+
+function resetRescueCoordinates() {
+  rescueCoords = { lat: null, lng: null, accuracy: null, source: null, capturedAt: null };
+  rescueGpsAutoAttempted = false;
+  rescueLocAutoFilled = false;
+  if (rescueMarker && rescueMap) {
+    rescueMap.removeLayer(rescueMarker);
+    rescueMarker = null;
+  }
+  const latDisp = document.getElementById('res-lat-display');
+  const lngDisp = document.getElementById('res-lng-display');
+  const metaDisp = document.getElementById('res-location-meta');
+  if (latDisp) latDisp.textContent = 'Not captured';
+  if (lngDisp) lngDisp.textContent = 'Not captured';
+  if (metaDisp) metaDisp.textContent = '';
+}
+
+async function updateRescuePosition(lat, lng, options = {}) {
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  if (
+    !Number.isFinite(numLat) ||
+    !Number.isFinite(numLng) ||
+    numLat < -90 ||
+    numLat > 90 ||
+    numLng < -180 ||
+    numLng > 180 ||
+    (numLat === 0 && numLng === 0)
+  ) {
+    return;
+  }
+
+  const accuracy = Number.isFinite(Number(options.accuracy)) ? Math.round(Number(options.accuracy)) : null;
+  const source = options.source === 'gps' ? 'gps' : 'manual';
+  const capturedAt = options.capturedAt || new Date().toISOString();
+
+  rescueCoords = {
+    lat: numLat,
+    lng: numLng,
+    accuracy,
+    source,
+    capturedAt
+  };
+
+  setRescueMarkerPosition(numLat, numLng);
 
   const latDisp = document.getElementById('res-lat-display');
   const lngDisp = document.getElementById('res-lng-display');
+  const metaDisp = document.getElementById('res-location-meta');
   const locInput = document.getElementById('res-loc');
 
-  if (latDisp) latDisp.textContent = lat.toFixed(5);
-  if (lngDisp) lngDisp.textContent = lng.toFixed(5);
+  if (latDisp) latDisp.textContent = numLat.toFixed(6);
+  if (lngDisp) lngDisp.textContent = numLng.toFixed(6);
+  if (metaDisp) {
+    metaDisp.textContent = source === 'gps'
+      ? (accuracy !== null ? `• GPS (±${accuracy} m)` : '• GPS')
+      : '• Manual map pin';
+  }
 
-  const address = await GeoSafeMapping.reverseGeocode(lat, lng);
-  if (locInput && (!locInput.value || locInput.value.includes('Bayanan'))) {
+  // Reverse geocode only to suggest a readable address; never alter captured coordinates
+  const address = await GeoSafeMapping.reverseGeocode(numLat, numLng);
+  if (locInput && address && (!locInput.value.trim() || rescueLocAutoFilled)) {
     locInput.value = address;
+    rescueLocAutoFilled = true;
   }
 }
 
@@ -205,8 +306,7 @@ async function updateRescuePosition(lat, lng) {
 window.acquireGpsForReport = async function () {
   try {
     const pos = await GeoSafeMapping.getCurrentLocation();
-    reportMap.setView([pos.lat, pos.lng], 16);
-    reportMarker.setLatLng([pos.lat, pos.lng]);
+    if (reportMap) reportMap.setView([pos.lat, pos.lng], 17);
     await updateReportPosition(pos.lat, pos.lng);
     GeoSafeUI.showToast('Incident coordinates set from current GPS.', 'success');
   } catch (err) {
@@ -217,15 +317,31 @@ window.acquireGpsForReport = async function () {
 /**
  * Acquire GPS for Rescue
  */
-window.acquireGpsForRescue = async function () {
+window.acquireGpsForRescue = async function (silent = false) {
+  const metaDisp = document.getElementById('res-location-meta');
+  if (metaDisp && rescueCoords.lat === null) {
+    metaDisp.textContent = '• Acquiring GPS...';
+  }
   try {
     const pos = await GeoSafeMapping.getCurrentLocation();
-    rescueMap.setView([pos.lat, pos.lng], 16);
-    rescueMarker.setLatLng([pos.lat, pos.lng]);
-    await updateRescuePosition(pos.lat, pos.lng);
-    GeoSafeUI.showToast('Emergency rescue location set from current GPS.', 'success');
+    if (rescueMap) {
+      rescueMap.setView([pos.lat, pos.lng], 17);
+    }
+    await updateRescuePosition(pos.lat, pos.lng, {
+      accuracy: pos.accuracy,
+      source: 'gps',
+      capturedAt: new Date().toISOString()
+    });
+    if (!silent) {
+      GeoSafeUI.showToast('Emergency rescue location set from current GPS.', 'success');
+    }
   } catch (err) {
-    GeoSafeUI.showToast(err.message || 'Unable to access GPS location.', 'warning');
+    if (metaDisp && rescueCoords.lat === null) {
+      metaDisp.textContent = '• GPS unavailable — tap map to set pin';
+    }
+    if (!silent) {
+      GeoSafeUI.showToast(err.message || 'Unable to access GPS location.', 'warning');
+    }
   }
 };
 
@@ -393,6 +509,20 @@ window.openReportConfirmModal = function () {
     return;
   }
 
+  const hasValidCoords =
+    Number.isFinite(reportCoords.lat) &&
+    Number.isFinite(reportCoords.lng) &&
+    reportCoords.lat >= -90 &&
+    reportCoords.lat <= 90 &&
+    reportCoords.lng >= -180 &&
+    reportCoords.lng <= 180 &&
+    !(reportCoords.lat === 0 && reportCoords.lng === 0);
+
+  if (!hasValidCoords) {
+    GeoSafeUI.showToast('Please capture your GPS location or tap the incident location on the map.', 'error');
+    return;
+  }
+
   document.getElementById('cfm-rep-type').textContent = type;
   document.getElementById('cfm-rep-title').textContent = title;
   document.getElementById('cfm-rep-loc').textContent = loc;
@@ -437,7 +567,7 @@ window.submitReportFinal = async function () {
     // Show Success Modal (Section 5.C)
     showSubmissionSuccess(
       'Incident Report Transmitted',
-      'Your incident report has been securely transmitted to Barangay Bayanan Emergency Operations. It has been queued for verification.',
+      'Your incident report has been saved with status Pending Verification and is awaiting Administrator verification before appearing on public maps.',
       saved.id || saved.referenceNumber
     );
 
@@ -445,7 +575,9 @@ window.submitReportFinal = async function () {
     document.getElementById('form-report-incident')?.reset();
     document.getElementById('rep-photo-preview-container')?.classList.add('hidden');
     reportPhotoBase64 = null;
+    resetReportCoordinates();
     initDateTimeDisplay();
+    loadSubmittedReports();
   } catch (err) {
     console.error('Report submission error:', err);
     GeoSafeUI.showToast(err.message || 'Failed to submit report. Please check connection and try again.', 'error');
@@ -459,22 +591,148 @@ window.submitReportFinal = async function () {
 };
 
 /* ========================================================================= */
-/* ACTION 2: RESCUE SUBMISSION                                               */
+/* ACTION 2: RESCUE SUBMISSION (CATEGORY-DEPENDENT FIELDS)                   */
 /* ========================================================================= */
+
+const RESCUE_CONDITION_CONFIG = {
+  'Trapped by Rising Floodwater': {
+    mode: 'entrapment',
+    countField: 'peopleTrapped',
+    countLabel: 'Number of People Trapped',
+    confirmLabel: 'People Trapped:',
+    unitLabel: 'person(s) trapped',
+    locationLabel: 'Trapped Location',
+    showVulnerable: false
+  },
+  'Collapsed / Compromised Structure': {
+    mode: 'entrapment',
+    countField: 'peopleTrapped',
+    countLabel: 'Number of People Trapped',
+    confirmLabel: 'People Trapped:',
+    unitLabel: 'person(s) trapped',
+    locationLabel: 'Trapped Location',
+    showVulnerable: false
+  },
+  'Trapped by Fire / Dense Smoke': {
+    mode: 'entrapment',
+    countField: 'peopleTrapped',
+    countLabel: 'Number of People Trapped',
+    confirmLabel: 'People Trapped:',
+    unitLabel: 'person(s) trapped',
+    locationLabel: 'Trapped Location',
+    showVulnerable: false
+  },
+  'Critical Medical Evacuation': {
+    mode: 'medical',
+    countField: 'patientCount',
+    countLabel: 'Number of Patients Needing Evacuation',
+    confirmLabel: 'Patients Needing Evacuation:',
+    unitLabel: 'patient(s)',
+    locationLabel: 'Patient Location',
+    showVulnerable: true,
+    vulnerableLabel: 'Medical Condition / Needs (Optional)',
+    vulnerablePlaceholder: 'e.g., Oxygen dependent, stretcher needed, chest pain'
+  },
+  'Special Vulnerability Emergency': {
+    mode: 'vulnerability',
+    countField: 'assistanceCount',
+    countLabel: 'Number of Individuals Needing Assistance',
+    confirmLabel: 'Individuals Needing Assistance:',
+    unitLabel: 'individual(s)',
+    locationLabel: 'Location',
+    showVulnerable: true,
+    vulnerableLabel: 'Vulnerability Details (Optional)',
+    vulnerablePlaceholder: 'e.g., Bedridden senior, infant, wheelchair user'
+  }
+};
+
+window.handleRescueConditionChange = function () {
+  const type = document.getElementById('res-type')?.value || '';
+  const cfg = RESCUE_CONDITION_CONFIG[type] || null;
+
+  const countWrapper = document.getElementById('res-count-wrapper');
+  const countLabel = document.getElementById('res-count-label');
+  const countInput = document.getElementById('res-count');
+  const vulnWrapper = document.getElementById('res-vulnerable-wrapper');
+  const vulnLabel = document.getElementById('res-vulnerable-label');
+  const vulnInput = document.getElementById('res-vulnerable');
+  const locLabel = document.getElementById('res-loc-label');
+
+  // Clear obsolete category-specific values when switching conditions
+  if (countInput) countInput.value = '';
+  if (vulnInput) vulnInput.value = '';
+
+  if (!cfg) {
+    if (countWrapper) countWrapper.classList.add('hidden');
+    if (countInput) countInput.required = false;
+    if (vulnWrapper) vulnWrapper.classList.add('hidden');
+    if (locLabel) locLabel.textContent = 'Location';
+    return;
+  }
+
+  if (countWrapper) countWrapper.classList.remove('hidden');
+  if (countLabel) countLabel.textContent = cfg.countLabel;
+  if (countInput) {
+    countInput.required = true;
+    countInput.placeholder = `Enter ${cfg.countLabel.toLowerCase()}`;
+  }
+  if (locLabel) locLabel.textContent = cfg.locationLabel;
+
+  if (vulnWrapper && vulnInput) {
+    if (cfg.showVulnerable) {
+      vulnWrapper.classList.remove('hidden');
+      if (vulnLabel) vulnLabel.textContent = cfg.vulnerableLabel;
+      vulnInput.placeholder = cfg.vulnerablePlaceholder;
+    } else {
+      vulnWrapper.classList.add('hidden');
+    }
+  }
+};
+
+function parsePositiveWholeCount(rawValue) {
+  const trimmed = String(rawValue ?? '').trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const num = Number(trimmed);
+  if (!Number.isInteger(num) || num < 1 || num > 50) return null;
+  return num;
+}
 
 window.openRescueConfirmModal = function () {
   const type = document.getElementById('res-type')?.value;
-  const count = document.getElementById('res-count')?.value;
+  const cfg = RESCUE_CONDITION_CONFIG[type];
+  const rawCount = document.getElementById('res-count')?.value;
   const desc = document.getElementById('res-desc')?.value.trim();
   const loc = document.getElementById('res-loc')?.value.trim();
 
-  if (!type || !count || !desc || !loc) {
+  if (!type || !cfg || !desc || !loc) {
     GeoSafeUI.showToast('Please complete all required fields for emergency rescue.', 'error');
     return;
   }
 
+  const parsedCount = parsePositiveWholeCount(rawCount);
+  if (parsedCount === null) {
+    GeoSafeUI.showToast(`Please enter a valid whole number (1-50) for ${cfg.countLabel}.`, 'error');
+    return;
+  }
+
+  const hasValidCoords =
+    Number.isFinite(rescueCoords.lat) &&
+    Number.isFinite(rescueCoords.lng) &&
+    rescueCoords.lat >= -90 &&
+    rescueCoords.lat <= 90 &&
+    rescueCoords.lng >= -180 &&
+    rescueCoords.lng <= 180 &&
+    !(rescueCoords.lat === 0 && rescueCoords.lng === 0);
+
+  if (!hasValidCoords) {
+    GeoSafeUI.showToast('Please capture your GPS location or tap your exact location on the map before submitting.', 'error');
+    return;
+  }
+
   document.getElementById('cfm-res-type').textContent = type;
-  document.getElementById('cfm-res-count').textContent = `${count} individual(s)`;
+  const cfmCountLabel = document.getElementById('cfm-res-count-label');
+  if (cfmCountLabel) cfmCountLabel.textContent = cfg.confirmLabel;
+  document.getElementById('cfm-res-count').textContent = `${parsedCount} ${cfg.unitLabel}`;
   document.getElementById('cfm-res-loc').textContent = loc;
 
   document.getElementById('confirm-rescue-modal')?.classList.remove('hidden');
@@ -486,6 +744,29 @@ window.closeRescueConfirmModal = function () {
 
 window.submitRescueFinal = async function () {
   if (isSubmittingRescue) return;
+  const type = document.getElementById('res-type')?.value;
+  const cfg = RESCUE_CONDITION_CONFIG[type];
+  const parsedCount = parsePositiveWholeCount(document.getElementById('res-count')?.value);
+
+  if (!cfg || parsedCount === null) {
+    GeoSafeUI.showToast('Please enter valid emergency details before submitting.', 'error');
+    return;
+  }
+
+  const hasValidCoords =
+    Number.isFinite(rescueCoords.lat) &&
+    Number.isFinite(rescueCoords.lng) &&
+    rescueCoords.lat >= -90 &&
+    rescueCoords.lat <= 90 &&
+    rescueCoords.lng >= -180 &&
+    rescueCoords.lng <= 180 &&
+    !(rescueCoords.lat === 0 && rescueCoords.lng === 0);
+
+  if (!hasValidCoords) {
+    GeoSafeUI.showToast('Valid GPS or map coordinates are required before dispatching rescue.', 'error');
+    return;
+  }
+
   const submitBtn = document.getElementById('btn-submit-rescue-final');
   isSubmittingRescue = true;
   if (submitBtn) {
@@ -494,14 +775,26 @@ window.submitRescueFinal = async function () {
   }
 
   const payload = {
-    emergencyType: document.getElementById('res-type').value,
-    peopleCount: parseInt(document.getElementById('res-count').value, 10) || 1,
+    emergencyType: type,
     description: document.getElementById('res-desc').value.trim(),
     location: document.getElementById('res-loc').value.trim(),
+    latitude: rescueCoords.lat,
+    longitude: rescueCoords.lng,
     coordinates: { lat: rescueCoords.lat, lng: rescueCoords.lng },
+    gpsAccuracy: rescueCoords.accuracy,
+    locationSource: rescueCoords.source || 'manual',
+    locationCapturedAt: rescueCoords.capturedAt || new Date().toISOString(),
     additionalInstructions: document.getElementById('res-notes')?.value.trim() || '',
     photos: rescuePhotoBase64 ? [rescuePhotoBase64] : []
   };
+
+  payload[cfg.countField] = parsedCount;
+  if (cfg.showVulnerable) {
+    const vulnText = document.getElementById('res-vulnerable')?.value.trim();
+    if (vulnText) {
+      payload.vulnerableDetails = vulnText;
+    }
+  }
 
   try {
     const saved = await window.geoSafeStore.submitRescueRequest(payload);
@@ -516,11 +809,14 @@ window.submitRescueFinal = async function () {
 
     // Reset Form
     document.getElementById('form-request-rescue')?.reset();
+    window.handleRescueConditionChange();
     document.getElementById('res-photo-preview-container')?.classList.add('hidden');
     rescuePhotoBase64 = null;
+    resetRescueCoordinates();
+    loadSubmittedReports();
   } catch (err) {
     console.error('Rescue submission error:', err);
-    GeoSafeUI.showToast('Failed to dispatch rescue request. Please call hotline directly: (02) 8861-0185.', 'error');
+    GeoSafeUI.showToast(err.message || 'Failed to dispatch rescue request. Please call hotline directly: (02) 8861-0185.', 'error');
   } finally {
     isSubmittingRescue = false;
     if (submitBtn) {
@@ -550,5 +846,224 @@ window.closeSuccessModal = function () {
   const modal = document.getElementById('submission-success-modal');
   if (modal) modal.classList.add('hidden');
   window.location.href = 'index.html';
+};
+
+// ============================================================================
+// SUBMITTED REPORTS PANEL (Resident's Genuine PostgreSQL Records)
+// ============================================================================
+let submittedRecordsCache = [];
+
+function escapeHtmlSafe(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatSubmissionDate(iso) {
+  if (!iso) return 'Date unavailable';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'Date unavailable';
+  return d.toLocaleDateString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function getSubmissionStatusStyle(status) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('resolved') || s.includes('completed')) {
+    return 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]';
+  }
+  if (s.includes('verified') || s.includes('assigned') || s.includes('responding') || s.includes('dispatch') || s.includes('on scene') || s.includes('in progress')) {
+    return 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]';
+  }
+  if (s.includes('rejected') || s.includes('cancelled') || s.includes('dismissed')) {
+    return 'bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]';
+  }
+  return 'bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+}
+
+window.loadSubmittedReports = async function () {
+  const loadingEl = document.getElementById('submitted-reports-loading');
+  const errorEl = document.getElementById('submitted-reports-error');
+  const errorTextEl = document.getElementById('submitted-reports-error-text');
+  const emptyEl = document.getElementById('submitted-reports-empty');
+  const listEl = document.getElementById('submitted-reports-list');
+  const badgeEl = document.getElementById('submitted-reports-count-badge');
+
+  if (!listEl) return;
+
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (errorEl) errorEl.classList.add('hidden');
+  if (emptyEl) emptyEl.classList.add('hidden');
+  listEl.classList.add('hidden');
+
+  try {
+    const [reportsRes, rescuesRes] = await Promise.all([
+      window.geoSafeStore.getReports(),
+      window.geoSafeStore.getRescueRequests()
+    ]);
+
+    const reports = Array.isArray(reportsRes) ? reportsRes : [];
+    const rescues = Array.isArray(rescuesRes) ? rescuesRes : [];
+
+    const normalizedReports = reports.map((r) => ({
+      kind: 'report',
+      typeLabel: 'Incident Report',
+      ref: r.referenceNumber || r.id || '',
+      title: r.title || r.incidentType || 'Incident Report',
+      category: r.incidentType || r.incident_type || 'Incident',
+      description: r.description || '',
+      location: r.location || r.address || 'Barangay Bayanan',
+      status: r.status || 'Pending Verification',
+      reviewRemarks: r.reviewRemarks || '',
+      submittedAt: r.submittedAt || r.created_at || r.createdAt || null,
+      fullHref: ''
+    }));
+
+    const normalizedRescues = rescues.map((q) => ({
+      kind: 'rescue',
+      typeLabel: 'Rescue Request',
+      ref: q.referenceNumber || q.id || '',
+      title: q.emergencyType || q.emergency_type || 'Rescue Request',
+      category: q.emergencyType || q.emergency_type || 'Emergency Rescue',
+      description: q.description || q.vulnerableDetails || '',
+      location: q.location || q.address || 'Barangay Bayanan',
+      status: q.status || 'Pending',
+      submittedAt: q.requestDate || q.created_at || q.createdAt || null,
+      fullHref: 'rescue-requests.html'
+    }));
+
+    submittedRecordsCache = [...normalizedReports, ...normalizedRescues].sort((a, b) => {
+      const ta = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      const tb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    if (badgeEl) badgeEl.textContent = String(submittedRecordsCache.length);
+    if (loadingEl) loadingEl.classList.add('hidden');
+
+    if (submittedRecordsCache.length === 0) {
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    listEl.innerHTML = submittedRecordsCache.map((item, idx) => {
+      const isRescue = item.kind === 'rescue';
+      const typeBadgeClass = isRescue
+        ? 'bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]'
+        : 'bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+      const statusClass = getSubmissionStatusStyle(item.status);
+      const dateStr = formatSubmissionDate(item.submittedAt);
+
+      return `
+        <button type="button" onclick="openSubmissionDetailModal(${idx})"
+          class="w-full text-left p-3.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] hover:bg-[#FFF9E8]/80 hover:border-[#F5B900] transition-colors space-y-2 focus:outline-none">
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${typeBadgeClass}">
+              ${escapeHtmlSafe(item.typeLabel)}
+            </span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${statusClass}">
+              ${escapeHtmlSafe(item.status)}
+            </span>
+          </div>
+          <div class="min-w-0">
+            <p class="text-xs font-bold text-[#202020] truncate">${escapeHtmlSafe(item.title)}</p>
+            ${item.kind === 'report' ? `<p class="text-[11px] font-semibold text-[#555555] truncate mt-0.5">${escapeHtmlSafe(item.category)}</p>` : ''}
+          </div>
+          <div class="text-[11px] text-[#777777] space-y-0.5">
+            <p class="truncate">${escapeHtmlSafe(item.location)}</p>
+            <p>${escapeHtmlSafe(dateStr)}</p>
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    listEl.classList.remove('hidden');
+  } catch (err) {
+    console.error('[Report/Rescue] loadSubmittedReports failed:', err);
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (badgeEl) badgeEl.textContent = '0';
+    if (errorTextEl) errorTextEl.textContent = err.message || 'Unable to load submitted reports.';
+    if (errorEl) errorEl.classList.remove('hidden');
+  }
+};
+
+window.openSubmissionDetailModal = function (index) {
+  const item = submittedRecordsCache[index];
+  if (!item) return;
+
+  const modal = document.getElementById('submission-detail-modal');
+  const typeBadge = document.getElementById('sub-detail-type-badge');
+  const statusBadge = document.getElementById('sub-detail-status-badge');
+  const titleEl = document.getElementById('sub-detail-title');
+  const refEl = document.getElementById('sub-detail-ref');
+  const catEl = document.getElementById('sub-detail-category');
+  const locEl = document.getElementById('sub-detail-location');
+  const dateEl = document.getElementById('sub-detail-date');
+  const descWrap = document.getElementById('sub-detail-desc-wrap');
+  const descEl = document.getElementById('sub-detail-desc');
+  const remarksWrap = document.getElementById('sub-detail-remarks-wrap');
+  const remarksLabel = document.getElementById('sub-detail-remarks-label');
+  const remarksEl = document.getElementById('sub-detail-remarks');
+  const fullLink = document.getElementById('sub-detail-full-link');
+
+  if (typeBadge) {
+    typeBadge.textContent = item.typeLabel;
+    typeBadge.className = item.kind === 'rescue'
+      ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-1 bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]'
+      : 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-1 bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+  }
+  if (statusBadge) {
+    statusBadge.textContent = item.status;
+    statusBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0 ${getSubmissionStatusStyle(item.status)}`;
+  }
+  if (titleEl) titleEl.textContent = item.title;
+  if (refEl) refEl.textContent = item.ref ? `Ref: ${item.ref}` : '';
+  if (catEl) catEl.textContent = item.category;
+  if (locEl) locEl.textContent = item.location;
+  if (dateEl) dateEl.textContent = formatSubmissionDate(item.submittedAt);
+  if (descWrap && descEl) {
+    if (item.description) {
+      descEl.textContent = item.description;
+      descWrap.classList.remove('hidden');
+    } else {
+      descWrap.classList.add('hidden');
+    }
+  }
+  if (remarksWrap && remarksEl) {
+    if (item.reviewRemarks) {
+      if (remarksLabel) {
+        remarksLabel.textContent = String(item.status || '').toLowerCase().includes('reject')
+          ? 'Rejection Reason:'
+          : 'Administrator Review Notes:';
+      }
+      remarksEl.textContent = item.reviewRemarks;
+      remarksWrap.classList.remove('hidden');
+    } else {
+      remarksWrap.classList.add('hidden');
+    }
+  }
+  if (fullLink) {
+    if (item.fullHref) {
+      fullLink.href = item.fullHref;
+      fullLink.classList.remove('hidden');
+    } else {
+      fullLink.classList.add('hidden');
+    }
+  }
+
+  if (modal) modal.classList.remove('hidden');
+};
+
+window.closeSubmissionDetailModal = function () {
+  const modal = document.getElementById('submission-detail-modal');
+  if (modal) modal.classList.add('hidden');
 };
 

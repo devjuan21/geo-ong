@@ -12,6 +12,24 @@
     color: #202020;
     @apply antialiased font-sans min-h-screen flex flex-col selection:bg-accent selection:text-ink-900;
   }
+
+  /* Override browser autofill background tint to match GeoSafe theme */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover, 
+  input:-webkit-autofill:focus, 
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px #FFFDF7 inset !important;
+    -webkit-text-fill-color: #202020 !important;
+    transition: background-color 5000000s ease-in-out 0s;
+  }
+
+  /* Suppress browser native password reveal & clear buttons (Edge/IE/Chromium) to prevent duplicate eye icon */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
 }
 
 @layer components {
@@ -66,4 +84,18 @@
 .leaflet-control-attribution a:hover {
   color: #202020 !important;
   text-decoration: underline !important;
+}
+
+/* ==========================================================================
+   Resident UI Desktop Sidebar & Layout Offsets (>= 1024px)
+   Consistent 240px width (w-60), content beside sidebar, header aligned
+   ========================================================================== */
+@media (min-width: 1024px) {
+  body.resident-layout {
+    padding-left: 15rem !important; /* 240px sidebar width */
+  }
+  body.resident-layout #geosafe-top-header {
+    left: 15rem !important;
+    width: calc(100% - 15rem) !important;
+  }
 }

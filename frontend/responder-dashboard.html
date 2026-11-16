@@ -17,7 +17,7 @@
   <div id="geosafe-responder-nav-container"></div>
 
   <!-- Main Operational Dashboard Content -->
-  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-5 pb-28 md:pb-12">
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-[1600px] mx-auto w-full space-y-4 sm:space-y-5 gs-resp-main pb-28">
 
     <!-- Loading State -->
     <div id="dash-loading" class="bg-white rounded-3xl border border-[#EEEEEE] p-8 text-center shadow-card">
@@ -98,54 +98,6 @@
           </div>
           <div class="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 text-[#278653] flex items-center justify-center flex-shrink-0 shadow-subtle group-hover:scale-105 transition-transform">
             <svg class="w-5 h-5 text-[#278653]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- 2. Emergency Priority Section -->
-      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-          <div class="flex items-center gap-2">
-            <div class="w-7 h-7 rounded-xl bg-[#FFF9E8] border border-[#FFE872] flex items-center justify-center text-[#8A6800] flex-shrink-0">
-              <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
-            <div>
-              <h3 class="font-bold text-sm sm:text-base text-[#202020]">Emergency Priority Triage</h3>
-              <p class="text-[11px] text-[#777777]">Official urgency established by Barangay EOC triage commanders</p>
-            </div>
-          </div>
-          <span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#FFFDF7] border border-[#EEEEEE] text-[#777777] self-start sm:self-auto">
-            Priority locked by dispatch protocol
-          </span>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 text-center">
-          <!-- Critical -->
-          <div class="p-3.5 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] transition-transform hover:scale-[1.02]">
-            <span class="text-[10px] font-black uppercase tracking-wider block">Critical</span>
-            <span id="prio-critical-count" class="text-2xl font-black block mt-1">0</span>
-            <span class="text-[10px] text-[#B82828] font-semibold block mt-0.5">Life-Threatening</span>
-          </div>
-
-          <!-- High -->
-          <div class="p-3.5 rounded-2xl bg-[#FFF8E1] border border-[#FFE082] text-[#E99524] transition-transform hover:scale-[1.02]">
-            <span class="text-[10px] font-black uppercase tracking-wider block">High</span>
-            <span id="prio-high-count" class="text-2xl font-black block mt-1">0</span>
-            <span class="text-[10px] text-[#B87B00] font-semibold block mt-0.5">Immediate Attention</span>
-          </div>
-
-          <!-- Medium -->
-          <div class="p-3.5 rounded-2xl bg-sky-50 border border-sky-200 text-sky-700 transition-transform hover:scale-[1.02]">
-            <span class="text-[10px] font-black uppercase tracking-wider block">Medium</span>
-            <span id="prio-medium-count" class="text-2xl font-black block mt-1">0</span>
-            <span class="text-[10px] text-sky-600 font-semibold block mt-0.5">Hazard Observation</span>
-          </div>
-
-          <!-- Low -->
-          <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 transition-transform hover:scale-[1.02]">
-            <span class="text-[10px] font-black uppercase tracking-wider block">Low</span>
-            <span id="prio-low-count" class="text-2xl font-black block mt-1">0</span>
-            <span class="text-[10px] text-slate-500 font-semibold block mt-0.5">Minor Obstruction</span>
           </div>
         </div>
       </div>

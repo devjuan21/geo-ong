@@ -81,15 +81,15 @@ module.exports = {
         }
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
       },
       boxShadow: {
-        'subtle': '0 1px 3px 0 rgba(32, 32, 32, 0.04), 0 1px 2px -1px rgba(32, 32, 32, 0.03)',
-        'card': '0 2px 10px 0 rgba(32, 32, 32, 0.04), 0 1px 3px -1px rgba(32, 32, 32, 0.03)',
-        'card-hover': '0 10px 24px -4px rgba(32, 32, 32, 0.07), 0 4px 8px -2px rgba(32, 32, 32, 0.03)',
-        'accent-glow': '0 4px 14px 0 rgba(245, 185, 0, 0.3)',
-        'emergency-glow': '0 4px 14px 0 rgba(217, 54, 54, 0.3)',
-        'modal': '0 20px 25px -5px rgba(32, 32, 32, 0.18), 0 8px 10px -6px rgba(32, 32, 32, 0.08)',
+        'subtle': '0 1px 2px 0 rgba(32, 32, 32, 0.04)',
+        'card': '0 1px 3px 0 rgba(32, 32, 32, 0.05), 0 1px 2px -1px rgba(32, 32, 32, 0.03)',
+        'card-hover': '0 4px 12px -2px rgba(32, 32, 32, 0.07), 0 2px 4px -2px rgba(32, 32, 32, 0.03)',
+        'accent-glow': '0 1px 3px 0 rgba(245, 185, 0, 0.2)',
+        'emergency-glow': '0 1px 3px 0 rgba(217, 54, 54, 0.2)',
+        'modal': '0 16px 32px -8px rgba(32, 32, 32, 0.16), 0 4px 12px -4px rgba(32, 32, 32, 0.06)',
       }
     },
   },

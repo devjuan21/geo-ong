@@ -32,8 +32,8 @@ function initSocket(server) {
       const headers = { ...((socket.handshake && socket.handshake.headers) || {}) };
       const authToken =
         socket.handshake &&
-        socket.handshake.auth &&
-        typeof socket.handshake.auth.token === 'string'
+          socket.handshake.auth &&
+          typeof socket.handshake.auth.token === 'string'
           ? socket.handshake.auth.token.trim()
           : '';
 
@@ -79,9 +79,139 @@ function initSocket(server) {
         socket.join(`role:${socket.user.roleLabel}`);
       }
     });
+
+    socket.on('join-conversation', async (payload, ack) => {
+      try {
+        const rawConvId =
+          payload && typeof payload === 'object' ? payload.conversationId || payload.id : payload;
+        const { verifyConversationAccess } = require('./messageService');
+        const check = await verifyConversationAccess(socket.user, rawConvId, {
+          allowAdmin: true,
+          requireSendPermission: false,
+        });
+        if (!check.ok) {
+          if (typeof ack === 'function') ack({ ok: false, status: check.status, error: check.error });
+          return;
+        }
+        socket.join(`conversation:${check.conversation.id}`);
+        if (typeof ack === 'function') ack({ ok: true, conversationId: check.conversation.id });
+      } catch (err) {
+        if (typeof ack === 'function') ack({ ok: false, status: 500, error: 'Failed to join conversation.' });
+      }
+    });
+
+    socket.on('leave-conversation', (payload) => {
+      const rawConvId =
+        payload && typeof payload === 'object' ? payload.conversationId || payload.id : payload;
+      const id = parseInt(rawConvId, 10);
+      if (Number.isInteger(id) && id > 0) {
+        socket.leave(`conversation:${id}`);
+        emitTypingStopForSocket(socket, id);
+      }
+    });
+
+    socket.on('conversation:typing-start', async (payload) => {
+      await handleSocketTypingEvent(socket, payload, true);
+    });
+
+    socket.on('conversation:typing-stop', async (payload) => {
+      await handleSocketTypingEvent(socket, payload, false);
+    });
+
+    socket.on('disconnect', () => {
+      if (socket.activeTypingConvs && socket.activeTypingConvs.size > 0) {
+        for (const convId of Array.from(socket.activeTypingConvs)) {
+          emitTypingStopForSocket(socket, convId);
+        }
+      }
+    });
+
+    socket.on('send-conversation-message', async (payload, ack) => {
+      try {
+        const { createConversationMessage } = require('./messageService');
+        const { conversationId, body, clientMessageId } = payload || {};
+        const result = await createConversationMessage({
+          user: socket.user,
+          conversationId,
+          body,
+          clientMessageId,
+        });
+        if (!result.ok) {
+          if (typeof ack === 'function') ack({ ok: false, status: result.status, error: result.error });
+          return;
+        }
+        if (!result.deduplicated) {
+          emitConversationMessage(result.conversation, result.message);
+        }
+        if (typeof ack === 'function') ack({ ok: true, message: result.message });
+      } catch (err) {
+        if (typeof ack === 'function') ack({ ok: false, status: 500, error: 'Unable to send message.' });
+      }
+    });
   });
 
   return io;
+}
+
+function emitTypingStopForSocket(socket, convId) {
+  if (!io || !socket || !socket.user) return;
+  const cached = socket.authorizedTypingConvs && socket.authorizedTypingConvs.get(convId);
+  if (socket.activeTypingConvs) {
+    socket.activeTypingConvs.delete(convId);
+  }
+  if (!cached || !cached.recipientUserId) return;
+  io.to(`user:${cached.recipientUserId}`).emit('conversation:typing', {
+    conversationId: convId,
+    userId: Number(socket.user.id),
+    userName: socket.user.name || 'Participant',
+    isTyping: false,
+    updatedAt: Date.now(),
+  });
+}
+
+async function handleSocketTypingEvent(socket, payload, isTyping) {
+  if (!io || !socket || !socket.user) return;
+  const rawConvId = payload && typeof payload === 'object' ? payload.conversationId || payload.id : payload;
+  const convId = parseInt(rawConvId, 10);
+  if (!Number.isInteger(convId) || convId <= 0) return;
+
+  if (!socket.authorizedTypingConvs) socket.authorizedTypingConvs = new Map();
+  if (!socket.activeTypingConvs) socket.activeTypingConvs = new Set();
+
+  let cached = socket.authorizedTypingConvs.get(convId);
+  if (!cached) {
+    try {
+      const { verifyConversationAccess } = require('./messageService');
+      const check = await verifyConversationAccess(socket.user, convId, {
+        allowAdmin: false,
+        requireSendPermission: true,
+      });
+      if (!check.ok || !check.conversation) return;
+      const senderId = Number(socket.user.id);
+      const residentId = Number(check.conversation.resident_user_id);
+      const responderId = Number(check.conversation.responder_user_id);
+      const recipientUserId = senderId === residentId ? responderId : senderId === responderId ? residentId : null;
+      if (!recipientUserId || recipientUserId === senderId) return;
+      cached = { residentId, responderId, recipientUserId };
+      socket.authorizedTypingConvs.set(convId, cached);
+    } catch (_) {
+      return;
+    }
+  }
+
+  if (isTyping) {
+    socket.activeTypingConvs.add(convId);
+  } else {
+    socket.activeTypingConvs.delete(convId);
+  }
+
+  io.to(`user:${cached.recipientUserId}`).emit('conversation:typing', {
+    conversationId: convId,
+    userId: Number(socket.user.id),
+    userName: socket.user.name || 'Participant',
+    isTyping: Boolean(isTyping),
+    updatedAt: Date.now(),
+  });
 }
 
 function getIO() {
@@ -135,10 +265,10 @@ function buildBroadcastTarget(payload) {
     scope === 'Responders Only'
       ? io.to('role:Responder').to('role:responder')
       : io
-          .to('role:Resident')
-          .to('role:resident')
-          .to('role:Responder')
-          .to('role:responder');
+        .to('role:Resident')
+        .to('role:resident')
+        .to('role:Responder')
+        .to('role:responder');
   if (actorId) {
     target = target.except(`user:${actorId}`);
   }
@@ -150,6 +280,34 @@ function emitAlertBroadcast(alert) {
   if (!target) return;
   target.emit('new-hazard-alert', alert);
   target.emit('alert-broadcast', alert);
+}
+
+function buildLifecycleTarget(payload) {
+  if (!io) return null;
+  const scope = String((payload && (payload.targetScope || payload.target_scope)) || '').trim();
+  let target = io
+    .to('role:Administrator')
+    .to('role:admin')
+    .to('role:Responder')
+    .to('role:responder');
+  if (scope !== 'Responders Only') {
+    target = target.to('role:Resident').to('role:resident');
+  }
+  return target;
+}
+
+function emitAlertExpired(alert) {
+  const target = buildLifecycleTarget(alert);
+  if (!target) return;
+  target.emit('hazard-alert-expired', alert);
+  target.emit('alert-expired', alert);
+}
+
+function emitAlertCancelled(alert) {
+  const target = buildLifecycleTarget(alert);
+  if (!target) return;
+  target.emit('hazard-alert-cancelled', alert);
+  target.emit('alert-cancelled', alert);
 }
 
 function emitAssignmentUpdate(assignment) {
@@ -302,6 +460,187 @@ function emitAdminAnnouncement(announcement) {
   target.emit('administrator-announcement', announcement);
 }
 
+function emitConversationMessage(conv, message) {
+  if (!io || !conv || !message) return;
+  const convRoom = `conversation:${conv.id}`;
+  const resRoom = `user:${conv.resident_user_id}`;
+  const respRoom = `user:${conv.responder_user_id}`;
+
+  io.to(convRoom)
+    .to(resRoom)
+    .to(respRoom)
+    .emit('conversation:new-message', message);
+
+  io.to(resRoom)
+    .to(respRoom)
+    .emit('messages:unread-update', {
+      conversationId: conv.id,
+      rescueId: conv.rescue_id,
+      lastMessageAt: message.createdAt,
+      senderUserId: message.senderUserId,
+    });
+
+  // Strict Backend Recipient Validation: deliver private chat notification ONLY to the intended recipient's user room
+  const senderId = Number(message.senderUserId);
+  const residentId = Number(conv.resident_user_id);
+  const responderId = Number(conv.responder_user_id);
+  let recipientUserId = null;
+  if (senderId === residentId && Number.isInteger(responderId) && responderId > 0) {
+    recipientUserId = responderId;
+  } else if (senderId === responderId && Number.isInteger(residentId) && residentId > 0) {
+    recipientUserId = residentId;
+  }
+
+  if (recipientUserId && recipientUserId !== senderId) {
+    const rawBody = String(message.body || '').trim();
+    const preview = rawBody.length > 90 ? `${rawBody.slice(0, 87)}...` : rawBody;
+    io.to(`user:${recipientUserId}`).emit('messages:incoming-notification', {
+      conversationId: conv.id,
+      rescueId: conv.rescue_id,
+      messageId: message.id,
+      senderUserId: senderId,
+      senderName: message.senderName || 'Participant',
+      senderRole: message.senderRole || '',
+      preview,
+      createdAt: message.createdAt || new Date().toISOString(),
+    });
+  }
+
+  io.to('role:Administrator')
+    .to('role:admin')
+    .emit('admin:conversation-activity', {
+      conversationId: conv.id,
+      rescueId: conv.rescue_id,
+      lastMessageAt: message.createdAt,
+    });
+}
+
+function emitConversationMessagesRead(conv, readerUserId, readAt) {
+  if (!io || !conv) return;
+  const payload = {
+    conversationId: conv.id,
+    readerUserId: Number(readerUserId),
+    readAt: readAt || new Date().toISOString(),
+  };
+  io.to(`conversation:${conv.id}`)
+    .to(`user:${conv.resident_user_id}`)
+    .to(`user:${conv.responder_user_id}`)
+    .emit('conversation:messages-read', payload);
+
+  io.to(`user:${readerUserId}`).emit('messages:unread-update', payload);
+}
+
+function emitConversationAccessUpdated({
+  conversationId,
+  rescueId,
+  residentUserId,
+  responderUserId,
+  revokedResponderUserId,
+  status = null,
+  reason = null,
+} = {}) {
+  if (!io) return;
+  if (revokedResponderUserId && conversationId) {
+    try {
+      io.in(`user:${revokedResponderUserId}`).socketsLeave(`conversation:${conversationId}`);
+    } catch (_) { }
+  }
+
+  const isClosed = status === 'Closed' || status === 'Completed';
+  if (isClosed) {
+    const targetRooms = [residentUserId, responderUserId].filter(Boolean).map((id) => `user:${id}`);
+    targetRooms.forEach((room) => {
+      try {
+        const roomSockets = io.sockets.adapter.rooms.get(room);
+        if (roomSockets) {
+          roomSockets.forEach((sid) => {
+            const s = io.sockets.sockets.get(sid);
+            if (!s) return;
+            if (conversationId) {
+              if (s.authorizedTypingConvs) s.authorizedTypingConvs.delete(Number(conversationId));
+              if (s.activeTypingConvs) s.activeTypingConvs.delete(Number(conversationId));
+            } else {
+              if (s.authorizedTypingConvs) s.authorizedTypingConvs.clear();
+              if (s.activeTypingConvs) s.activeTypingConvs.clear();
+            }
+          });
+        }
+      } catch (_) {}
+      io.to(room).emit('conversation:typing', {
+        conversationId: conversationId || null,
+        rescueId: rescueId || null,
+        isTyping: false,
+        updatedAt: Date.now(),
+      });
+    });
+  }
+
+  const payload = {
+    conversationId: conversationId || null,
+    rescueId: rescueId || null,
+    status: status || null,
+    reason: reason || null,
+  };
+  if (residentUserId) io.to(`user:${residentUserId}`).emit('messages:access-updated', payload);
+  if (responderUserId) io.to(`user:${responderUserId}`).emit('messages:access-updated', payload);
+  if (revokedResponderUserId) {
+    io.to(`user:${revokedResponderUserId}`).emit('messages:access-updated', payload);
+  }
+  io.to('role:Administrator').to('role:admin').emit('admin:conversation-activity', payload);
+}
+
+const liveResponderLocations = new Map();
+
+function emitResponderLocationUpdate(payload) {
+  if (!payload || !payload.userId) return null;
+  const uid = Number(payload.userId);
+  const incomingMs = payload.updatedAt ? new Date(payload.updatedAt).getTime() : Date.now();
+  const prev = liveResponderLocations.get(uid);
+  if (prev && prev.updatedAtMs && incomingMs < prev.updatedAtMs) {
+    return prev;
+  }
+  const entry = {
+    userId: uid,
+    responderId: payload.responderId || payload.badgeNumber || `RSP-${uid}`,
+    name: payload.name || 'Responder',
+    assignedUnit: payload.assignedUnit || 'Response Unit',
+    organization: payload.organization || 'Emergency Operations',
+    callsign: payload.callsign || null,
+    badgeNumber: payload.badgeNumber || null,
+    availabilityStatus: payload.availabilityStatus || 'On Duty',
+    lat: Number(payload.lat),
+    lng: Number(payload.lng),
+    accuracy: Number.isFinite(Number(payload.accuracy)) ? Number(payload.accuracy) : null,
+    sharingEnabled: true,
+    updatedAt: new Date(incomingMs).toISOString(),
+    updatedAtMs: incomingMs,
+  };
+  liveResponderLocations.set(uid, entry);
+
+  if (io) {
+    io.to('role:Administrator')
+      .to('role:admin')
+      .emit('responder:location-updated', entry);
+    io.to(`user:${uid}`).emit('responder:location-updated', entry);
+  }
+  return entry;
+}
+
+function emitResponderLocationOffline(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) return;
+  liveResponderLocations.delete(uid);
+  if (io) {
+    io.to('role:Administrator')
+      .to('role:admin')
+      .emit('responder:location-offline', { userId: uid, updatedAt: new Date().toISOString() });
+  }
+}
+
+function getLiveResponderLocations() {
+  return Array.from(liveResponderLocations.values());
+}
+
 module.exports = {
   initSocket,
   getIO,
@@ -310,9 +649,17 @@ module.exports = {
   emitReportVerificationResult,
   emitNewRescueRequest,
   emitAlertBroadcast,
+  emitAlertExpired,
+  emitAlertCancelled,
   emitAssignmentUpdate,
   emitStatusUpdate,
   emitIncidentResolved,
   emitAdminAnnouncement,
+  emitConversationMessage,
+  emitConversationMessagesRead,
+  emitConversationAccessUpdated,
+  emitResponderLocationUpdate,
+  emitResponderLocationOffline,
+  getLiveResponderLocations,
   disconnectUserSockets,
 };

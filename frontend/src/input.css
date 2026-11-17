@@ -53,10 +53,20 @@
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-amber-200/80 rounded-full;
+    @apply bg-stone-300/80 rounded-full;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-amber-300;
+    @apply bg-stone-400;
+  }
+
+  /* Accessible keyboard focus indicator */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #F5B900;
+    outline-offset: 2px;
   }
 }
 
@@ -98,4 +108,40 @@
     left: 15rem !important;
     width: calc(100% - 15rem) !important;
   }
+}
+
+/* ==========================================================================
+   GeoSafe System-Wide Responsive Typography Standardization (Inter)
+   ========================================================================== */
+:root {
+  --gs-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --gs-font-brand: clamp(1.25rem, 1.05rem + 0.95vw, 1.75rem);
+  --gs-font-brand-nav: clamp(1.25rem, 1.08rem + 0.5vw, 1.625rem);
+  --gs-font-h1: clamp(1.21875rem, 1.05rem + 0.75vw, 1.625rem);
+  --gs-font-h2: clamp(0.96875rem, 0.88rem + 0.38vw, 1.1875rem);
+  --gs-font-card-title: clamp(0.875rem, 0.83rem + 0.2vw, 1rem);
+  --gs-font-body: clamp(0.875rem, 0.84rem + 0.14vw, 0.9375rem);
+  --gs-font-label: clamp(0.8125rem, 0.785rem + 0.1vw, 0.875rem);
+  --gs-font-btn: clamp(0.875rem, 0.85rem + 0.08vw, 0.9375rem);
+  --gs-font-secondary: clamp(0.75rem, 0.725rem + 0.08vw, 0.8125rem);
+  --gs-font-bottom-nav: clamp(0.625rem, 2.6vw, 0.6875rem);
+  --gs-font-stat: clamp(1.6875rem, 1.45rem + 0.95vw, 2.0625rem);
+}
+
+html,
+body,
+.font-sans,
+.font-mono,
+button,
+input,
+select,
+textarea,
+table,
+th,
+td,
+.leaflet-container,
+.leaflet-popup-content,
+.leaflet-tooltip,
+.leaflet-control {
+  font-family: var(--gs-font-sans) !important;
 }

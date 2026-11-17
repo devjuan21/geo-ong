@@ -165,6 +165,7 @@
     let type = 'info';
     let title = '';
     let duration = DEFAULT_DURATION;
+    let onClick = null;
 
     if (typeof options === 'string') {
       message = options;
@@ -172,6 +173,7 @@
       message = options.message || '';
       type = (options.type || 'info').toLowerCase();
       title = options.title || '';
+      onClick = typeof options.onClick === 'function' ? options.onClick : null;
       if (typeof options.duration === 'number' && options.duration > 0) {
         duration = options.duration;
       }
@@ -268,6 +270,14 @@
     if (closeBtn) {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        dismissToast(toast, normalizedKey);
+      });
+    }
+
+    if (onClick) {
+      toast.style.cursor = 'pointer';
+      toast.addEventListener('click', () => {
+        try { onClick(); } catch (_) {}
         dismissToast(toast, normalizedKey);
       });
     }
@@ -431,8 +441,36 @@
     return { message, title, duration };
   }
 
+  function clearInvalidField(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove('border-[#D93636]', 'ring-2', 'ring-[#FFC2C2]');
+  }
+
+  function flagInvalidField(el, message, title = 'Required Information') {
+    if (el && el.classList) {
+      el.classList.add('border-[#D93636]', 'ring-2', 'ring-[#FFC2C2]');
+      const clearOnce = () => clearInvalidField(el);
+      el.addEventListener('input', clearOnce, { once: true });
+      el.addEventListener('change', clearOnce, { once: true });
+      try {
+        if (typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (typeof el.focus === 'function') {
+          el.focus({ preventScroll: true });
+        }
+      } catch (_) {}
+    }
+    if (message) {
+      return show({ title, message, type: 'warning', duration: 4500 });
+    }
+    return null;
+  }
+
   const GeoSafeToast = {
     show,
+    flagInvalidField,
+    clearInvalidField,
     success(message, titleOrDuration, maybeDuration) {
       const parsed = resolveArgs(message, titleOrDuration, maybeDuration);
       return show({ ...parsed, type: 'success' });

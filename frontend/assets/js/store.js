@@ -598,7 +598,25 @@ class GeoSafeStore {
     const statusText = payload.status || payload.newStatus || '';
     const dedupeKey = `${eventName}:${recordId}:${statusText}`;
 
-    const silentEvents = new Set(['public-report-verified', 'incident-resolved', 'admin-sync', 'reconnect-sync']);
+    const silentEvents = new Set([
+      'public-report-verified',
+      'incident-resolved',
+      'admin-sync',
+      'reconnect-sync',
+      'hazard-alert-expired',
+      'alert-expired',
+      'hazard-alert-cancelled',
+      'alert-cancelled',
+      'conversation:new-message',
+      'conversation:messages-read',
+      'conversation:typing',
+      'messages:unread-update',
+      'messages:access-updated',
+      'admin:conversation-activity',
+      'messages:incoming-notification',
+      'responder:location-updated',
+      'responder:location-offline'
+    ]);
     const currentUser = (typeof this.getUser === 'function' ? this.getUser() : null) || (this.state && this.state.currentUser) || null;
     const eventActorId = payload.actorUserId || payload.authorizedById || payload.createdBy;
     const isSelfActor = Boolean(
@@ -645,6 +663,40 @@ class GeoSafeStore {
       }
 
       window.GeoSafeToast.show({ message: toastMsg, type: toastType, duration: 5000 });
+    }
+
+    // Private Resident-Responder Incoming Message Toast (only for intended recipient, never sender)
+    if (eventName === 'messages:incoming-notification' && payload && payload.conversationId) {
+      const senderId = Number(payload.senderUserId || 0);
+      const myId = currentUser && currentUser.id !== undefined ? Number(currentUser.id) : 0;
+      const isSelfMsg = Boolean(myId && senderId && myId === senderId);
+      const isViewingThread = Boolean(
+        typeof window !== 'undefined' &&
+        window.GeoSafeMessages &&
+        typeof window.GeoSafeMessages.getActiveConversationId === 'function' &&
+        Number(window.GeoSafeMessages.getActiveConversationId()) === Number(payload.conversationId) &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible'
+      );
+      const msgKey = `chat-notif:${payload.messageId || `${payload.conversationId}:${payload.createdAt}`}`;
+      if (!isSelfMsg && !isViewingThread && this._shouldShowRealtimeToast(msgKey) && window.GeoSafeToast) {
+        const roleLower = String((currentUser && currentUser.role) || '').toLowerCase();
+        const targetPage = roleLower === 'responder' ? 'responder-messages.html' : 'messages.html';
+        const timeStr = payload.createdAt
+          ? new Date(payload.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const senderLabel = payload.senderName || 'New message';
+        const previewText = payload.preview ? `"${payload.preview}"` : 'Sent a new message.';
+        window.GeoSafeToast.show({
+          title: 'New message',
+          message: `${senderLabel}${timeStr ? ` • ${timeStr}` : ''} — ${previewText}`,
+          type: 'info',
+          duration: 6000,
+          onClick: () => {
+            window.location.href = `${targetPage}?conversationId=${encodeURIComponent(payload.conversationId)}`;
+          }
+        });
+      }
     }
 
     window.dispatchEvent(
@@ -696,6 +748,10 @@ class GeoSafeStore {
     const realtimeEvents = [
       'new-hazard-alert',
       'alert-broadcast',
+      'hazard-alert-expired',
+      'alert-expired',
+      'hazard-alert-cancelled',
+      'alert-cancelled',
       'new-incident-report',
       'new-report',
       'public-report-verified',
@@ -706,7 +762,16 @@ class GeoSafeStore {
       'rescue-assignment-updated',
       'rescue-status-updated',
       'status-update',
-      'administrator-announcement'
+      'administrator-announcement',
+      'conversation:new-message',
+      'conversation:messages-read',
+      'conversation:typing',
+      'messages:unread-update',
+      'messages:access-updated',
+      'admin:conversation-activity',
+      'messages:incoming-notification',
+      'responder:location-updated',
+      'responder:location-offline'
     ];
 
     realtimeEvents.forEach((evt) => {
@@ -1095,6 +1160,12 @@ class GeoSafeStore {
   }
 
   async logout() {
+    if (typeof window !== 'undefined') {
+      try { window.dispatchEvent(new CustomEvent('geosafe:logout')); } catch (_) {}
+      if (window.GeoSafeMapping && typeof window.GeoSafeMapping.stopAllLiveGpsTrackers === 'function') {
+        try { window.GeoSafeMapping.stopAllLiveGpsTrackers(); } catch (_) {}
+      }
+    }
     const csrf = this.getCsrfToken();
     try {
       if (this.isOnline() && typeof fetch !== 'undefined') {
@@ -1147,6 +1218,13 @@ class GeoSafeStore {
     return true;
   }
 
+  async syncResponderLocation({ lat, lng, accuracy = null, sharingEnabled = true } = {}) {
+    return this.request('/responder/location', {
+      method: 'POST',
+      body: JSON.stringify({ lat, lng, accuracy, sharingEnabled })
+    });
+  }
+
   async updateResponderProfile(updates) {
     return this.request('/responder/profile', {
       method: 'PUT',
@@ -1168,7 +1246,7 @@ class GeoSafeStore {
   }
 
   async updateResponderAvailability(status) {
-    const validStatuses = ['On Duty', 'Off Duty', 'Unavailable'];
+    const validStatuses = ['On Duty', 'Off Duty', 'On Break'];
     if (!validStatuses.includes(status)) {
       throw new Error(`Invalid availability status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
     }
@@ -1278,14 +1356,11 @@ class GeoSafeStore {
         const targetStatus = filters.status.toLowerCase();
         filtered = filtered.filter(a => {
           const s = (a.status || '').toLowerCase();
-          if (targetStatus === 'in progress') {
-            return ['accepted', 'en route', 'on scene', 'responding'].includes(s);
-          }
           if (targetStatus === 'completed') {
             return ['completed', 'resolved'].includes(s);
           }
           if (targetStatus === 'pending') {
-            return ['pending', 'pending dispatch'].includes(s);
+            return !['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(s);
           }
           return s === targetStatus;
         });

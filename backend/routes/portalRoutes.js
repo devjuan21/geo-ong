@@ -9,6 +9,8 @@ const {
   emitStatusUpdate,
   emitAssignmentUpdate,
   emitIncidentResolved,
+  emitResponderLocationUpdate,
+  emitResponderLocationOffline,
 } = require('../services/socketService');
 const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
 const { getEocLocation } = require('../config/eocConfig');
@@ -295,9 +297,9 @@ router.get('/profile', async (req, res) => {
       phone: p.phone_number || '',
       address: {
         street: p.street_address || '',
-        barangay: 'Barangay Bayanan',
-        city: 'Muntinlupa City',
-        province: 'Metro Manila',
+        barangay: p.barangay || 'Barangay Bayanan',
+        city: p.city || 'Muntinlupa City',
+        province: p.province || 'Metro Manila',
         postalCode: p.postal_code || '1772',
       },
       verificationStatus: p.verification_status || 'Unverified Resident',
@@ -350,14 +352,11 @@ router.put('/profile', async (req, res) => {
          last_name = VALUES(last_name),
          phone_number = VALUES(phone_number),
          street_address = VALUES(street_address),
-         barangay = 'Barangay Bayanan',
-         city = 'Muntinlupa City',
-         province = 'Metro Manila',
          postal_code = VALUES(postal_code),
-         emergency_contact_name = VALUES(emergency_contact_name),
-         emergency_contact_relationship = VALUES(emergency_contact_relationship),
-         emergency_contact_phone = VALUES(emergency_contact_phone),
-         medical_notes = VALUES(medical_notes)`,
+         emergency_contact_name = COALESCE(VALUES(emergency_contact_name), user_profiles.emergency_contact_name),
+         emergency_contact_relationship = COALESCE(VALUES(emergency_contact_relationship), user_profiles.emergency_contact_relationship),
+         emergency_contact_phone = COALESCE(VALUES(emergency_contact_phone), user_profiles.emergency_contact_phone),
+         medical_notes = COALESCE(VALUES(medical_notes), user_profiles.medical_notes)`,
       [
         req.user.id,
         fName,
@@ -368,21 +367,27 @@ router.put('/profile', async (req, res) => {
         emName,
         emRel,
         emPhone,
-        medicalNotes ? String(medicalNotes).trim() : null,
+        medicalNotes !== undefined ? (medicalNotes ? String(medicalNotes).trim() : null) : null,
       ]
     );
+
+    const [updatedRows] = await conn.query('SELECT * FROM user_profiles WHERE user_id = ? LIMIT 1', [req.user.id]);
+    const up = updatedRows[0] || {};
 
     await conn.commit();
     return res.json({
       id: req.user.id,
+      userId: req.user.user_code || req.user.userCode || `RSDNT-${String(req.user.id).padStart(4, '0')}`,
+      userCode: req.user.user_code || req.user.userCode || `RSDNT-${String(req.user.id).padStart(4, '0')}`,
       firstName: fName,
       lastName: lName,
       email: req.user.email,
       phone: phone || '',
+      verificationStatus: up.verification_status || 'Unverified Resident',
       address: {
         street: street || '',
-        barangay: 'Barangay Bayanan',
-        city: 'Muntinlupa City',
+        barangay: up.barangay || 'Barangay Bayanan',
+        city: up.city || 'Muntinlupa City',
         province: 'Metro Manila',
         postalCode,
       },
@@ -394,7 +399,7 @@ router.put('/profile', async (req, res) => {
       medicalNotes: medicalNotes || '',
     });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     console.error('[Portal API] PUT /profile failed:', err.message);
     return res.status(503).json({ error: 'Unable to update profile' });
   } finally {
@@ -584,14 +589,14 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     coordinates && coordinates.lat !== undefined && coordinates.lat !== null && coordinates.lat !== ''
       ? coordinates.lat
       : req.body && req.body.latitude !== undefined && req.body.latitude !== null && req.body.latitude !== ''
-      ? req.body.latitude
-      : null;
+        ? req.body.latitude
+        : null;
   const rawLng =
     coordinates && coordinates.lng !== undefined && coordinates.lng !== null && coordinates.lng !== ''
       ? coordinates.lng
       : req.body && req.body.longitude !== undefined && req.body.longitude !== null && req.body.longitude !== ''
-      ? req.body.longitude
-      : null;
+        ? req.body.longitude
+        : null;
 
   if (rawLat === null || rawLng === null) {
     return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required.' });
@@ -759,7 +764,7 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
 
     return res.status(201).json(formatted);
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     console.error('[Portal API] POST /rescue-requests failed:', err.message);
     return res.status(503).json({ error: 'Unable to submit rescue request' });
   } finally {
@@ -842,11 +847,18 @@ router.get('/broadcast-categories', async (req, res) => {
 router.get('/hazard-alerts', async (req, res) => {
   try {
     const { defaultColorForName } = require('../config/advisoryCategories');
-    const isResident = String(req.user && req.user.role || '').toLowerCase() === 'resident';
+    const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
+    await expireDueBroadcasts();
+
+    const userRoleLower = String(req.user && req.user.role || '').toLowerCase();
+    const isResident = userRoleLower === 'resident';
+    const isResponder = userRoleLower === 'responder';
     const includeInactive = String(req.query.includeArchived || '').toLowerCase() === 'true';
     const [broadcastRows] = await pool.query(
-      `SELECT ebl.id, ebl.title, ebl.message, ebl.category_id, ebl.advisory_type, ebl.severity,
-              ebl.target_scope, ebl.target_zones, ebl.broadcasted_at, ebl.expires_at, ebl.is_active,
+      `SELECT ebl.id, ebl.title, ebl.message, ebl.category_id, ebl.advisory_type, ebl.urgency_level,
+              ebl.target_scope, ebl.target_zones, ebl.broadcasted_at, ebl.expires_at,
+              ebl.is_active, ebl.status, ebl.expired_at, ebl.cancelled_at,
+              ebl.location_coverage, ebl.latitude, ebl.longitude, ebl.location_address,
               bc.name AS category_name, bc.badge_color AS category_color, bc.priority AS category_priority,
               u.name AS author_name, u.email AS author_email,
               up.first_name AS author_first_name, up.last_name AS author_last_name
@@ -855,8 +867,9 @@ router.get('/hazard-alerts', async (req, res) => {
        LEFT JOIN users u ON ebl.authorized_by = u.id
        LEFT JOIN user_profiles up ON u.id = up.user_id
        WHERE 1=1
-         ${includeInactive ? '' : 'AND ebl.is_active = TRUE'}
-         ${isResident ? "AND ebl.target_scope <> 'Responders Only'" : ''}
+         ${includeInactive ? '' : "AND ebl.is_active = TRUE AND ebl.status = 'Active' AND (ebl.expires_at IS NULL OR ebl.expires_at > NOW())"}
+         ${isResident ? "AND ebl.target_scope NOT IN ('Responders', 'Responders Only')" : ''}
+         ${isResponder ? "AND ebl.target_scope <> 'Residents'" : ''}
        ORDER BY ebl.broadcasted_at DESC
        LIMIT 100`
     );
@@ -864,11 +877,11 @@ router.get('/hazard-alerts', async (req, res) => {
       `SELECT a.*, u.name AS author_name, u.email AS author_email
        FROM alerts a
        LEFT JOIN users u ON a.created_by = u.id
+       WHERE NOT EXISTS (
+         SELECT 1 FROM emergency_broadcast_logs ebl
+         WHERE (ebl.title || ': ' || ebl.message) = a.message
+       )
        ORDER BY a.created_at DESC LIMIT 50`
-    );
-
-    const broadcastCombinedMessages = new Set(
-      broadcastRows.map((b) => `${b.title}: ${b.message}`)
     );
 
     const mappedBroadcasts = broadcastRows.map((b) => {
@@ -878,15 +891,20 @@ router.get('/hazard-alerts', async (req, res) => {
       const zoneList = b.target_zones
         ? String(b.target_zones).split(/[,;/]+/).map((z) => z.trim()).filter(Boolean)
         : [];
-      const affectedLocation = zoneList.length > 0
-        ? `${b.target_scope} (${zoneList.join(', ')})`
-        : (b.target_scope || 'Barangay Bayanan');
+      const locationCoverage = b.location_coverage || 'Entire Barangay Bayanan';
+      const latVal = b.latitude !== null && b.latitude !== undefined ? Number(b.latitude) : null;
+      const lngVal = b.longitude !== null && b.longitude !== undefined ? Number(b.longitude) : null;
+      const locationAddress = (b.location_address || b.target_zones || '').trim() || null;
+      const affectedLocation = locationAddress;
       const author = [b.author_first_name, b.author_last_name].filter(Boolean).join(' ')
         || b.author_name
         || b.author_email
         || 'BDRRMC Barangay Bayanan';
-      const isExpired = Boolean(b.expires_at && new Date(b.expires_at).getTime() < Date.now());
-      const status = !b.is_active ? 'Archived' : (isExpired ? 'Expired' : 'Active');
+      const isExpiredByTime = Boolean(b.expires_at && new Date(b.expires_at).getTime() <= Date.now());
+      let status = b.status || (b.is_active ? 'Active' : 'Cancelled');
+      if (status === 'Active' && (isExpiredByTime || !b.is_active)) {
+        status = isExpiredByTime ? 'Expired' : 'Cancelled';
+      }
       return {
         id: `BRD-${String(b.id).padStart(4, '0')}`,
         title: b.title,
@@ -895,44 +913,47 @@ router.get('/hazard-alerts', async (req, res) => {
         categoryName,
         advisoryType: categoryName,
         category: categoryName,
+        urgencyLevel: b.urgency_level || 'Advisory',
         badgeColor,
         priority,
-        isEmergency: priority <= 2,
-        severity: b.severity || 'medium',
+        isEmergency: b.urgency_level === 'Critical' || b.urgency_level === 'Warning' || priority <= 2,
         publishedAt: b.broadcasted_at,
         expiresAt: b.expires_at || null,
+        expiredAt: b.expired_at || null,
+        cancelledAt: b.cancelled_at || null,
         targetScope: b.target_scope || 'All Barangay Bayanan',
         targetZones: b.target_zones || '',
         affectedAreas: zoneList.length > 0 ? zoneList : [b.target_scope || 'Barangay Bayanan'],
         affectedLocation,
+        locationCoverage,
+        latitude: Number.isFinite(latVal) ? latVal : null,
+        longitude: Number.isFinite(lngVal) ? lngVal : null,
+        locationAddress,
         issuingAuthority: author,
         status,
       };
     });
 
-    const mappedAlerts = alertRows
-      .filter((a) => !broadcastCombinedMessages.has(String(a.message || '')))
-      .map((a) => ({
-        id: `ALT-${a.id}`,
-        title: a.title || 'Barangay Bayanan Advisory',
-        description: a.message,
-        categoryId: null,
-        categoryName: 'Other',
-        advisoryType: 'Other',
-        category: 'Other',
-        badgeColor: 'gray',
-        priority: 5,
-        isEmergency: false,
-        severity: a.severity || 'low',
-        publishedAt: a.created_at,
-        expiresAt: null,
-        targetScope: 'All Barangay Bayanan',
-        targetZones: '',
-        affectedAreas: ['Barangay Bayanan'],
-        affectedLocation: 'Barangay Bayanan',
-        issuingAuthority: a.author_name || a.author_email || 'BDRRMC Barangay Bayanan',
-        status: 'Active',
-      }));
+    const mappedAlerts = alertRows.map((a) => ({
+      id: `ALT-${a.id}`,
+      title: a.title || 'Barangay Bayanan Advisory',
+      description: a.message,
+      categoryId: null,
+      categoryName: 'Other',
+      advisoryType: 'Other',
+      category: 'Other',
+      badgeColor: 'gray',
+      priority: 5,
+      isEmergency: false,
+      publishedAt: a.created_at,
+      expiresAt: null,
+      targetScope: 'All Barangay Bayanan',
+      targetZones: '',
+      affectedAreas: ['Barangay Bayanan'],
+      affectedLocation: 'Barangay Bayanan',
+      issuingAuthority: a.author_name || a.author_email || 'BDRRMC Barangay Bayanan',
+      status: 'Active',
+    }));
 
     const combined = [...mappedBroadcasts, ...mappedAlerts].sort(
       (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
@@ -971,15 +992,15 @@ router.get('/evacuation-routes', async (req, res) => {
         r.estimated_distance_km !== undefined && r.estimated_distance_km !== null
           ? Number(r.estimated_distance_km)
           : r.distance_meters !== undefined && r.distance_meters !== null
-          ? Number((Number(r.distance_meters) / 1000).toFixed(2))
-          : 0;
+            ? Number((Number(r.distance_meters) / 1000).toFixed(2))
+            : 0;
 
       const estimatedMinutes =
         r.estimated_walk_minutes !== undefined && r.estimated_walk_minutes !== null
           ? Number(r.estimated_walk_minutes)
           : r.estimated_duration_seconds !== undefined && r.estimated_duration_seconds !== null
-          ? Math.max(1, Math.round(Number(r.estimated_duration_seconds) / 60))
-          : 10;
+            ? Math.max(1, Math.round(Number(r.estimated_duration_seconds) / 60))
+            : 10;
 
       return {
         ...r,
@@ -1027,23 +1048,23 @@ router.get('/emergency-facilities', async (req, res) => {
       ...evacRows
         .filter((e) => !isExcludedEvacuationCenter(e) && (String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude)))
         .map((e) => ({
-        ...e,
-        id: `EVAC-${e.id}`,
-        dbId: e.id,
-        name: e.name,
-        type: 'Evacuation Center',
-        category: 'Evacuation Center',
-        address: e.address || 'Barangay Bayanan, Muntinlupa City',
-        phone: e.contact_phone || e.contact_number || '',
-        latitude: Number(e.latitude),
-        longitude: Number(e.longitude),
-        coordinates: {
-          lat: Number(e.latitude),
-          lng: Number(e.longitude),
-        },
-        is_operational: e.status === 'Full / Closed' ? 0 : 1,
-        isOperational: e.status !== 'Full / Closed',
-      })),
+          ...e,
+          id: `EVAC-${e.id}`,
+          dbId: e.id,
+          name: e.name,
+          type: 'Evacuation Center',
+          category: 'Evacuation Center',
+          address: e.address || 'Barangay Bayanan, Muntinlupa City',
+          phone: e.contact_phone || e.contact_number || '',
+          latitude: Number(e.latitude),
+          longitude: Number(e.longitude),
+          coordinates: {
+            lat: Number(e.latitude),
+            lng: Number(e.longitude),
+          },
+          is_operational: e.status === 'Full / Closed' ? 0 : 1,
+          isOperational: e.status !== 'Full / Closed',
+        })),
     ];
 
     return res.json(facilities);
@@ -1068,7 +1089,10 @@ router.get('/emergency-contacts', async (req, res) => {
 router.get('/responder/profile', requireRole('responder', 'admin'), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM responder_profiles WHERE user_id = ? LIMIT 1',
+      `SELECT rp.*, up.phone_number, up.verification_status
+       FROM responder_profiles rp
+       LEFT JOIN user_profiles up ON rp.user_id = up.user_id
+       WHERE rp.user_id = ? LIMIT 1`,
       [req.user.id]
     );
     const r = rows[0] || {};
@@ -1079,13 +1103,16 @@ router.get('/responder/profile', requireRole('responder', 'admin'), async (req, 
       userCode: req.user.user_code || req.user.userCode || `RSPDR-${String(req.user.id).padStart(4, '0')}`,
       firstName: parts[0] || 'Responder',
       lastName: parts.slice(1).join(' ') || '',
-      email: req.user.email,
+      email: req.user.email || '',
+      phone: r.phone_number || '',
       role: req.user.role === 'admin' ? 'Administrator' : 'Responder',
       badgeNumber: r.badge_number || `RESP-${req.user.id}`,
       callsign: r.callsign || `BAYANAN-${req.user.id}`,
-      assignedUnit: r.assigned_unit || 'Barangay Bayanan Field Unit',
-      department: r.department || 'Barangay Bayanan Emergency Operations',
+      assignedUnit: r.assigned_unit || '',
+      department: r.department || 'Barangay Bayanan EOC',
+      baseStation: r.department || 'Barangay Bayanan EOC',
       specialization: r.specialization || '',
+      verificationStatus: r.verification_status || '',
       availability: r.availability_status || 'Off Duty',
       skills: r.specialization ? [r.specialization] : [],
       currentLocation:
@@ -1101,8 +1128,9 @@ router.get('/responder/profile', requireRole('responder', 'admin'), async (req, 
 
 router.patch('/responder/availability', requireRole('responder', 'admin'), async (req, res) => {
   const { status } = req.body || {};
-  const validStatuses = ['On Duty', 'Off Duty', 'Unavailable'];
-  if (!validStatuses.includes(status)) {
+  const validStatuses = ['On Duty', 'Off Duty', 'On Break'];
+  const normalizedStatus = status === 'Unavailable' ? 'On Break' : status;
+  if (!validStatuses.includes(normalizedStatus)) {
     return res.status(400).json({ error: 'Invalid availability status' });
   }
   try {
@@ -1110,38 +1138,95 @@ router.patch('/responder/availability', requireRole('responder', 'admin'), async
       `INSERT INTO responder_profiles (user_id, badge_number, assigned_unit, department, availability_status)
        VALUES (?, ?, 'Barangay Bayanan Field Unit', 'Barangay Bayanan Emergency Operations', ?)
        ON DUPLICATE KEY UPDATE availability_status = VALUES(availability_status)`,
-      [req.user.id, `RESP-${req.user.id}`, status]
+      [req.user.id, `RESP-${req.user.id}`, normalizedStatus]
     );
-    return res.json({ status, updated: true });
+    return res.json({ status: normalizedStatus, updated: true });
   } catch (err) {
     console.error('[Portal API] PATCH /responder/availability failed:', err.message);
     return res.status(503).json({ error: 'Unable to update responder availability' });
   }
 });
 
+function normalizeAssignmentTimelineStatus(rawStatus, note = '') {
+  const s = String(rawStatus || '').trim();
+  const low = s.toLowerCase();
+  if (low === 'dispatched') {
+    if (/accepted/i.test(note)) return 'Accepted';
+    return 'Assigned';
+  }
+  if (low === 'responding' || low === 'en route' || low === 'en_route') return 'En Route';
+  if (low === 'on_site' || low === 'on scene' || low === 'on_scene') return 'On Scene';
+  if (low === 'in_progress' || low === 'in progress') return 'In Progress';
+  if (low === 'resolved' || low === 'completed') return 'Completed';
+  if (low === 'verified') return 'Verified';
+  if (low === 'pending' || low === 'pending dispatch') return 'Pending';
+  return s || 'Update';
+}
+
+function isCompletionPhotoRequired(_targetKind, _recordRow) {
+  return true;
+}
+
+function mapUnifiedIncidentStatus(reportStatus, assignmentStatus) {
+  const rs = String(reportStatus || '').toLowerCase();
+  const as = String(assignmentStatus || '').toLowerCase();
+  if (rs === 'resolved' || as === 'completed') return 'Completed';
+  if (rs === 'in_progress') return 'In Progress';
+  if (rs === 'on_site' || as === 'on scene') return 'On Scene';
+  if (rs === 'responding' || as === 'en route') return 'En Route';
+  if (as === 'accepted') return 'Accepted';
+  if (rs === 'dispatched' || as === 'assigned') return 'Assigned';
+  return 'Pending';
+}
+
 async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
   const [reportRows] = await pool.query(
     isAdmin
-      ? `SELECT r.*, u.name AS reporter_name, up.phone_number AS reporter_phone
+      ? `SELECT r.*, ia.id AS assignment_id, ia.responder_user_id, ia.assignment_status,
+                ia.dispatch_instructions, ia.assigned_at, ia.accepted_at, ia.en_route_at,
+                ia.on_scene_at, ia.completed_at,
+                u.name AS reporter_name, up.phone_number AS reporter_phone
          FROM reports r
+         LEFT JOIN LATERAL (
+           SELECT id, responder_user_id, assignment_status, dispatch_instructions,
+                  assigned_at, accepted_at, en_route_at, on_scene_at, completed_at
+           FROM incident_assignments
+           WHERE report_id = r.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ia ON TRUE
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND (r.assigned_to = ? OR r.assigned_to IS NOT NULL)
-         ORDER BY r.created_at DESC`
-      : `SELECT r.*, u.name AS reporter_name, up.phone_number AS reporter_phone
+         WHERE r.status NOT IN ('false_alarm', 'dismissed')
+           AND (ia.responder_user_id IS NOT NULL OR r.assigned_to IS NOT NULL)
+         ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`
+      : `SELECT r.*, ia.id AS assignment_id, ia.responder_user_id, ia.assignment_status,
+                ia.dispatch_instructions, ia.assigned_at, ia.accepted_at, ia.en_route_at,
+                ia.on_scene_at, ia.completed_at,
+                u.name AS reporter_name, up.phone_number AS reporter_phone
          FROM reports r
+         LEFT JOIN LATERAL (
+           SELECT id, responder_user_id, assignment_status, dispatch_instructions,
+                  assigned_at, accepted_at, en_route_at, on_scene_at, completed_at
+           FROM incident_assignments
+           WHERE report_id = r.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ia ON TRUE
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND r.assigned_to = ?
-         ORDER BY r.created_at DESC`,
-    [userId]
+         WHERE r.status NOT IN ('false_alarm', 'dismissed')
+           AND COALESCE(ia.responder_user_id, r.assigned_to) = ?
+         ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`,
+    isAdmin ? [] : [userId]
   );
 
   const [rescueRows] = await pool.query(
     isAdmin
       ? `SELECT * FROM (
            SELECT DISTINCT ON (ra.rescue_id)
-                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
+                  ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
                   u.name AS resident_name, up.phone_number AS resident_phone
            FROM rescue_assignments ra
            JOIN rescue_requests rr ON rr.id = ra.rescue_id
@@ -1152,7 +1237,8 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          ORDER BY latest.assigned_at DESC`
       : `SELECT * FROM (
            SELECT DISTINCT ON (ra.rescue_id)
-                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions, ra.assigned_at,
+                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
+                  ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
                   u.name AS resident_name, up.phone_number AS resident_phone
            FROM rescue_assignments ra
            JOIN rescue_requests rr ON rr.id = ra.rescue_id
@@ -1166,18 +1252,43 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
   );
 
   const rescuePhotosMap = new Map();
+  const rescueResidentEvidenceMap = new Map();
+  const rescueCompletionEvidenceMap = new Map();
   const rescueTimelineMap = new Map();
   if (rescueRows.length > 0) {
     const rescueIn = buildInClause([...new Set(rescueRows.map((r) => r.id))]);
     if (rescueIn) {
       try {
         const [attRows] = await pool.query(
-          `SELECT rescue_id, file_url FROM rescue_attachments WHERE rescue_id IN (${rescueIn.placeholders}) ORDER BY created_at ASC`,
+          `SELECT ra.rescue_id, ra.file_url, ra.file_name, ra.file_type, ra.evidence_type, ra.assignment_id, ra.created_at,
+                  u.name AS uploaded_by_name, u.role_id AS uploader_role_id
+           FROM rescue_attachments ra
+           LEFT JOIN users u ON u.id = ra.uploaded_by
+           WHERE ra.rescue_id IN (${rescueIn.placeholders})
+           ORDER BY ra.created_at ASC`,
           rescueIn.params
         );
         for (const a of attRows) {
           if (!rescuePhotosMap.has(a.rescue_id)) rescuePhotosMap.set(a.rescue_id, []);
           rescuePhotosMap.get(a.rescue_id).push(a.file_url);
+
+          const evType = a.evidence_type || (Number(a.uploader_role_id) === 2 ? 'responder_completion' : 'resident_report');
+          const evItem = {
+            fileUrl: a.file_url,
+            fileName: a.file_name || 'Photo Evidence',
+            fileType: a.file_type || 'image/jpeg',
+            evidenceType: evType,
+            assignmentId: a.assignment_id || null,
+            uploadedByName: a.uploaded_by_name || (evType === 'resident_report' ? 'Resident' : 'Responder'),
+            createdAt: a.created_at,
+          };
+          if (evType === 'responder_completion') {
+            if (!rescueCompletionEvidenceMap.has(a.rescue_id)) rescueCompletionEvidenceMap.set(a.rescue_id, []);
+            rescueCompletionEvidenceMap.get(a.rescue_id).push(evItem);
+          } else if (evType === 'resident_report') {
+            if (!rescueResidentEvidenceMap.has(a.rescue_id)) rescueResidentEvidenceMap.set(a.rescue_id, []);
+            rescueResidentEvidenceMap.get(a.rescue_id).push(evItem);
+          }
         }
       } catch {
         // ignore
@@ -1185,18 +1296,20 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
 
       try {
         const [histRows] = await pool.query(
-          `SELECT h.rescue_id, h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
+          `SELECT h.id, h.rescue_id, h.new_status AS status, h.work_notes AS note, h.photo_url AS photo, h.created_at AS timestamp, u.name AS author
            FROM rescue_status_history h
            LEFT JOIN users u ON h.changed_by = u.id
            WHERE h.rescue_id IN (${rescueIn.placeholders})
-           ORDER BY h.created_at ASC`,
+           ORDER BY h.created_at DESC, h.id DESC`,
           rescueIn.params
         );
         for (const h of histRows) {
           if (!rescueTimelineMap.has(h.rescue_id)) rescueTimelineMap.set(h.rescue_id, []);
           rescueTimelineMap.get(h.rescue_id).push({
-            status: h.status,
+            id: h.id,
+            status: normalizeAssignmentTimelineStatus(h.status, h.note || ''),
             note: h.note || '',
+            photo: h.photo || null,
             author: h.author || 'Responder',
             timestamp: h.timestamp,
           });
@@ -1208,18 +1321,43 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
   }
 
   const reportPhotosMap = new Map();
+  const reportResidentEvidenceMap = new Map();
+  const reportCompletionEvidenceMap = new Map();
   const reportTimelineMap = new Map();
   if (reportRows.length > 0) {
     const reportIn = buildInClause([...new Set(reportRows.map((r) => r.id))]);
     if (reportIn) {
       try {
         const [attRows] = await pool.query(
-          `SELECT incident_id, file_url FROM incident_attachments WHERE incident_id IN (${reportIn.placeholders}) ORDER BY created_at ASC`,
+          `SELECT ia.incident_id, ia.file_url, ia.file_name, ia.file_type, ia.evidence_type, ia.assignment_id, ia.created_at,
+                  u.name AS uploaded_by_name, u.role_id AS uploader_role_id
+           FROM incident_attachments ia
+           LEFT JOIN users u ON u.id = ia.uploaded_by
+           WHERE ia.incident_id IN (${reportIn.placeholders})
+           ORDER BY ia.created_at ASC`,
           reportIn.params
         );
         for (const a of attRows) {
           if (!reportPhotosMap.has(a.incident_id)) reportPhotosMap.set(a.incident_id, []);
           reportPhotosMap.get(a.incident_id).push(a.file_url);
+
+          const evType = a.evidence_type || (Number(a.uploader_role_id) === 2 ? 'responder_completion' : 'resident_report');
+          const evItem = {
+            fileUrl: a.file_url,
+            fileName: a.file_name || 'Photo Evidence',
+            fileType: a.file_type || 'image/jpeg',
+            evidenceType: evType,
+            assignmentId: a.assignment_id || null,
+            uploadedByName: a.uploaded_by_name || (evType === 'resident_report' ? 'Resident' : 'Responder'),
+            createdAt: a.created_at,
+          };
+          if (evType === 'responder_completion') {
+            if (!reportCompletionEvidenceMap.has(a.incident_id)) reportCompletionEvidenceMap.set(a.incident_id, []);
+            reportCompletionEvidenceMap.get(a.incident_id).push(evItem);
+          } else if (evType === 'resident_report') {
+            if (!reportResidentEvidenceMap.has(a.incident_id)) reportResidentEvidenceMap.set(a.incident_id, []);
+            reportResidentEvidenceMap.get(a.incident_id).push(evItem);
+          }
         }
       } catch {
         // ignore
@@ -1227,17 +1365,18 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
 
       try {
         const [histRows] = await pool.query(
-          `SELECT h.incident_id, h.new_status AS status, h.remarks AS note, h.created_at AS timestamp, u.name AS author
+          `SELECT h.id, h.incident_id, h.new_status AS status, h.remarks AS note, h.created_at AS timestamp, u.name AS author
            FROM incident_status_history h
            LEFT JOIN users u ON h.changed_by = u.id
            WHERE h.incident_id IN (${reportIn.placeholders})
-           ORDER BY h.created_at ASC`,
+           ORDER BY h.created_at DESC, h.id DESC`,
           reportIn.params
         );
         for (const h of histRows) {
           if (!reportTimelineMap.has(h.incident_id)) reportTimelineMap.set(h.incident_id, []);
           reportTimelineMap.get(h.incident_id).push({
-            status: h.status,
+            id: h.id,
+            status: normalizeAssignmentTimelineStatus(h.status, h.note || ''),
             note: h.note || '',
             author: h.author || 'Responder',
             timestamp: h.timestamp,
@@ -1262,24 +1401,32 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       location: r.address || 'Barangay Bayanan, Muntinlupa City',
       landmark: r.landmark || '',
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
+      completionPhotoRequired: false,
       status:
         r.status === 'Completed' || r.assignment_status === 'Completed'
           ? 'Completed'
           : r.status === 'In Progress'
-          ? 'In Progress'
-          : r.assignment_status || r.status || 'Assigned',
+            ? 'In Progress'
+            : r.assignment_status || r.status || 'Assigned',
       peopleCount: r.people_count || 1,
       vulnerableDetails: r.vulnerable_details || 'None specified',
       residentName: r.resident_name || 'Resident',
       residentPhone: r.resident_phone || '',
       assignedAt: r.assigned_at || r.created_at,
+      acceptedAt: r.accepted_at || null,
+      enRouteAt: r.en_route_at || null,
+      onSceneAt: r.on_scene_at || null,
+      completedAt: r.completed_at || null,
       timeline: rescueTimelineMap.get(r.id) || [],
       photos: rescuePhotosMap.get(r.id) || [],
+      residentEvidence: rescueResidentEvidenceMap.get(r.id) || [],
+      responderCompletionEvidence: rescueCompletionEvidenceMap.get(r.id) || [],
       dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to EOC.',
     })),
     ...reportRows.map((r) => ({
       id: r.reference_number || `REP-${r.id}`,
       dbId: r.id,
+      assignmentId: r.assignment_id || null,
       assignmentType: 'incident',
       referenceNumber: r.reference_number || `REP-${r.id}`,
       title: r.title || `${r.incident_type} Incident`,
@@ -1287,24 +1434,20 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       description: r.description,
       location: r.address || 'Barangay Bayanan, Muntinlupa City',
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-      status:
-        r.status === 'resolved'
-          ? 'Completed'
-          : r.status === 'in_progress'
-          ? 'In Progress'
-          : r.status === 'on_site'
-          ? 'On Scene'
-          : r.status === 'responding'
-          ? 'En Route'
-          : r.status === 'dispatched'
-          ? 'Assigned'
-          : 'Pending',
+      completionPhotoRequired: isCompletionPhotoRequired('incident', r),
+      status: mapUnifiedIncidentStatus(r.status, r.assignment_status),
       residentName: r.reporter_name || 'Resident',
       residentPhone: r.reporter_phone || '',
-      assignedAt: r.created_at,
+      assignedAt: r.assigned_at || r.created_at,
+      acceptedAt: r.accepted_at || null,
+      enRouteAt: r.en_route_at || null,
+      onSceneAt: r.on_scene_at || null,
+      completedAt: r.completed_at || null,
       timeline: reportTimelineMap.get(r.id) || [],
       photos: reportPhotosMap.get(r.id) || [],
-      dispatchInstructions: 'Assess hazard scope and report status to Barangay Bayanan EOC.',
+      residentEvidence: reportResidentEvidenceMap.get(r.id) || [],
+      responderCompletionEvidence: reportCompletionEvidenceMap.get(r.id) || [],
+      dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to Barangay Bayanan EOC.',
     })),
   ];
 }
@@ -1364,18 +1507,22 @@ async function handleResponderAssignmentUpdate(req, res) {
     type,
     autoArrival,
     arrivalGps,
+    isInternalOnly,
+    is_internal_only,
   } = req.body || {};
+
+  const internalOnlyFlag = Boolean(isInternalOnly || is_internal_only);
 
   const fieldNotes = String(
     note !== undefined
       ? note
       : notes !== undefined
-      ? notes
-      : workNotes !== undefined
-      ? workNotes
-      : work_notes !== undefined
-      ? work_notes
-      : ''
+        ? notes
+        : workNotes !== undefined
+          ? workNotes
+          : work_notes !== undefined
+            ? work_notes
+            : ''
   ).trim();
 
   const rawStatus = String(status || 'In Progress').trim();
@@ -1486,7 +1633,21 @@ async function handleResponderAssignmentUpdate(req, res) {
           return res.status(403).json({ error: 'You are not authorized to update this rescue assignment.' });
         }
       } else if (targetKind === 'incident') {
-        if (Number(reportRow.assigned_to) !== Number(req.user.id)) {
+        let authorizedIncident = Number(reportRow.assigned_to) === Number(req.user.id);
+        if (!authorizedIncident) {
+          const [latestIncRows] = await conn.query(
+            `SELECT responder_user_id
+             FROM incident_assignments
+             WHERE report_id = ?
+             ORDER BY assigned_at DESC, id DESC
+             LIMIT 1`,
+            [reportRow.id]
+          );
+          authorizedIncident = Boolean(
+            latestIncRows.length && Number(latestIncRows[0].responder_user_id) === Number(req.user.id)
+          );
+        }
+        if (!authorizedIncident) {
           await conn.rollback();
           return res.status(403).json({ error: 'You are not authorized to update this incident assignment.' });
         }
@@ -1557,6 +1718,33 @@ async function handleResponderAssignmentUpdate(req, res) {
       }
     }
 
+    // Enforce mandatory completion summary, photo evidence, and single-completion guard
+    const isCompleting = statusLower === 'completed' || statusLower === 'resolved';
+    if (isCompleting) {
+      const alreadyCompleted =
+        targetKind === 'rescue'
+          ? String(rescueRow.status || '') === 'Completed' || String(assignmentRow.assignment_status || '') === 'Completed'
+          : String(reportRow.status || '').toLowerCase() === 'resolved' || String(assignmentRow.assignment_status || '') === 'Completed';
+      if (alreadyCompleted) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This assignment has already been completed.' });
+      }
+      if (!workNotes || !String(workNotes).trim()) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Please enter a completion summary.' });
+      }
+    }
+
+    const requiresCompletionPhoto =
+      isCompleting && isCompletionPhotoRequired(targetKind, targetKind === 'incident' ? reportRow : rescueRow);
+
+    if (requiresCompletionPhoto && rawPhotoList.filter(Boolean).length === 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'Please capture at least one completion photo.',
+      });
+    }
+
     // Save uploaded photos to appropriate folder
     const subDir = targetKind === 'rescue' ? 'rescues' : 'incidents';
     const prefix = targetKind === 'rescue' ? `RES-UPD-${req.user.id}` : `INC-UPD-${req.user.id}`;
@@ -1569,6 +1757,13 @@ async function handleResponderAssignmentUpdate(req, res) {
     } catch (photoErr) {
       await conn.rollback();
       return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
+    }
+
+    if (requiresCompletionPhoto && savedPhotos.length === 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        error: 'A valid completion photo is required for this incident category.',
+      });
     }
     const primaryPhotoUrl = savedPhotos[0] ? savedPhotos[0].publicUrl : null;
 
@@ -1636,8 +1831,8 @@ async function handleResponderAssignmentUpdate(req, res) {
       const noteToSave = fieldNotes || `Responder updated status to ${displayRescueStatus}`;
       await conn.query(
         `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
-         VALUES (?, ?, ?, ?, ?, FALSE)`,
-        [rescueRow.id, req.user.id, nextUpdateStatus, noteToSave, primaryPhotoUrl]
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [rescueRow.id, req.user.id, nextUpdateStatus, noteToSave, primaryPhotoUrl, internalOnlyFlag]
       );
 
       await conn.query(
@@ -1646,11 +1841,18 @@ async function handleResponderAssignmentUpdate(req, res) {
         [rescueRow.id, oldStatus, nextRescueStatus, req.user.id, noteToSave, primaryPhotoUrl]
       );
 
+      const [latestResAssign] = await conn.query(
+        `SELECT id FROM rescue_assignments WHERE rescue_id = ? ORDER BY assigned_at DESC, id DESC LIMIT 1`,
+        [rescueRow.id]
+      );
+      const resAssignId = latestResAssign[0] ? latestResAssign[0].id : null;
+      const resEvidenceType = nextRescueStatus === 'Completed' ? 'responder_completion' : 'responder_progress';
+
       for (const sp of savedPhotos) {
         await conn.query(
-          `INSERT INTO rescue_attachments (rescue_id, file_url, file_name, file_type, file_size, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [rescueRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+          `INSERT INTO rescue_attachments (rescue_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [rescueRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, resEvidenceType, resAssignId]
         );
       }
 
@@ -1691,6 +1893,18 @@ async function handleResponderAssignmentUpdate(req, res) {
       };
 
       emitStatusUpdate(updatePayload);
+      try {
+        const { syncConversationsForRescueRequests } = require('../services/messageService');
+        const { emitConversationAccessUpdated } = require('../services/socketService');
+        await syncConversationsForRescueRequests();
+        emitConversationAccessUpdated({
+          rescueId: rescueRow.id,
+          residentUserId: rescueRow.user_id,
+          responderUserId: req.user.id,
+          status: nextRescueStatus === 'Completed' ? 'Closed' : 'Active',
+          reason: nextRescueStatus === 'Completed' ? 'Assignment Completed' : null,
+        });
+      } catch (_) {}
       if (nextRescueStatus === 'Completed' && oldStatus !== 'Completed') {
         emitIncidentResolved({
           id: rescueRow.id,
@@ -1751,31 +1965,64 @@ async function handleResponderAssignmentUpdate(req, res) {
       [nextReportStatus, nextReportStatus, reportRow.id]
     );
 
-    await conn
-      .query(
+    const [latestIncAssign] = await conn.query(
+      `SELECT id FROM incident_assignments
+       WHERE report_id = ?
+       ORDER BY assigned_at DESC, id DESC
+       LIMIT 1`,
+      [reportRow.id]
+    );
+
+    if (latestIncAssign.length > 0) {
+      await conn.query(
         `UPDATE incident_assignments
          SET assignment_status = ?,
              accepted_at = CASE WHEN ? = 'Accepted' AND accepted_at IS NULL THEN CURRENT_TIMESTAMP ELSE accepted_at END,
              en_route_at = CASE WHEN ? = 'En Route' AND en_route_at IS NULL THEN CURRENT_TIMESTAMP ELSE en_route_at END,
              on_scene_at = CASE WHEN ? = 'On Scene' AND on_scene_at IS NULL THEN CURRENT_TIMESTAMP ELSE on_scene_at END,
              completed_at = CASE WHEN ? = 'Completed' AND completed_at IS NULL THEN CURRENT_TIMESTAMP ELSE completed_at END
-         WHERE report_id = ?`,
+         WHERE id = ?`,
         [
           nextAssignmentStatus,
           nextAssignmentStatus,
           nextAssignmentStatus,
           nextAssignmentStatus,
           nextAssignmentStatus,
-          reportRow.id,
+          latestIncAssign[0].id,
         ]
-      )
-      .catch(() => {});
+      );
+    } else {
+      await conn.query(
+        `INSERT INTO incident_assignments (
+           report_id, responder_user_id, assigned_by, assignment_status, dispatch_instructions,
+           assigned_at, accepted_at, en_route_at, on_scene_at, completed_at
+         )
+         VALUES (
+           ?, ?, ?, ?, 'Proceed to assigned scene and report status to Barangay Bayanan EOC.',
+           CURRENT_TIMESTAMP,
+           CASE WHEN ? = 'Accepted' THEN CURRENT_TIMESTAMP ELSE NULL END,
+           CASE WHEN ? = 'En Route' THEN CURRENT_TIMESTAMP ELSE NULL END,
+           CASE WHEN ? = 'On Scene' THEN CURRENT_TIMESTAMP ELSE NULL END,
+           CASE WHEN ? = 'Completed' THEN CURRENT_TIMESTAMP ELSE NULL END
+         )`,
+        [
+          reportRow.id,
+          reportRow.assigned_to || req.user.id,
+          req.user.id,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+          nextAssignmentStatus,
+        ]
+      );
+    }
 
     const noteToSave = fieldNotes || `Responder updated incident status to ${displayStatus}`;
     await conn.query(
       `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, photo_url, is_internal_only)
-       VALUES (?, ?, ?, ?, ?, FALSE)`,
-      [reportRow.id, req.user.id, nextIncidentUpdateStatus, noteToSave, primaryPhotoUrl]
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [reportRow.id, req.user.id, nextIncidentUpdateStatus, noteToSave, primaryPhotoUrl, internalOnlyFlag]
     );
 
     await conn.query(
@@ -1784,11 +2031,14 @@ async function handleResponderAssignmentUpdate(req, res) {
       [reportRow.id, oldStatus, nextReportStatus, req.user.id, noteToSave]
     );
 
+    const incAssignId = latestIncAssign[0] ? latestIncAssign[0].id : null;
+    const incEvidenceType = nextReportStatus === 'resolved' ? 'responder_completion' : 'responder_progress';
+
     for (const sp of savedPhotos) {
       await conn.query(
-        `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [reportRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+        `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [reportRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, incEvidenceType, incAssignId]
       );
     }
 
@@ -1829,13 +2079,33 @@ async function handleResponderAssignmentUpdate(req, res) {
     };
 
     emitStatusUpdate(updatePayload);
+    if (nextReportStatus === 'resolved' && oldStatus !== 'resolved') {
+      emitIncidentResolved({
+        id: reportRow.id,
+        referenceNumber: refNumber,
+        recordType: 'incident',
+        status: 'resolved',
+        residentId: reportRow.user_id,
+        assignedTo: req.user.id,
+      });
+    }
 
     return res.json({
       message: 'Incident assignment status updated',
       assignment: updatePayload,
     });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
+    if (typeof savedPhotos !== 'undefined' && Array.isArray(savedPhotos)) {
+      for (const sp of savedPhotos) {
+        try {
+          if (sp && sp.publicUrl) {
+            const fp = path.join(__dirname, '../../frontend', sp.publicUrl);
+            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+          }
+        } catch (_) { }
+      }
+    }
     console.error('[Portal API] Responder assignment status update failed:', err.message);
     return res.status(503).json({ error: 'Unable to update assignment status' });
   } finally {
@@ -1956,6 +2226,109 @@ router.get('/responder/map-data', requireRole('responder', 'admin'), async (req,
   } catch (err) {
     console.error('[Portal API] GET /responder/map-data failed:', err.message);
     return res.status(503).json({ error: 'Unable to load responder map data' });
+  }
+});
+
+// ============================================================================
+// POST /api/portal/responder/location — Authorized 10s Live Responder GPS Sync
+// ============================================================================
+router.post('/responder/location', authenticate, requireRole('responder', 'admin'), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const sharingEnabled = body.sharingEnabled !== false;
+
+    if (!sharingEnabled) {
+      emitResponderLocationOffline(req.user.id);
+      return res.json({ ok: true, sharingEnabled: false });
+    }
+
+    const lat = Number(body.lat);
+    const lng = Number(body.lng);
+    const accuracy = body.accuracy !== undefined && body.accuracy !== null ? Number(body.accuracy) : null;
+
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return res.status(400).json({ error: 'Valid GPS coordinates (lat, lng) are required.' });
+    }
+    if (accuracy !== null && (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 50000)) {
+      return res.status(400).json({ error: 'Invalid GPS accuracy value.' });
+    }
+
+    const [profRows] = await pool.query(
+      `SELECT rp.assigned_unit, rp.callsign, rp.badge_number, rp.availability_status,
+              rp.organization, rp.custom_organization, rp.department,
+              rp.current_latitude, rp.current_longitude, rp.last_location_updated_at,
+              u.name, u.user_code
+       FROM responder_profiles rp
+       INNER JOIN users u ON u.id = rp.user_id
+       WHERE rp.user_id = ?
+       LIMIT 1`,
+      [req.user.id]
+    );
+    const prof = profRows[0];
+
+    // Do not track or broadcast Off Duty responders
+    if (prof && String(prof.availability_status || '') === 'Off Duty') {
+      emitResponderLocationOffline(req.user.id);
+      return res.json({ ok: true, sharingEnabled: false, reason: 'off_duty' });
+    }
+
+    const effectiveOrg = prof
+      ? ((prof.organization === 'Other' && prof.custom_organization)
+          ? prof.custom_organization
+          : (prof.organization || prof.department || 'Emergency Operations'))
+      : 'Emergency Operations';
+
+    const updatedAtIso = new Date().toISOString();
+    const liveEntry = emitResponderLocationUpdate({
+      userId: req.user.id,
+      responderId: (prof && (prof.user_code || prof.badge_number)) || `RSP-${req.user.id}`,
+      name: (prof && prof.name) || req.user.name || 'Responder',
+      assignedUnit: (prof && prof.assigned_unit) || 'Response Unit',
+      organization: effectiveOrg,
+      callsign: (prof && prof.callsign) || null,
+      badgeNumber: (prof && prof.badge_number) || null,
+      availabilityStatus: (prof && prof.availability_status) || 'On Duty',
+      lat,
+      lng,
+      accuracy,
+      updatedAt: updatedAtIso,
+    });
+
+    // Minimize PostgreSQL writes: persist only when moved >= 10m or >= 30s elapsed
+    if (prof) {
+      const prevLat = prof.current_latitude !== null ? Number(prof.current_latitude) : null;
+      const prevLng = prof.current_longitude !== null ? Number(prof.current_longitude) : null;
+      const lastDbMs = prof.last_location_updated_at ? new Date(prof.last_location_updated_at).getTime() : 0;
+      const elapsedMs = Date.now() - lastDbMs;
+      const movedMeters = (prevLat !== null && prevLng !== null)
+        ? computeHaversineMeters(prevLat, prevLng, lat, lng)
+        : Infinity;
+
+      if (movedMeters >= 10 || elapsedMs >= 30000) {
+        await pool.query(
+          `UPDATE responder_profiles
+           SET current_latitude = ?, current_longitude = ?, last_location_updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ?`,
+          [lat, lng, req.user.id]
+        );
+        await pool.query(
+          `UPDATE users SET last_location_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [req.user.id]
+        ).catch(() => {});
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug(`[GeoSafe GPS][DB] Persisted responder #${req.user.id} location (moved=${Math.round(movedMeters)}m)`);
+        }
+      }
+    }
+
+    return res.json({
+      ok: true,
+      sharingEnabled: true,
+      location: liveEntry,
+    });
+  } catch (err) {
+    console.error('[Portal API] POST /responder/location failed:', err.message);
+    return res.status(503).json({ error: 'Unable to synchronize responder location.' });
   }
 });
 

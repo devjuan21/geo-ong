@@ -5,10 +5,10 @@
  * via rows in PostgreSQL `system_settings` (keys prefixed with `arrival_`).
  */
 const DEFAULT_ARRIVAL_CONFIG = Object.freeze({
-  geofenceRadiusMeters: 50,
-  maxGpsAccuracyMeters: 65,
-  consecutiveReadingsRequired: 3,
-  confirmationWindowMs: 8000,
+  geofenceRadiusMeters: 15,
+  maxGpsAccuracyMeters: 150,
+  consecutiveReadingsRequired: 2,
+  confirmationWindowMs: 1500,
 });
 
 function toPositiveNumber(val, fallback) {

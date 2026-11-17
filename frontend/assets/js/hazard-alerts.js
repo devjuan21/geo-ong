@@ -54,10 +54,13 @@ async function loadHazardAlerts() {
   try {
     const endpoint = statusFilter === 'all' ? '/hazard-alerts?includeArchived=true' : '/hazard-alerts';
     const alerts = await window.geoSafeStore.request(endpoint, { method: 'GET' });
-    allLoadedAlerts = Array.isArray(alerts) ? alerts : [];
+    const rawList = Array.isArray(alerts) ? alerts : [];
+    allLoadedAlerts = statusFilter === 'active'
+      ? rawList.filter((a) => String(a.status || 'Active') === 'Active')
+      : rawList;
     if (loadingEl) loadingEl.classList.add('hidden');
     if (totalBadge) {
-      const activeCount = allLoadedAlerts.filter((a) => String(a.status || 'Active') === 'Active').length;
+      const activeCount = rawList.filter((a) => String(a.status || 'Active') === 'Active').length;
       totalBadge.textContent = `${activeCount} Active`;
     }
 
@@ -118,6 +121,18 @@ function applyAlertsFilterAndSort() {
   }
 }
 
+function renderUrgencyBadgeSafe(urgency) {
+  const level = String(urgency || 'Advisory').trim();
+  const styles = {
+    Informational: 'bg-sky-50 text-sky-700 border-sky-200',
+    Advisory: 'bg-amber-50 text-amber-700 border-amber-200',
+    Warning: 'bg-orange-50 text-orange-700 border-orange-200',
+    Critical: 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]',
+  };
+  const cls = styles[level] || styles.Advisory;
+  return `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${cls}">${escapeHtmlSafe(level)}</span>`;
+}
+
 function renderAlerts(alerts) {
   const container = document.getElementById('alerts-list');
   if (!container) return;
@@ -128,14 +143,15 @@ function renderAlerts(alerts) {
     const badgeHtml = window.GeoSafeAdvisories
       ? window.GeoSafeAdvisories.renderBadge(categoryName, { badgeColor: alert.badgeColor })
       : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtmlSafe(categoryName)}</span>`;
-    const areaText = escapeHtmlSafe(
-      alert.affectedLocation ||
-      (Array.isArray(alert.affectedAreas) && alert.affectedAreas.length > 0
-        ? alert.affectedAreas.join(', ')
-        : alert.targetScope || 'Barangay Bayanan')
-    );
+    const urgencyHtml = renderUrgencyBadgeSafe(alert.urgencyLevel);
+    const rawArea = String(alert.locationAddress || alert.targetZones || alert.affectedLocation || '').trim();
+    const areaText = rawArea ? escapeHtmlSafe(rawArea) : '';
     const statusText = escapeHtmlSafe(alert.status || 'Active');
-    const isMutedStatus = statusText.toLowerCase() === 'expired' || statusText.toLowerCase() === 'archived';
+    const statusLower = statusText.toLowerCase();
+    const isMutedStatus = statusLower === 'expired' || statusLower === 'archived' || statusLower === 'cancelled';
+    const statusBadgeClass = statusLower === 'expired'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : (isMutedStatus ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-[#278653] border-emerald-200');
     const isEmergency = Boolean(alert.isEmergency || Number(alert.priority || 5) <= 2);
     const cardAccent = isEmergency && !isMutedStatus
       ? 'border-[#FFC2C2] border-l-4 border-l-[#D93636]'
@@ -148,13 +164,15 @@ function renderAlerts(alerts) {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2 flex-wrap">
               ${badgeHtml}
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${isMutedStatus ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-[#278653] border-emerald-200'}">${statusText}</span>
+              ${urgencyHtml}
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusBadgeClass}">${statusText}</span>
               <span class="text-[11px] text-[#777777]">${GeoSafeUI.formatDate(alert.publishedAt)}</span>
+              ${alert.expiresAt ? `<span class="text-[10px] text-[#777777]">• ${statusLower === 'expired' ? 'Expired' : 'Expires'}: ${GeoSafeUI.formatDate(alert.expiresAt)}</span>` : ''}
             </div>
-            <div class="text-[11px] text-[#555555] inline-flex items-center gap-1">
+            ${areaText ? `<div class="text-[11px] text-[#555555] inline-flex items-center gap-1">
               ${GeoSafeUI.getIcon('map-pin', 'w-3.5 h-3.5 text-[#8A6800]')}
               <span class="font-semibold text-[#202020]">${areaText}</span>
-            </div>
+            </div>` : ''}
           </div>
 
           <div>
@@ -195,17 +213,41 @@ function openAdvisoryDetailModal(alertId) {
       ? window.GeoSafeAdvisories.renderBadge(categoryName, { badgeColor: alert.badgeColor })
       : escapeHtmlSafe(categoryName);
   }
+  const urgencyEl = document.getElementById('modal-adv-urgency');
+  if (urgencyEl) urgencyEl.innerHTML = renderUrgencyBadgeSafe(alert.urgencyLevel);
+
   const statusEl = document.getElementById('modal-adv-status');
   const statusText = alert.status || 'Active';
-  const isMuted = statusText.toLowerCase() === 'expired' || statusText.toLowerCase() === 'archived';
+  const statusLower = statusText.toLowerCase();
+  const isMuted = statusLower === 'expired' || statusLower === 'archived' || statusLower === 'cancelled';
   if (statusEl) {
     statusEl.textContent = statusText;
-    statusEl.className = `text-[10px] font-bold px-2 py-0.5 rounded-full border ${isMuted ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-[#278653] border-emerald-200'}`;
+    const statusCls = statusLower === 'expired'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : (isMuted ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-[#278653] border-emerald-200');
+    statusEl.className = `text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusCls}`;
   }
   document.getElementById('modal-adv-title').textContent = alert.title || 'Advisory';
   document.getElementById('modal-adv-message').textContent = alert.description || '';
-  document.getElementById('modal-adv-area').textContent = alert.affectedLocation || alert.targetScope || 'Barangay Bayanan';
+
+  const areaWrap = document.getElementById('modal-adv-area-wrap');
+  const affectedLoc = String(alert.locationAddress || alert.targetZones || alert.affectedLocation || '').trim();
+  if (areaWrap) {
+    areaWrap.classList.toggle('hidden', !affectedLoc);
+    if (affectedLoc) {
+      document.getElementById('modal-adv-area').textContent = affectedLoc;
+    }
+  }
+
   document.getElementById('modal-adv-date').textContent = GeoSafeUI.formatDate(alert.publishedAt);
+  const expiresWrap = document.getElementById('modal-adv-expires-wrap');
+  const expiresEl = document.getElementById('modal-adv-expires');
+  if (expiresWrap && expiresEl) {
+    expiresWrap.classList.toggle('hidden', !alert.expiresAt);
+    if (alert.expiresAt) {
+      expiresEl.textContent = GeoSafeUI.formatDate(alert.expiresAt);
+    }
+  }
   document.getElementById('modal-adv-author').textContent = alert.issuingAuthority || 'BDRRMC Barangay Bayanan';
   document.getElementById('modal-adv-ref').textContent = alert.id || '-';
 

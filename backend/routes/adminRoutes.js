@@ -14,9 +14,12 @@ const {
   reviewResidentLocationVerification,
   getAdminAuditLogs,
   getAdminRespondersList,
+  getAdminLiveResponderLocations,
+  getAdminResponderRecommendations,
   assignResponder,
   getEmergencyBroadcasts,
   createEmergencyBroadcast,
+  cancelEmergencyBroadcast,
   getBroadcastCategories,
   createBroadcastCategory,
   getAdminAnalytics,
@@ -44,6 +47,8 @@ router.patch('/reports/:type/:id/review', reviewAdminReport);
 
 // 3. Responder Management & Dispatch
 router.get('/responders', getAdminRespondersList);
+router.get('/responders/live-locations', getAdminLiveResponderLocations);
+router.get('/responders/recommendations', getAdminResponderRecommendations);
 router.post('/responders/assign', assignResponder);
 
 // 4. Users Management (Residents & Responders)
@@ -133,6 +138,7 @@ router.post(
   ],
   createEmergencyBroadcast
 );
+router.patch('/broadcasts/:id/cancel', cancelEmergencyBroadcast);
 
 // 6. Reports & Analytics
 router.get('/analytics', getAdminAnalytics);

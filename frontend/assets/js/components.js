@@ -47,6 +47,13 @@ const GeoSafeUI = {
       shortLabel: 'Alerts',
       href: 'hazard-alerts.html',
       icon: 'bell'
+    },
+    {
+      id: 'messages',
+      label: 'Messages',
+      shortLabel: 'Messages',
+      href: 'messages.html',
+      icon: 'message-square'
     }
   ],
 
@@ -58,6 +65,7 @@ const GeoSafeUI = {
       'alert-triangle': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`,
       'users': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`,
       'bell': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>`,
+      'message-square': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>`,
       'phone': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>`,
       'map-pin': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`,
       'crosshair': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>`,
@@ -93,6 +101,9 @@ const GeoSafeUI = {
       }
       if (path.includes('hazard-alerts') || path.includes('alert')) {
         return 'hazard-alerts';
+      }
+      if (path.includes('message')) {
+        return 'messages';
       }
       if (path.includes('index') || path.endsWith('/') || path === '') {
         return 'home';
@@ -160,13 +171,16 @@ const GeoSafeUI = {
     const sidebarNavHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
       return `
-        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all ${
+        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all ${
           isActive
             ? 'bg-[#F5B900] text-[#202020] font-bold shadow-sm ring-1 ring-[#F5B900]'
             : 'text-[#555555] hover:text-[#202020] hover:bg-[#FFF9E8] font-semibold'
         }">
-          <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-5 h-5')}</span>
-          <span class="truncate">${item.label}</span>
+          <span class="flex items-center gap-3 min-w-0">
+            <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-5 h-5')}</span>
+            <span class="truncate">${item.label}</span>
+          </span>
+          ${item.id === 'messages' ? '<span data-nav-unread="messages" class="hidden px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D93636] text-white leading-none">0</span>' : ''}
         </a>
       `;
     }).join('');
@@ -175,11 +189,11 @@ const GeoSafeUI = {
       <!-- Top: Logo & Branding -->
       <div class="h-14 flex items-center px-4 border-b border-[#EEEEEE] gap-2.5 flex-shrink-0 bg-white">
         <a href="index.html" class="flex items-center gap-2.5 group">
-          <div class="w-8 h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-black text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
+          <div class="w-8 h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-bold text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
             GS
           </div>
           <div class="min-w-0">
-            <span class="font-black text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors block leading-tight">GeoSafe</span>
+            <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors block leading-tight">GeoSafe</span>
             <span class="text-[10px] text-[#777777] font-semibold block leading-tight truncate">Barangay Bayanan</span>
           </div>
         </a>
@@ -215,65 +229,33 @@ const GeoSafeUI = {
     const container = document.getElementById('geosafe-nav-container') || document.getElementById('geosafe-header-container');
     if (!container) return;
 
-    const navLinksHtml = this.navItems.map(item => {
-      const isActive = item.id === activeId;
-      if (item.isEmergencyAction) {
-        return `
-          <a href="${item.href}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm ${
-            isActive
-              ? 'bg-[#D93636] text-white ring-2 ring-[#FFC2C2] shadow-emergency-glow'
-              : 'bg-[#FFF1F1] text-[#D93636] hover:bg-[#D93636] hover:text-white border border-[#FFC2C2]'
-          }">
-            <span class="flex-shrink-0">${this.getIcon(item.icon, 'w-4 h-4')}</span>
-            <span>${item.label}</span>
-          </a>
-        `;
-      }
-
-      return `
-        <a href="${item.href}" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm transition-all font-semibold ${
-          isActive
-            ? 'bg-[#F5B900] text-[#202020] shadow-sm font-bold ring-1 ring-[#F5B900]'
-            : 'text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]'
-        }">
-          <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-4 h-4')}</span>
-          <span>${item.label}</span>
-        </a>
-      `;
-    }).join('');
-
     container.innerHTML = `
       <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white border-b border-[#EEEEEE] shadow-subtle" style="padding-top: env(safe-area-inset-top, 0px);">
         <div class="w-full px-3 sm:px-5 lg:px-6">
           <div class="flex items-center justify-between h-14 gap-2">
             
             <!-- Left: Logo (Mobile/Tablet) & Dynamic Resident Greeting -->
-            <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+            <div class="flex items-center gap-2 sm:gap-2.5 min-w-0">
               <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0 lg:hidden">
-                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-black text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-bold text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
                   GS
                 </div>
                 <div class="hidden sm:block">
-                  <span class="font-black text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors">GeoSafe</span>
+                  <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors">GeoSafe</span>
                 </div>
               </a>
 
               <!-- Greeting, Resident Name & Role Badge -->
-              <div class="border-l border-[#EEEEEE] pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0">
+              <div class="border-l border-[#EEEEEE] pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0 min-w-0">
                 <span id="header-greeting-label" class="text-[10px] text-[#777777] font-medium block leading-tight">Greeting</span>
                 <div class="flex items-center gap-1.5">
-                  <span id="header-resident-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[110px] sm:max-w-[160px]">Resident</span>
-                  <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] hidden xs:inline-block">Resident</span>
+                  <span id="header-resident-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[120px] sm:max-w-[200px]">Resident</span>
+                  <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] hidden sm:inline-block flex-shrink-0">Resident</span>
                 </div>
               </div>
             </div>
 
-            <!-- Center: Tablet Horizontal Navigation (Visible on tablet only, hidden on mobile & desktop >= 1024px) -->
-            <nav class="hidden md:flex lg:hidden items-center gap-1">
-              ${navLinksHtml}
-            </nav>
-
-            <!-- Right: Status, Notification Bell & Profile Avatar (Compact Section 1) -->
+            <!-- Right: Status, Notification Bell & Profile Avatar (Matches Responder Header) -->
             <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               <!-- Online / Offline Badge -->
               <div id="online-status-badge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">
@@ -382,7 +364,7 @@ const GeoSafeUI = {
       document.body.appendChild(bottomNavContainer);
     }
 
-    bottomNavContainer.className = 'md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#EEEEEE] shadow-[0_-4px_20px_rgba(32,32,32,0.06)]';
+    bottomNavContainer.className = 'lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#EEEEEE] shadow-[0_-4px_20px_rgba(32,32,32,0.06)]';
 
     const itemsHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
@@ -394,10 +376,11 @@ const GeoSafeUI = {
               ? 'bg-[#FFF1BF] shadow-sm'
               : 'bg-transparent hover:bg-[#FFF9E8]/50'
           }">
-            <span class="flex-shrink-0 transition-colors ${isActive ? 'text-[#B88600]' : 'text-[#777777]'}">
+            <span class="gs-msg-icon-wrap transition-colors ${isActive ? 'text-[#B88600]' : 'text-[#777777]'}">
               ${this.getIcon(item.icon, 'w-5 h-5')}
+              ${item.id === 'messages' ? '<span data-nav-unread="messages" class="gs-msg-badge hidden">0</span>' : ''}
             </span>
-            <span class="text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
+            <span class="gs-bottom-nav-label text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
               isActive ? 'font-bold text-[#202020]' : 'font-medium text-[#777777]'
             }">
               ${item.shortLabel}
@@ -468,9 +451,33 @@ const GeoSafeUI = {
           badgeEl.classList.add('hidden');
         }
       }
+
+      // Sync unread messages badge
+      await this.refreshMessagesUnreadBadge();
+      if (!this._msgUnreadListenerBound) {
+        this._msgUnreadListenerBound = true;
+        window.addEventListener('geosafe:realtime-update', (ev) => {
+          const evt = ev && ev.detail ? ev.detail.event : '';
+          if (['conversation:new-message', 'messages:unread-update', 'messages:incoming-notification', 'conversation:messages-read', 'reconnect-sync'].includes(evt)) {
+            this.refreshMessagesUnreadBadge();
+          }
+        });
+      }
     } catch (err) {
       console.warn('Could not sync header resident info:', err);
     }
+  },
+
+  async refreshMessagesUnreadBadge() {
+    if (!window.geoSafeStore) return;
+    try {
+      const msgUnreadRes = await window.geoSafeStore.request('/messages/unread-count', { method: 'GET' }).catch(() => null);
+      const unreadMsgCount = Number((msgUnreadRes && msgUnreadRes.unreadCount) || 0);
+      document.querySelectorAll('[data-nav-unread="messages"]').forEach((el) => {
+        el.textContent = unreadMsgCount > 99 ? '99+' : String(unreadMsgCount);
+        el.classList.toggle('hidden', unreadMsgCount <= 0);
+      });
+    } catch (_) {}
   },
 
   /**
@@ -483,7 +490,7 @@ const GeoSafeUI = {
     modal.id = 'geosafe-notifications-modal';
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden';
     modal.innerHTML = `
-      <div class="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE]">
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE]">
         <div class="flex items-center justify-between pb-3.5 border-b border-[#EEEEEE]">
           <div class="flex items-center gap-2">
             <span class="w-8 h-8 rounded-xl bg-[#FFF9E8] text-[#F5B900] flex items-center justify-center">

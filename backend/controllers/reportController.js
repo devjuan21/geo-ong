@@ -41,6 +41,9 @@ function parseBase64Image(dataUri) {
   };
   const ext = extMap[mimeType] || 'jpg';
   const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer || buffer.length === 0) {
+    return null;
+  }
   return {
     mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
     ext,
@@ -93,9 +96,16 @@ async function createReport(req, res) {
     parsedPhotos.push(parsed);
   }
 
+  if (parsedPhotos.length === 0) {
+    return res.status(400).json({
+      error: 'Photo evidence is required. Please take a photo of the incident before submitting your report.',
+    });
+  }
+
   const conn = await pool.getConnection().catch((err) => { dbUnavailable(res, err, 'createReport'); return null; });
   if (!conn) return;
 
+  const writtenFilePaths = [];
   try {
     await conn.beginTransaction();
 
@@ -149,13 +159,14 @@ async function createReport(req, res) {
         const fileName = `inc-${result.insertId}-${idx + 1}-${Date.now()}.${ext}`;
         const filePath = path.join(uploadDir, fileName);
         fs.writeFileSync(filePath, buffer);
+        writtenFilePaths.push(filePath);
 
         const fileUrl = `/assets/uploads/incidents/${fileName}`;
         const fileSize = buffer.length;
 
         await conn.query(
-          `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type)
+           VALUES (?, ?, ?, ?, ?, ?, 'resident_report')`,
           [result.insertId, fileUrl, fileName, mimeType, fileSize, req.user.id]
         );
       }
@@ -240,6 +251,11 @@ async function createReport(req, res) {
     });
   } catch (err) {
     await conn.rollback().catch(() => {});
+    for (const fp of writtenFilePaths) {
+      try {
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      } catch (_) {}
+    }
     return dbUnavailable(res, err, 'createReport');
   } finally {
     conn.release();
@@ -278,17 +294,23 @@ async function getReportById(req, res) {
       return res.status(403).json({ error: 'You can only view your own reports' });
     }
     const [attachments] = await pool.query(
-      `SELECT id, file_url, file_name, file_type, file_size, created_at
-       FROM incident_attachments
-       WHERE incident_id = ?
-       ORDER BY created_at ASC`,
+      `SELECT ia.id, ia.file_url, ia.file_name, ia.file_type, ia.file_size, ia.evidence_type, ia.assignment_id, ia.uploaded_by, ia.created_at,
+              u.name AS uploaded_by_name
+       FROM incident_attachments ia
+       LEFT JOIN users u ON u.id = ia.uploaded_by
+       WHERE ia.incident_id = ?
+       ORDER BY ia.created_at ASC`,
       [row.id]
     );
+    const residentEvidence = attachments.filter((a) => !a.evidence_type || a.evidence_type === 'resident_report');
+    const responderCompletionEvidence = attachments.filter((a) => a.evidence_type === 'responder_completion');
     return res.json({
       report: {
         ...row,
         attachments,
-        photos: attachments.map((a) => a.file_url),
+        residentEvidence,
+        responderCompletionEvidence,
+        photos: residentEvidence.map((a) => a.file_url),
       },
     });
   } catch (err) {

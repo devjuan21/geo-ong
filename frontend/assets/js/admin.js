@@ -127,6 +127,10 @@
         search: ''
       },
       loading: false
+    },
+    messages: {
+      items: [],
+      activeConversationId: null
     }
   };
 
@@ -280,7 +284,8 @@
     alerts: 'Emergency Alerts & Notifications',
     analytics: 'Reports & Analytics',
     settings: 'System Settings & Maintenance',
-    audit: 'System Audit Logs'
+    audit: 'System Audit Logs',
+    messages: 'Rescue Conversation Oversight'
   };
 
   function openMobileDrawer() {
@@ -380,7 +385,7 @@
   }
 
   function switchAdminSection(sectionKey) {
-    const validSections = ['dashboard', 'reports', 'responders', 'users', 'alerts', 'analytics', 'settings', 'audit'];
+    const validSections = ['dashboard', 'reports', 'responders', 'users', 'alerts', 'analytics', 'settings', 'audit', 'messages'];
     const target = validSections.includes(sectionKey) ? sectionKey : 'dashboard';
     state.currentSection = target;
 
@@ -423,6 +428,7 @@
       loadUsersList();
     } else if (target === 'alerts') {
       loadBroadcastCategories();
+      handleExpirationDurationChange();
       loadBroadcastsList();
     } else if (target === 'analytics') {
       loadAnalyticsData();
@@ -430,12 +436,162 @@
       loadSystemSettings();
     } else if (target === 'audit') {
       loadAuditLogs();
+    } else if (target === 'messages') {
+      loadAdminConversationsList();
     }
   }
 
   // ============================================================================
   // SECTION 1: DASHBOARD (Summary Statistics + Incident Map + Activity Feed)
   // ============================================================================
+  const adminGpsMarkerState = { marker: null, accuracyCircle: null };
+  let adminLiveGpsTracker = null;
+  let adminResponderStalenessTimer = null;
+
+  function buildResponderLivePopupHtml(entry, isStale) {
+    const timeStr = entry.updatedAt ? new Date(entry.updatedAt).toLocaleTimeString() : 'Unknown';
+    const accText = Number.isFinite(Number(entry.accuracy)) && entry.accuracy > 0 ? ` • ±${Math.round(entry.accuracy)}m` : '';
+    const statusBadge = isStale
+      ? '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;background:#FFF9E8;color:#8A6800;border:1px solid #FFE872;font-size:10px;font-weight:700;">Stale</span>'
+      : '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;background:#ECFDF5;color:#047857;border:1px solid #A7F3D0;font-size:10px;font-weight:700;">Live</span>';
+    return `
+      <div class="text-xs p-1 space-y-0.5 min-w-[210px]">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <strong class="text-[#202020]">${escapeHtml(entry.name || 'Responder')}</strong>
+          ${statusBadge}
+        </div>
+        <span class="block font-mono text-[10px] font-semibold text-[#8A6800]">ID: ${escapeHtml(entry.responderId || entry.badgeNumber || `RSP-${entry.userId}`)}</span>
+        <span class="block text-[10px] text-[#555555]">Org: ${escapeHtml(entry.organization || 'Emergency Operations')}</span>
+        <span class="block text-[10px] text-[#555555]">Unit: ${escapeHtml(entry.assignedUnit || 'Response Unit')}${entry.callsign ? ` (${escapeHtml(entry.callsign)})` : ''}</span>
+        <span class="block text-[10px] text-[#777777]">Availability: <strong>${escapeHtml(entry.availabilityStatus || 'On Duty')}</strong>${accText}</span>
+        <span class="block font-mono text-[10px] text-[#555555]">${Number(entry.lat).toFixed(5)}, ${Number(entry.lng).toFixed(5)}</span>
+        <span class="block text-[10px] text-[#777777]">Last GPS: ${escapeHtml(timeStr)}</span>
+      </div>
+    `;
+  }
+
+  function createResponderLiveIcon(isStale) {
+    return L.divIcon({
+      className: 'geosafe-admin-responder-live',
+      html: `
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
+          <span class="${isStale ? '' : 'animate-ping'}" style="position:absolute;width:28px;height:28px;border-radius:9999px;background:${isStale ? 'rgba(217,119,6,0.28)' : 'rgba(37,99,235,0.32)'};"></span>
+          <div style="width:24px;height:24px;border-radius:9999px;background:${isStale ? '#D97706' : '#1D4ED8'};border:2.5px solid #FFFFFF;box-shadow:0 3px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-size:10px;font-weight:800;letter-spacing:-0.02em;">R</div>
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  }
+
+  function updateAdminMapCountBadge() {
+    const badgeEl = document.getElementById('admin-map-count-badge');
+    if (!badgeEl) return;
+    const incCount = Number(state.lastVisibleMapItemsCount || 0);
+    const respCount = state.responderLiveMarkers ? state.responderLiveMarkers.size : 0;
+    const incLabel = `${incCount} marker${incCount === 1 ? '' : 's'}`;
+    badgeEl.textContent = respCount > 0 ? `${incLabel} • ${respCount} responder${respCount === 1 ? '' : 's'}` : incLabel;
+  }
+
+  function upsertAdminResponderLocationMarker(entry) {
+    if (!state.mapInstance || !state.responderLiveLayer || !entry || !entry.userId) return;
+    const lat = Number(entry.lat);
+    const lng = Number(entry.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+
+    const uid = Number(entry.userId);
+    const updatedMs = entry.updatedAt ? new Date(entry.updatedAt).getTime() : Date.now();
+    const prev = state.responderLiveData.get(uid);
+    if (prev && prev.updatedAtMs && updatedMs < prev.updatedAtMs) return;
+
+    const isStale = Boolean(entry.isStale) || (Date.now() - updatedMs > 45000);
+    const stored = { ...entry, userId: uid, lat, lng, updatedAtMs: updatedMs, isStale };
+    state.responderLiveData.set(uid, stored);
+
+    const popupHtml = buildResponderLivePopupHtml(stored, isStale);
+    const existing = state.responderLiveMarkers.get(uid);
+    if (!existing) {
+      const marker = L.marker([lat, lng], {
+        icon: createResponderLiveIcon(isStale),
+        zIndexOffset: 850
+      }).addTo(state.responderLiveLayer);
+      marker.bindPopup(popupHtml);
+      state.responderLiveMarkers.set(uid, marker);
+      if (window.__GEOSAFE_GPS_DEBUG__) console.debug('[GeoSafe GPS][Admin] Marker created for responder', uid, lat, lng);
+    } else {
+      existing.setLatLng([lat, lng]);
+      existing.setIcon(createResponderLiveIcon(isStale));
+      existing.setPopupContent(popupHtml);
+      if (window.__GEOSAFE_GPS_DEBUG__) console.debug('[GeoSafe GPS][Admin] Marker updated for responder', uid, lat, lng);
+    }
+    updateAdminMapCountBadge();
+  }
+
+  function removeAdminResponderLocationMarker(userId) {
+    const uid = Number(userId);
+    if (!Number.isInteger(uid) || !state.responderLiveMarkers) return;
+    const marker = state.responderLiveMarkers.get(uid);
+    if (marker && state.responderLiveLayer) {
+      try { state.responderLiveLayer.removeLayer(marker); } catch (_) {}
+    }
+    state.responderLiveMarkers.delete(uid);
+    if (state.responderLiveData) state.responderLiveData.delete(uid);
+    updateAdminMapCountBadge();
+  }
+
+  function refreshAdminResponderStaleness() {
+    if (!state.responderLiveData || !state.responderLiveMarkers) return;
+    const now = Date.now();
+    state.responderLiveData.forEach((entry, uid) => {
+      const staleNow = Boolean(entry.isStale) || (now - (entry.updatedAtMs || now) > 45000);
+      if (staleNow !== entry.lastRenderedStale) {
+        entry.lastRenderedStale = staleNow;
+        const marker = state.responderLiveMarkers.get(uid);
+        if (marker) {
+          marker.setIcon(createResponderLiveIcon(staleNow));
+          marker.setPopupContent(buildResponderLivePopupHtml(entry, staleNow));
+        }
+      }
+    });
+  }
+
+  async function loadLiveResponderLocations() {
+    if (!state.mapInstance || !state.responderLiveLayer) return;
+    try {
+      const data = await apiRequest('/responders/live-locations');
+      const list = Array.isArray(data && data.responders) ? data.responders : [];
+      const activeIds = new Set();
+      list.forEach((entry) => {
+        activeIds.add(Number(entry.userId));
+        upsertAdminResponderLocationMarker(entry);
+      });
+      if (state.responderLiveMarkers) {
+        Array.from(state.responderLiveMarkers.keys()).forEach((uid) => {
+          if (!activeIds.has(uid)) removeAdminResponderLocationMarker(uid);
+        });
+      }
+    } catch (err) {
+      console.warn('[Admin] Unable to load live responder locations:', err.message);
+    }
+  }
+
+  function startAdminLiveGpsTracker() {
+    if (!state.mapInstance || adminLiveGpsTracker || !window.GeoSafeMapping || typeof window.GeoSafeMapping.createLiveGpsTracker !== 'function') {
+      return;
+    }
+    adminLiveGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
+      syncIntervalMs: 10000,
+      onLocation: (reading) => {
+        if (!state.mapInstance) return;
+        window.GeoSafeMapping.renderLiveGpsMarker(state.mapInstance, adminGpsMarkerState, reading, {
+          title: 'Your Admin GPS Location',
+          zIndexOffset: 900
+        });
+      }
+    });
+    adminLiveGpsTracker.start();
+  }
+
   function initIncidentMap() {
     const mapContainer = document.getElementById('admin-incident-map');
     if (!mapContainer || state.mapInstance) return;
@@ -449,6 +605,21 @@
         scrollWheelZoom: true
       });
       state.mapLayerGroup = L.layerGroup().addTo(state.mapInstance);
+      state.responderLiveLayer = L.layerGroup().addTo(state.mapInstance);
+      state.responderLiveMarkers = new Map();
+      state.responderLiveData = new Map();
+
+      startAdminLiveGpsTracker();
+      loadLiveResponderLocations();
+      if (!adminResponderStalenessTimer) {
+        adminResponderStalenessTimer = setInterval(refreshAdminResponderStaleness, 10000);
+        window.addEventListener('geosafe:logout', () => {
+          if (adminResponderStalenessTimer) {
+            clearInterval(adminResponderStalenessTimer);
+            adminResponderStalenessTimer = null;
+          }
+        });
+      }
     } catch (err) {
       const errorOverlay = document.getElementById('admin-map-error');
       const errorMsg = document.getElementById('admin-map-error-text');
@@ -467,16 +638,25 @@
     const filterType = state.mapFilters.type;
     const filterStatus = state.mapFilters.status;
 
-    const visibleItems = items.filter((item) => {
-      if (filterType !== 'all' && item.recordType !== filterType) return false;
-      if (filterStatus !== 'all' && item.filterBucket !== filterStatus) return false;
-      return true;
-    });
-
-    const badgeEl = document.getElementById('admin-map-count-badge');
-    if (badgeEl) {
-      badgeEl.textContent = `${visibleItems.length} marker${visibleItems.length === 1 ? '' : 's'}`;
+    if (state.responderLiveLayer && state.mapInstance) {
+      const showResponders = filterType === 'all' || filterType === 'responder';
+      if (showResponders && !state.mapInstance.hasLayer(state.responderLiveLayer)) {
+        state.responderLiveLayer.addTo(state.mapInstance);
+      } else if (!showResponders && state.mapInstance.hasLayer(state.responderLiveLayer)) {
+        state.mapInstance.removeLayer(state.responderLiveLayer);
+      }
     }
+
+    const visibleItems = filterType === 'responder'
+      ? []
+      : items.filter((item) => {
+        if (filterType !== 'all' && item.recordType !== filterType) return false;
+        if (filterStatus !== 'all' && item.filterBucket !== filterStatus) return false;
+        return true;
+      });
+
+    state.lastVisibleMapItemsCount = visibleItems.length;
+    updateAdminMapCountBadge();
 
     const emptyOverlay = document.getElementById('admin-map-empty');
     if (emptyOverlay) {
@@ -684,11 +864,17 @@
       if (data.eocLocation && window.GeoSafeMapping && typeof window.GeoSafeMapping.setEocLocation === 'function') {
         window.GeoSafeMapping.setEocLocation(data.eocLocation);
       }
-      if (
-        state.selectedMapItem &&
-        !state.overview.mapItems.some((m) => m.uid === state.selectedMapItem.uid)
-      ) {
-        closeMapMarkerPanel();
+      if (state.selectedMapItem) {
+        const refreshedItem = state.overview.mapItems.find((m) => m.uid === state.selectedMapItem.uid);
+        if (!refreshedItem) {
+          closeMapMarkerPanel();
+        } else {
+          state.selectedMapItem = refreshedItem;
+          const mapPanelStatusEl = document.getElementById('map-panel-status');
+          if (mapPanelStatusEl) {
+            mapPanelStatusEl.innerHTML = getStatusBadgeHtml(refreshedItem.filterBucket, refreshedItem.statusLabel);
+          }
+        }
       }
 
       // Summary Statistics (6 Compact Cards)
@@ -835,40 +1021,68 @@
     renderReportsTable();
   }
 
+  let reportsFetchSeq = 0;
+
   async function loadReportsList() {
+    const reqSeq = ++reportsFetchSeq;
     const loadingEl = document.getElementById('admin-reports-loading');
     const emptyEl = document.getElementById('admin-reports-empty');
+    const emptyTextEl = document.getElementById('admin-reports-empty-text');
+    const tbody = document.getElementById('admin-reports-tbody');
 
     if (loadingEl) loadingEl.classList.remove('hidden');
     if (emptyEl) emptyEl.classList.add('hidden');
+    if (tbody) tbody.innerHTML = '';
 
     try {
       const params = new URLSearchParams({
         status: state.reports.filters.status,
+        filter: state.reports.filters.status,
         type: state.reports.filters.type,
         search: state.reports.filters.search
       });
 
       const data = await apiRequest(`/reports?${params.toString()}`);
+      if (reqSeq !== reportsFetchSeq) return;
+
       state.reports.items = data.items || data.reports || [];
       state.reports.counts = data.counts || state.reports.counts;
+      if (emptyTextEl) {
+        emptyTextEl.textContent = 'No reports match the selected filter.';
+      }
 
       renderReportsTable();
     } catch (err) {
+      if (reqSeq !== reportsFetchSeq) return;
       console.error('[Admin] loadReportsList failed:', err.message);
+      state.reports.items = [];
+      renderReportsTable();
       if (emptyEl) {
         emptyEl.classList.remove('hidden');
-        document.getElementById('admin-reports-empty-text').textContent = 'Unable to load reports from MySQL.';
+        if (emptyTextEl) {
+          emptyTextEl.textContent = err.message || 'Unable to load reports from database.';
+        }
       }
     } finally {
-      if (loadingEl) loadingEl.classList.add('hidden');
+      if (reqSeq === reportsFetchSeq && loadingEl) {
+        loadingEl.classList.add('hidden');
+      }
     }
   }
 
   let modalLeafletMap = null;
   let modalLeafletMarker = null;
 
-  function initOrUpdateModalMap(lat, lng, refText, locText, recordType = 'incident') {
+  function formatExactCoordinate(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return '—';
+    const fixed8 = n.toFixed(8).replace(/0+$/, '');
+    const parts = fixed8.split('.');
+    if (!parts[1] || parts[1].length < 6) return n.toFixed(6);
+    return fixed8;
+  }
+
+  function initOrUpdateModalMap(lat, lng, refText, locText, recordType = 'incident', sourceLabel = '') {
     const mapEl = document.getElementById('modal-report-map');
     const fallbackEl = document.getElementById('modal-report-map-fallback');
     if (!mapEl || typeof L === 'undefined') return;
@@ -893,6 +1107,12 @@
     if (fallbackEl) fallbackEl.classList.add('hidden');
 
     try {
+      const markerType = recordType === 'rescue' ? 'rescue' : 'incident';
+      const modalIcon =
+        window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
+          ? window.GeoSafeMapping.createCustomIcon(markerType)
+          : null;
+
       if (!modalLeafletMap) {
         modalLeafletMap = L.map('modal-report-map', {
           zoomControl: true,
@@ -911,21 +1131,11 @@
           }).addTo(modalLeafletMap);
         }
 
-        const markerType = recordType === 'rescue' ? 'rescue' : 'incident';
-        const modalIcon =
-          window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
-            ? window.GeoSafeMapping.createCustomIcon(markerType)
-            : null;
         modalLeafletMarker = modalIcon
           ? L.marker([numLat, numLng], { icon: modalIcon }).addTo(modalLeafletMap)
           : L.marker([numLat, numLng]).addTo(modalLeafletMap);
       } else {
-        modalLeafletMap.setView([numLat, numLng], 17);
-        const markerType = recordType === 'rescue' ? 'rescue' : 'incident';
-        const modalIcon =
-          window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
-            ? window.GeoSafeMapping.createCustomIcon(markerType)
-            : null;
+        modalLeafletMap.setView([numLat, numLng], 17, { animate: false });
         if (modalLeafletMarker) {
           modalLeafletMarker.setLatLng([numLat, numLng]);
           if (modalIcon && typeof modalLeafletMarker.setIcon === 'function') {
@@ -939,14 +1149,25 @@
       }
 
       if (modalLeafletMarker) {
-        modalLeafletMarker.bindPopup(`<strong>${escapeHtml(refText || 'Incident')}</strong><br>${escapeHtml(locText || '')}`).openPopup();
+        const latStr = formatExactCoordinate(numLat);
+        const lngStr = formatExactCoordinate(numLng);
+        modalLeafletMarker.bindPopup(
+          `<div class="text-xs space-y-0.5 max-w-[220px]">
+            <strong>${escapeHtml(refText || 'Incident')}</strong>
+            <span class="block text-[11px] text-[#555555]">${escapeHtml(locText || 'Area address unavailable')}</span>
+            <span class="block font-mono text-[10px] text-[#202020]">${latStr}, ${lngStr}</span>
+          </div>`,
+          { autoPan: true, autoPanPadding: [24, 24] }
+        );
       }
 
       setTimeout(() => {
         if (modalLeafletMap) {
-          modalLeafletMap.invalidateSize();
+          modalLeafletMap.invalidateSize({ animate: false });
+          modalLeafletMap.setView([numLat, numLng], 17, { animate: false });
+          if (modalLeafletMarker) modalLeafletMarker.openPopup();
         }
-      }, 250);
+      }, 200);
     } catch (err) {
       console.warn('[Admin] Modal map initialization deferred:', err.message);
     }
@@ -1169,9 +1390,18 @@
 
       if (hasValidCoords) {
         const metaBits = [];
-        if (data.locationSource === 'gps') metaBits.push('GPS');
-        else if (data.locationSource === 'manual') metaBits.push('Manual Map Pin');
-        if (Number.isFinite(Number(data.gpsAccuracy))) {
+        const sourceLabel = data.locationSource === 'gps'
+          ? 'GPS'
+          : data.locationSource === 'manual'
+            ? 'Manual Map Pin'
+            : '';
+        if (sourceLabel) metaBits.push(sourceLabel);
+        if (
+          data.gpsAccuracy !== null &&
+          data.gpsAccuracy !== undefined &&
+          Number.isFinite(Number(data.gpsAccuracy)) &&
+          Number(data.gpsAccuracy) > 0
+        ) {
           const acc = Math.round(Number(data.gpsAccuracy));
           metaBits.push(acc > 100 ? `+/-${acc}m (Low accuracy)` : `+/-${acc}m`);
         }
@@ -1179,8 +1409,8 @@
           metaBits.push(`Captured ${formatDateTime(data.locationCapturedAt)}`);
         }
         const metaSuffix = metaBits.length ? ` (${metaBits.join(' | ')})` : '';
-        document.getElementById('modal-report-coords').textContent = `${latVal.toFixed(6)}° N, ${lngVal.toFixed(6)}° E${metaSuffix}`;
-        initOrUpdateModalMap(latVal, lngVal, data.referenceNumber, locText, data.recordType);
+        document.getElementById('modal-report-coords').textContent = `${formatExactCoordinate(latVal)}° N, ${formatExactCoordinate(lngVal)}° E${metaSuffix}`;
+        initOrUpdateModalMap(latVal, lngVal, data.referenceNumber, locText, data.recordType, sourceLabel);
       } else {
         document.getElementById('modal-report-coords').textContent = 'Coordinates unavailable';
         initOrUpdateModalMap(null, null, null, null, data.recordType);
@@ -1208,68 +1438,108 @@
         `;
       }
 
-      // Section F: Photo Evidence
+      // Section F: Photo Evidence (Separated Resident Report Evidence & Responder Completion Evidence)
       const attachEl = document.getElementById('modal-report-attachments');
       const countEl = document.getElementById('modal-report-attachment-count');
       attachEl.innerHTML = '';
       const attachments = data.attachments || [];
+      const residentEv = Array.isArray(data.residentEvidence)
+        ? data.residentEvidence
+        : attachments.filter((a) => !a.evidenceType || a.evidenceType === 'resident_report');
+      const completionEv = Array.isArray(data.responderCompletionEvidence)
+        ? data.responderCompletionEvidence
+        : attachments.filter((a) => a.evidenceType === 'responder_completion');
+
       if (countEl) {
         countEl.textContent = `${attachments.length} ${attachments.length === 1 ? 'file' : 'files'}`;
       }
 
-      if (attachments.length === 0) {
-        attachEl.innerHTML = '<div class="rounded-xl border border-dashed border-[#EEEEEE] bg-[#FBFBFA] p-4 text-center text-xs text-[#777777]">No photo evidence submitted for this report.</div>';
-      } else {
+      const buildAdminEvidenceGroup = (title, subtitle, items, emptyText, showUploader) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'space-y-1.5';
+        wrap.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <p class="text-[11px] font-bold text-[#202020]">${escapeHtml(title)}</p>
+              <p class="text-[10px] text-[#777777]">${escapeHtml(subtitle)}</p>
+            </div>
+            <span class="text-[10px] font-semibold text-[#777777]">${items.length} ${items.length === 1 ? 'file' : 'files'}</span>
+          </div>
+        `;
+
+        if (items.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'rounded-xl border border-dashed border-[#EEEEEE] bg-[#FBFBFA] p-2.5 text-center text-[11px] text-[#777777]';
+          empty.textContent = emptyText;
+          wrap.appendChild(empty);
+          return wrap;
+        }
+
         const grid = document.createElement('div');
-        grid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3';
-        attachments.forEach((att, idx) => {
+        grid.className = 'flex flex-wrap gap-2';
+        items.forEach((att, idx) => {
           const fileUrl = att.fileUrl || att.file_url || '';
           const fileName = att.fileName || att.file_name || `Photo Evidence ${idx + 1}`;
           const fileType = att.fileType || att.file_type || 'image/jpeg';
           const isVideo = fileType.includes('video') || /\.(mp4|webm|mov|ogg)$/i.test(fileUrl);
+          const timeLabel = formatDateTime(att.createdAt || att.created_at);
+          const metaLabel = showUploader && att.uploadedByName ? `${att.uploadedByName} • ${timeLabel}` : timeLabel;
 
           const card = document.createElement('div');
-          card.className = 'group relative rounded-2xl overflow-hidden border border-[#EEEEEE] h-40 bg-[#FFFDF7] cursor-pointer hover:border-[#F5B900] transition-colors shadow-subtle flex items-center justify-center p-1.5';
-          card.onclick = () => openAttachmentPreviewModal(idx, attachments);
+          card.style.width = '128px';
+          card.className = 'group relative rounded-xl overflow-hidden border border-[#EEEEEE] bg-[#FFFDF7] cursor-pointer hover:border-[#F5B900] transition-colors shadow-subtle flex-shrink-0';
+          card.title = 'Click to view full size';
+          card.onclick = () => openAttachmentPreviewModal(idx, items);
 
           if (isVideo) {
             card.innerHTML = `
-              <div class="w-full h-full flex flex-col items-center justify-center bg-black/5 rounded-xl text-xs font-bold text-[#202020] p-2 text-center">
-                <span class="p-2 rounded-full bg-white shadow mb-1">
-                  <svg class="w-4 h-4 text-[#202020]" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <div class="flex flex-col items-center justify-center bg-black/5 text-xs font-bold text-[#202020] p-2 text-center" style="height:80px;">
+                <span class="p-1.5 rounded-full bg-white shadow mb-1">
+                  <svg class="w-3.5 h-3.5 text-[#202020]" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 </span>
-                <span class="truncate max-w-[140px] text-[10px]">${escapeHtml(fileName)}</span>
+                <span class="truncate max-w-full text-[10px]">${escapeHtml(fileName)}</span>
               </div>
+              <div class="px-1.5 py-1 border-t border-[#EEEEEE] bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
             `;
           } else {
             card.innerHTML = `
-              <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="max-w-full max-h-full w-auto h-auto object-contain rounded-xl transition-transform group-hover:scale-[1.02]" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<div class=\\'p-2 text-[11px] text-center text-[#777777] flex items-center justify-center h-full\\'>Photo unavailable</div>';">
-              <div class="absolute inset-x-0 bottom-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity py-1 px-2 text-center text-white text-[10px] font-bold">
-                Click to Preview
+              <div class="w-full overflow-hidden bg-[#F7F7F7] flex items-center justify-center" style="height:80px;">
+                <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="w-full h-full object-cover transition-transform group-hover:scale-[1.03]" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<div class=\\'p-2 text-[10px] text-center text-[#777777] flex items-center justify-center h-full\\'>Photo unavailable</div>';">
               </div>
+              <div class="px-1.5 py-1 border-t border-[#EEEEEE] bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
             `;
           }
           grid.appendChild(card);
         });
-        attachEl.appendChild(grid);
-      }
+        wrap.appendChild(grid);
+        return wrap;
+      };
 
-      // Section G: Review Selectors
-      const statusSelect = document.getElementById('review-status-select');
-      statusSelect.innerHTML = '';
-      const allowedStatuses = data.allowedStatuses || data.validStatuses || [];
-      allowedStatuses.forEach((st) => {
-        const opt = document.createElement('option');
-        opt.value = st;
-        opt.textContent = st;
-        if (st.toLowerCase() === String(data.rawStatus || data.status || '').toLowerCase()) {
-          opt.selected = true;
-        }
-        statusSelect.appendChild(opt);
-      });
+      const containerWrap = document.createElement('div');
+      containerWrap.className = 'space-y-3';
+      containerWrap.appendChild(
+        buildAdminEvidenceGroup(
+          'Resident Report Evidence',
+          'Original photos submitted with the report.',
+          residentEv,
+          'No resident report photos submitted.',
+          false
+        )
+      );
+      containerWrap.appendChild(
+        buildAdminEvidenceGroup(
+          'Responder Completion Evidence',
+          'Photos captured by the assigned Responder on completion.',
+          completionEv,
+          'No responder completion photos uploaded yet.',
+          true
+        )
+      );
+      attachEl.appendChild(containerWrap);
 
-      // Populate Responders
+      // Populate Responders & enforce assignment lifecycle locks
       const respSelect = document.getElementById('review-responder-select');
+      const respLockNote = document.getElementById('review-responder-lock-note');
       respSelect.innerHTML = '<option value="">-- No Assigned Responder --</option>';
       const responders = data.availableResponders || data.activeResponders || [];
       responders.forEach((resp) => {
@@ -1281,30 +1551,84 @@
         }
         respSelect.appendChild(opt);
       });
+      const isResponderLocked = Boolean(data.responderLocked);
+      respSelect.disabled = isResponderLocked;
+      if (respLockNote) {
+        respLockNote.classList.toggle('hidden', !isResponderLocked);
+      }
 
-      // Section H: Status History
+      const reasonInput = document.getElementById('review-reason-input');
+      const notesLockNote = document.getElementById('review-notes-lock-note');
+      const isNotesLocked = Boolean(data.reviewNotesLocked);
+      if (reasonInput) {
+        reasonInput.value = isNotesLocked ? (data.savedReviewNotes || '') : '';
+        reasonInput.readOnly = isNotesLocked;
+        reasonInput.disabled = isNotesLocked;
+      }
+      if (notesLockNote) {
+        notesLockNote.classList.toggle('hidden', !isNotesLocked);
+      }
+      const verifyBtn = document.getElementById('review-verify-btn');
+      const rejectBtn = document.getElementById('review-reject-btn');
+      const rawStLower = String(data.rawStatus || data.status || '').toLowerCase();
+      const isAlreadyVerified = recordType === 'rescue'
+        ? Boolean(data.hasActiveAssignment || ['assigned', 'accepted', 'en route', 'on scene', 'completed'].includes(rawStLower))
+        : Boolean(data.verifiedAt || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
+      const hasAssignedResponder = Boolean(data.assignedTo || data.hasActiveAssignment);
+
+      if (verifyBtn) {
+        verifyBtn.disabled = isNotesLocked || isAlreadyVerified;
+        if (isAlreadyVerified || isNotesLocked) {
+          verifyBtn.textContent = hasAssignedResponder ? 'Verified and Assigned' : 'Verified';
+        } else {
+          verifyBtn.textContent = recordType === 'rescue' ? 'Verify Rescue' : 'Verify Report';
+        }
+      }
+      if (rejectBtn) rejectBtn.disabled = isNotesLocked || isAlreadyVerified;
+
+      // Section H: Status History (newest first, no nested scrollbar, Show More for lengthy histories)
       const histEl = document.getElementById('modal-report-history');
       histEl.innerHTML = '';
       const history = data.statusHistory || data.history || [];
       if (history.length === 0) {
         histEl.innerHTML = '<span class="text-xs text-[#777777]">No historical state changes recorded.</span>';
       } else {
-        history.forEach((h) => {
-          const item = document.createElement('div');
-          item.className = 'text-xs border-b border-[#EEEEEE] pb-2 last:border-b-0';
-          const actor = h.actorName || h.changedByName || h.changed_by_name || 'System';
-          const role = h.changedByRole || h.changed_by_role || '';
-          const notes = h.notes || h.remarks || '';
-          item.innerHTML = `
-            <div class="flex items-center justify-between text-[#777777] text-[10px]">
-              <span>${formatDateTime(h.createdAt || h.created_at)}</span>
-              <span>By: ${escapeHtml(actor)}${role ? ` (${escapeHtml(role)})` : ''}</span>
-            </div>
-            <p class="font-bold text-[#202020] mt-0.5">Status: ${escapeHtml(h.newStatus || h.new_status || h.status)}</p>
-            ${notes ? `<p class="text-[11px] text-[#555555] bg-[#F7F7F7] p-1.5 rounded-lg mt-1">${escapeHtml(notes)}</p>` : ''}
-          `;
-          histEl.appendChild(item);
-        });
+        const initialLimit = 4;
+        let showAllHistory = false;
+        const renderHistoryEntries = () => {
+          histEl.innerHTML = '';
+          const visible = showAllHistory ? history : history.slice(0, initialLimit);
+          visible.forEach((h) => {
+            const item = document.createElement('div');
+            item.className = 'text-xs border-b border-[#EEEEEE] pb-2 last:border-b-0';
+            const actor = h.actorName || h.changedByName || h.changed_by_name || 'System';
+            const role = h.changedByRole || h.changed_by_role || '';
+            const notes = h.notes || h.remarks || '';
+            item.innerHTML = `
+              <div class="flex items-center justify-between text-[#777777] text-[10px]">
+                <span>${formatDateTime(h.createdAt || h.created_at)}</span>
+                <span>By: ${escapeHtml(actor)}${role ? ` (${escapeHtml(role)})` : ''}</span>
+              </div>
+              <p class="font-bold text-[#202020] mt-0.5">Status: ${escapeHtml(h.newStatus || h.new_status || h.status)}</p>
+              ${notes ? `<p class="text-[11px] text-[#555555] bg-[#F7F7F7] p-1.5 rounded-lg mt-1">${escapeHtml(notes)}</p>` : ''}
+            `;
+            histEl.appendChild(item);
+          });
+          if (history.length > initialLimit) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'mt-1 text-[11px] font-bold text-[#8A6800] hover:underline';
+            toggleBtn.textContent = showAllHistory
+              ? 'Show Less'
+              : `Show More (${history.length - initialLimit} older entries)`;
+            toggleBtn.onclick = () => {
+              showAllHistory = !showAllHistory;
+              renderHistoryEntries();
+            };
+            histEl.appendChild(toggleBtn);
+          }
+        };
+        renderHistoryEntries();
       }
 
       if (loadingEl) loadingEl.classList.add('hidden');
@@ -1321,28 +1645,60 @@
     state.reports.activeDetail = null;
   }
 
+  let isReviewSubmitting = false;
+
   async function submitReportReviewAction(actionType) {
-    if (!state.reports.activeDetail) return;
+    if (!state.reports.activeDetail || isReviewSubmitting) return;
     const errEl = document.getElementById('review-form-error');
     if (errEl) errEl.classList.add('hidden');
 
     const detail = state.reports.activeDetail;
-    const statusVal = document.getElementById('review-status-select').value;
-    const respVal = document.getElementById('review-responder-select').value;
-    const reasonVal = document.getElementById('review-reason-input').value.trim();
+    const respSelect = document.getElementById('review-responder-select');
+    const reasonInput = document.getElementById('review-reason-input');
+    const verifyBtn = document.getElementById('review-verify-btn');
+    const rejectBtn = document.getElementById('review-reject-btn');
+    const respVal = detail.responderLocked
+      ? (detail.assignedTo ? String(detail.assignedTo) : '')
+      : (respSelect?.value || '');
+    const reasonVal = detail.reviewNotesLocked ? '' : (reasonInput?.value.trim() || '');
 
-    if ((actionType === 'reject' || actionType === 'clarify') && !reasonVal) {
+    if (detail.reviewNotesLocked) {
       if (errEl) {
-        errEl.textContent = 'An administrative reason is required when rejecting or requesting clarification.';
+        errEl.textContent = 'Operation completed – review notes and status cannot be modified.';
         errEl.classList.remove('hidden');
       }
       return;
     }
 
+    if ((actionType === 'reject' || actionType === 'clarify') && !reasonVal) {
+      const msg = 'An administrative reason is required when rejecting or requesting clarification.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      window.GeoSafeToast?.flagInvalidField?.(reasonInput, msg);
+      return;
+    }
+
+    isReviewSubmitting = true;
+    const prevVerifyText = verifyBtn ? verifyBtn.textContent : '';
+    const prevRejectText = rejectBtn ? rejectBtn.textContent : '';
+    const prevVerifyDisabled = verifyBtn ? verifyBtn.disabled : false;
+    const prevRejectDisabled = rejectBtn ? rejectBtn.disabled : false;
+
+    if (verifyBtn) {
+      verifyBtn.disabled = true;
+      if (actionType === 'verify') verifyBtn.textContent = 'Processing...';
+    }
+    if (rejectBtn) {
+      rejectBtn.disabled = true;
+      if (actionType === 'reject') rejectBtn.textContent = 'Processing...';
+    }
+
     try {
       const payload = {
         action: actionType,
-        status: statusVal,
+        status: detail.rawStatus || detail.status,
         assignedTo: respVal ? Number(respVal) : null,
         reason: reasonVal
       };
@@ -1357,10 +1713,27 @@
       loadReportsList();
       loadDashboardOverview();
     } catch (err) {
+      const msg = String((err && err.message) || '');
+      const alreadyDone = /already been verified|already completed|locked/i.test(msg);
+      if (verifyBtn) {
+        if (alreadyDone) {
+          verifyBtn.disabled = true;
+          verifyBtn.textContent = 'Verified and Assigned';
+        } else {
+          verifyBtn.disabled = prevVerifyDisabled;
+          verifyBtn.textContent = prevVerifyText;
+        }
+      }
+      if (rejectBtn) {
+        rejectBtn.disabled = alreadyDone ? true : prevRejectDisabled;
+        rejectBtn.textContent = prevRejectText;
+      }
       if (errEl) {
-        errEl.textContent = err.message;
+        errEl.textContent = msg;
         errEl.classList.remove('hidden');
       }
+    } finally {
+      isReviewSubmitting = false;
     }
   }
 
@@ -1404,10 +1777,13 @@
       state.responders.items.forEach((r) => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
-        const isOnDuty = r.availabilityStatus === 'On Duty';
-        const dutyBadge = isOnDuty
-          ? '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">On Duty</span>'
-          : '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Off Duty</span>';
+        const status = r.availabilityStatus === 'Unavailable' ? 'On Break' : (r.availabilityStatus || 'Off Duty');
+        const dutyBadgeMap = {
+          'On Duty': '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">On Duty</span>',
+          'On Break': '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">On Break</span>',
+          'Off Duty': '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Off Duty</span>',
+        };
+        const dutyBadge = dutyBadgeMap[status] || dutyBadgeMap['Off Duty'];
 
         tr.innerHTML = `
           <td class="px-4 py-3 font-mono text-xs font-bold text-[#202020]">${escapeHtml(r.userCode || r.badgeNumber || r.userId || '—')}</td>
@@ -1420,7 +1796,7 @@
           <td class="px-4 py-3 text-xs">${dutyBadge}</td>
           <td class="px-4 py-3 text-xs font-bold text-[#202020]">${r.activeAssignmentsCount}</td>
           <td class="px-4 py-3 text-xs text-right">
-            <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal('incident', null, ${r.id})" class="px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-xs font-black text-[#202020] transition-colors shadow-subtle">
+            <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal('incident', null, ${r.id})" class="px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
               Dispatch
             </button>
           </td>
@@ -1435,6 +1811,141 @@
     }
   }
 
+  function formatProximityDistance(meters) {
+    if (!Number.isFinite(Number(meters))) return 'Distance unavailable';
+    const m = Math.round(Number(meters));
+    return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m} m`;
+  }
+
+  let assignRecommendationSeq = 0;
+
+  async function loadAssignProximityRecommendations(defaultResponderId = null) {
+    const targetSelect = document.getElementById('assign-target-select');
+    const respSelect = document.getElementById('assign-responder-select');
+    const listEl = document.getElementById('assign-proximity-list');
+    const excludedEl = document.getElementById('assign-proximity-excluded');
+    if (!targetSelect || !respSelect) return;
+
+    const targetVal = targetSelect.value;
+    if (!targetVal || !targetVal.includes(':')) {
+      respSelect.innerHTML = '<option value="">Select a target operation first</option>';
+      if (listEl) listEl.innerHTML = '<p class="text-[11px] text-[#777777]">Select an operation to view nearby eligible responders.</p>';
+      if (excludedEl) excludedEl.textContent = '';
+      return;
+    }
+
+    const [type, targetId] = targetVal.split(':');
+    const seq = ++assignRecommendationSeq;
+    respSelect.innerHTML = '<option value="">Calculating proximity...</option>';
+    if (listEl) listEl.innerHTML = '<p class="text-[11px] text-[#777777]">Checking live GPS &amp; responder eligibility...</p>';
+
+    try {
+      const recData = await apiRequest(`/responders/recommendations?type=${encodeURIComponent(type)}&targetId=${encodeURIComponent(targetId)}`);
+      if (seq !== assignRecommendationSeq) return;
+
+      const candidates = Array.isArray(recData && recData.candidates) ? recData.candidates : [];
+      const targetCoords = recData && recData.target && recData.target.coordinates ? recData.target.coordinates : null;
+      const ex = (recData && recData.excludedSummary) || {};
+
+      if (excludedEl) {
+        const parts = [];
+        if (ex.alreadyAssigned) parts.push(`${ex.alreadyAssigned} Assigned`);
+        if (ex.offDuty) parts.push(`${ex.offDuty} Off Duty`);
+        if (ex.unavailable) parts.push(`${ex.unavailable} Unavailable`);
+        excludedEl.textContent = parts.length ? `Excluded: ${parts.join(', ')}` : '';
+      }
+
+      respSelect.innerHTML = '';
+      if (candidates.length === 0) {
+        respSelect.innerHTML = '<option value="">No eligible On-Duty responders available</option>';
+        if (listEl) {
+          listEl.innerHTML = '<p class="text-[11px] text-[#D93636] font-semibold p-2 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2]">No eligible On-Duty responders are currently available for dispatch.</p>';
+        }
+        return;
+      }
+
+      candidates.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        const distTag = c.straightLineMeters !== null
+          ? ` — ${formatProximityDistance(c.straightLineMeters)} (${c.isStale ? 'Stale GPS' : 'Live GPS'})`
+          : ' — No GPS';
+        opt.textContent = `${c.fullName} (${c.responderId || c.badgeNumber})${distTag}`;
+        if (defaultResponderId && Number(c.id) === Number(defaultResponderId)) {
+          opt.selected = true;
+        }
+        respSelect.appendChild(opt);
+      });
+
+      // Compute real OSRM road distance & ETA for top 3 GPS-enabled candidates when target has coordinates
+      if (targetCoords && window.GeoSafeMapping && typeof window.GeoSafeMapping.calculateRoute === 'function') {
+        const topGps = candidates.filter((c) => c.hasValidGps).slice(0, 3);
+        await Promise.all(topGps.map(async (c) => {
+          try {
+            const route = await window.GeoSafeMapping.calculateRoute(
+              { lat: c.lat, lng: c.lng },
+              { lat: targetCoords.lat, lng: targetCoords.lng },
+              'driving'
+            );
+            if (route && Number.isFinite(Number(route.distanceMeters))) {
+              c.roadDistanceMeters = Math.round(Number(route.distanceMeters));
+              c.roadDurationMinutes = Math.max(1, Math.round(Number(route.durationSeconds || 0) / 60));
+            }
+          } catch (_) {
+            // Routing provider fallback: retain straight-line distance only
+          }
+        }));
+        if (seq !== assignRecommendationSeq) return;
+      }
+
+      if (listEl) {
+        listEl.innerHTML = candidates.map((c, idx) => {
+          const isSelected = Number(respSelect.value) === Number(c.id);
+          const gpsBadge = !c.hasValidGps
+            ? '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">No GPS</span>'
+            : (c.isStale
+              ? '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">Stale GPS</span>'
+              : '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">Live GPS</span>');
+
+          const straightText = c.straightLineMeters !== null
+            ? `Direct: ${formatProximityDistance(c.straightLineMeters)}`
+            : 'Direct: —';
+          const roadText = Number.isFinite(c.roadDistanceMeters)
+            ? ` • Road: ${formatProximityDistance(c.roadDistanceMeters)} (~${c.roadDurationMinutes} min)`
+            : '';
+          const accText = Number.isFinite(Number(c.accuracy)) ? ` • ±${Math.round(c.accuracy)}m` : '';
+          const timeText = c.lastLocationUpdate ? ` • ${new Date(c.lastLocationUpdate).toLocaleTimeString()}` : '';
+
+          return `
+            <button type="button" data-rec-resp-id="${c.id}"
+              class="w-full text-left p-2 rounded-xl border transition-colors ${isSelected ? 'border-[#F5B900] bg-[#FFF9E8]/70' : 'border-[#EEEEEE] bg-[#FFFDF7] hover:border-[#F5B900]/70'}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold text-[#202020] truncate">${idx === 0 && c.hasValidGps ? 'Nearest • ' : ''}${escapeHtml(c.fullName)}</span>
+                ${gpsBadge}
+              </div>
+              <div class="text-[10px] text-[#555555] truncate">${escapeHtml(c.responderId || c.badgeNumber)} • ${escapeHtml(c.organization || c.assignedUnit)}</div>
+              <div class="text-[10px] text-[#777777] font-mono mt-0.5">${straightText}${roadText}${accText}${timeText}</div>
+            </button>
+          `;
+        }).join('');
+
+        listEl.querySelectorAll('[data-rec-resp-id]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            respSelect.value = btn.getAttribute('data-rec-resp-id');
+            listEl.querySelectorAll('[data-rec-resp-id]').forEach((b) => {
+              const active = b.getAttribute('data-rec-resp-id') === respSelect.value;
+              b.className = `w-full text-left p-2 rounded-xl border transition-colors ${active ? 'border-[#F5B900] bg-[#FFF9E8]/70' : 'border-[#EEEEEE] bg-[#FFFDF7] hover:border-[#F5B900]/70'}`;
+            });
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('[Admin] Proximity recommendations failed:', err.message);
+      respSelect.innerHTML = '<option value="">Unable to load eligible responders</option>';
+      if (listEl) listEl.innerHTML = `<p class="text-[11px] text-[#D93636]">${escapeHtml(err.message || 'Unable to load proximity recommendations.')}</p>`;
+    }
+  }
+
   async function openAssignResponderModal(defaultType = 'incident', defaultTargetId = null, defaultResponderId = null) {
     const modal = document.getElementById('admin-assign-responder-modal');
     const targetSelect = document.getElementById('assign-target-select');
@@ -1446,7 +1957,7 @@
     if (errEl) errEl.classList.add('hidden');
 
     targetSelect.innerHTML = '<option value="">Loading active operations...</option>';
-    respSelect.innerHTML = '<option value="">Loading responders...</option>';
+    respSelect.innerHTML = '<option value="">Loading eligible responders...</option>';
 
     try {
       // 1. Fetch open, unassigned operations (exclude already-assigned, in-progress, resolved, or rejected items)
@@ -1454,11 +1965,11 @@
       targetSelect.innerHTML = '';
       const allItems = reportsData.items || reportsData.reports || [];
       const items = allItems.filter((item) => {
+        if (item.assignedTo || item.hasActiveAssignment) return false;
         const isExplicitTarget =
           defaultTargetId &&
           Number(item.id) === Number(defaultTargetId) &&
           (!defaultType || item.recordType === defaultType);
-        if (item.assignedTo) return false;
         const isOpenBucket = item.filterBucket === 'pending' || item.filterBucket === 'verified';
         return isOpenBucket || isExplicitTarget;
       });
@@ -1480,22 +1991,14 @@
         });
       }
 
-      // 2. Fetch responders
-      const respData = await apiRequest('/responders');
-      respSelect.innerHTML = '';
-      const resps = respData.responders || [];
-      resps.forEach((r) => {
-        const opt = document.createElement('option');
-        opt.value = r.id;
-        opt.textContent = `${r.fullName} (${r.badgeNumber} - ${r.availabilityStatus})`;
-        if (defaultResponderId && Number(r.id) === Number(defaultResponderId)) {
-          opt.selected = true;
-        }
-        respSelect.appendChild(opt);
-      });
+      targetSelect.onchange = () => loadAssignProximityRecommendations(null);
+      await loadAssignProximityRecommendations(defaultResponderId);
     } catch (err) {
+      console.error('[Admin] openAssignResponderModal failed:', err.message);
+      targetSelect.innerHTML = '<option value="">Unable to load operations</option>';
+      respSelect.innerHTML = '<option value="">Unable to load responders</option>';
       if (errEl) {
-        errEl.textContent = 'Unable to populate dispatch choices.';
+        errEl.textContent = err.message || 'Unable to populate dispatch choices.';
         errEl.classList.remove('hidden');
       }
     }
@@ -1516,10 +2019,15 @@
     const instructions = document.getElementById('assign-instructions-input').value.trim();
 
     if (!targetVal || !respVal) {
+      const msg = !targetVal ? 'Please select a target operation before continuing.' : 'Please select a Responder before continuing.';
       if (errEl) {
-        errEl.textContent = 'Please select both an active operation and an authorized responder.';
+        errEl.textContent = msg;
         errEl.classList.remove('hidden');
       }
+      window.GeoSafeToast?.flagInvalidField?.(
+        document.getElementById(!targetVal ? 'assign-target-select' : 'assign-responder-select'),
+        msg
+      );
       return;
     }
 
@@ -1696,7 +2204,7 @@
 
       tr.innerHTML = `
         <td class="px-4 py-3 text-xs font-mono font-bold text-[#202020] whitespace-nowrap">
-          <span class="bg-[#FFF9E8] px-2 py-0.5 rounded-md border border-[#FFE872] text-[11px] font-black">${escapeHtml(displayId)}</span>
+          <span class="bg-[#FFF9E8] px-2 py-0.5 rounded-md border border-[#FFE872] text-[11px] font-bold">${escapeHtml(displayId)}</span>
         </td>
         <td class="px-4 py-3 text-xs font-bold text-[#202020] whitespace-nowrap">
           ${escapeHtml(u.name)}
@@ -1723,11 +2231,6 @@
           ${formatShortDate(u.registeredAt)}
         </td>
         <td class="px-4 py-3 text-xs text-right whitespace-nowrap space-x-1.5">
-          ${isResidentTab ? `
-          <button type="button" onclick="window.GeoSafeAdmin.openLocationReviewModal(${u.id})" class="px-3 py-1.5 rounded-xl border border-[#FFE872] bg-[#FFF9E8] hover:bg-[#F5B900] text-xs font-bold text-[#202020] transition-colors">
-            Review Location
-          </button>
-          ` : ''}
           <button type="button" onclick="window.GeoSafeAdmin.openUserStatusModal(${u.id}, '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', '${u.status}', '${escapeHtml(displayId)}')" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors">
             Manage Status
           </button>
@@ -1850,8 +2353,10 @@
     const reason = document.getElementById('user-modal-reason').value.trim();
 
     if ((newStatus === 'suspended' || newStatus === 'deactivated') && !reason) {
-      errEl.textContent = 'A reason is required when suspending or deactivating an account.';
+      const msg = 'A reason is required when suspending or deactivating an account.';
+      errEl.textContent = msg;
       errEl.classList.remove('hidden');
+      window.GeoSafeToast?.flagInvalidField?.(document.getElementById('user-modal-reason'), msg);
       return;
     }
 
@@ -2107,6 +2612,119 @@
   // ============================================================================
   // SECTION 5: ALERTS & NOTIFICATIONS
   // ============================================================================
+  function formatManilaDateTime(dateInput) {
+    if (!dateInput) return '—';
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  function toManilaDatetimeLocalValue(dateInput) {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(d.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    const hour = map.hour === '24' ? '00' : map.hour;
+    return `${map.year}-${map.month}-${map.day}T${hour}:${map.minute}`;
+  }
+
+  function parseManilaLocalInput(val) {
+    const str = String(val || '').trim();
+    if (!str) return null;
+    const normalized = str.length === 16 ? `${str}:00+08:00` : `${str}+08:00`;
+    const d = new Date(normalized);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function formatRemainingDuration(expiresAt) {
+    if (!expiresAt) return '';
+    const diffMs = new Date(expiresAt).getTime() - Date.now();
+    if (Number.isNaN(diffMs) || diffMs <= 0) return 'Expiring...';
+    const totalMins = Math.ceil(diffMs / 60000);
+    if (totalMins < 60) return `${totalMins}m left`;
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return mins > 0 ? `${hours}h ${mins}m left` : `${hours}h left`;
+  }
+
+  function updateBroadcastExpirationPreview() {
+    const selectEl = document.getElementById('broadcast-expiration-select');
+    const customInput = document.getElementById('broadcast-custom-expiration-input');
+    const previewEl = document.getElementById('broadcast-expiration-preview-time');
+    if (!selectEl || !previewEl) return;
+
+    const val = selectEl.value;
+    if (val === 'custom') {
+      const parsed = parseManilaLocalInput(customInput ? customInput.value : '');
+      if (!parsed) {
+        previewEl.textContent = 'Select a custom date & time';
+        return;
+      }
+      if (parsed.getTime() <= Date.now()) {
+        previewEl.textContent = `${formatManilaDateTime(parsed)} (Must be in the future)`;
+        return;
+      }
+      previewEl.textContent = `${formatManilaDateTime(parsed)} (Asia/Manila)`;
+      return;
+    }
+
+    const minutes = Number(val);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      previewEl.textContent = '--';
+      return;
+    }
+    const target = new Date(Date.now() + minutes * 60000);
+    previewEl.textContent = `${formatManilaDateTime(target)} (Asia/Manila)`;
+  }
+
+  function handleExpirationDurationChange() {
+    const selectEl = document.getElementById('broadcast-expiration-select');
+    const customWrap = document.getElementById('broadcast-custom-expiration-wrap');
+    const customInput = document.getElementById('broadcast-custom-expiration-input');
+    if (!selectEl || !customWrap) return;
+
+    const isCustom = selectEl.value === 'custom';
+    customWrap.classList.toggle('hidden', !isCustom);
+    if (customInput) {
+      customInput.required = isCustom;
+      if (isCustom) {
+        customInput.min = toManilaDatetimeLocalValue(new Date(Date.now() + 60000));
+        if (!customInput.value) {
+          customInput.value = toManilaDatetimeLocalValue(new Date(Date.now() + 60 * 60000));
+        }
+      }
+    }
+    updateBroadcastExpirationPreview();
+  }
+
+  function renderUrgencyBadge(urgency) {
+    const level = String(urgency || 'Advisory').trim();
+    const styles = {
+      Informational: 'bg-sky-50 text-sky-700 border-sky-200',
+      Advisory: 'bg-amber-50 text-amber-700 border-amber-200',
+      Warning: 'bg-orange-50 text-orange-700 border-orange-200',
+      Critical: 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]',
+    };
+    const cls = styles[level] || styles.Advisory;
+    return `<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold border ${cls}">${escapeHtml(level)}</span>`;
+  }
+
   function handleBroadcastSubmit(e) {
     e.preventDefault();
     const errEl = document.getElementById('broadcast-form-error');
@@ -2117,18 +2735,14 @@
     const categoryId = (catSelect?.value || '').trim();
     const categoryName = (selectedOpt?.getAttribute('data-name') || selectedOpt?.textContent || '').trim();
     const badgeColor = (selectedOpt?.getAttribute('data-color') || '').trim();
+    const urgencyLevel = (document.getElementById('broadcast-urgency-select')?.value || '').trim();
     const title = document.getElementById('broadcast-title-input').value.trim();
     const scope = document.getElementById('broadcast-scope-select').value;
-    const zones = document.getElementById('broadcast-zones-input').value.trim();
+    const affectedLocation = (document.getElementById('broadcast-affected-location-input')?.value || '').trim();
     const message = document.getElementById('broadcast-message-input').value.trim();
-
-    if (!categoryId || !categoryName) {
-      if (errEl) {
-        errEl.textContent = 'Please select an Advisory Category.';
-        errEl.classList.remove('hidden');
-      }
-      return;
-    }
+    const expirationSelect = document.getElementById('broadcast-expiration-select');
+    const customExpInput = document.getElementById('broadcast-custom-expiration-input');
+    const expirationChoice = expirationSelect ? expirationSelect.value : '240';
 
     if (!title || !message) {
       if (errEl) {
@@ -2138,15 +2752,70 @@
       return;
     }
 
-    if (scope === 'Specific Purok' && !zones) {
+    if (!categoryId || !categoryName) {
       if (errEl) {
-        errEl.textContent = 'Please specify the affected Purok or specific zones.';
+        errEl.textContent = 'Please select an Alert Category.';
         errEl.classList.remove('hidden');
       }
       return;
     }
 
-    state.broadcasts.pendingBroadcast = { categoryId: Number(categoryId), advisoryType: categoryName, badgeColor, title, scope, zones, message };
+    if (!urgencyLevel) {
+      if (errEl) {
+        errEl.textContent = 'Please select an Urgency Level.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    let expirationDurationMinutes = null;
+    let customExpiresAt = null;
+    let expirationPreviewText = '';
+
+    if (expirationChoice === 'custom') {
+      const parsedCustom = parseManilaLocalInput(customExpInput ? customExpInput.value : '');
+      if (!parsedCustom) {
+        if (errEl) {
+          errEl.textContent = 'Please select a valid custom expiration date and time.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      if (parsedCustom.getTime() <= Date.now()) {
+        if (errEl) {
+          errEl.textContent = 'Custom expiration date and time must be later than the current time.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      customExpiresAt = parsedCustom.toISOString();
+      expirationPreviewText = `${formatManilaDateTime(parsedCustom)} (Asia/Manila)`;
+    } else {
+      const mins = Number(expirationChoice);
+      if (!Number.isFinite(mins) || mins <= 0) {
+        if (errEl) {
+          errEl.textContent = 'Please select a valid expiration duration.';
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      expirationDurationMinutes = mins;
+      const estimatedDate = new Date(Date.now() + mins * 60000);
+      expirationPreviewText = `${formatManilaDateTime(estimatedDate)} (Asia/Manila)`;
+    }
+
+    state.broadcasts.pendingBroadcast = {
+      categoryId: Number(categoryId),
+      advisoryType: categoryName,
+      badgeColor,
+      urgencyLevel,
+      title,
+      scope,
+      affectedLocation,
+      message,
+      expirationDurationMinutes,
+      customExpiresAt,
+    };
 
     const advisoryPreviewEl = document.getElementById('confirm-broadcast-advisory-type');
     if (advisoryPreviewEl) {
@@ -2154,8 +2823,14 @@
         ? window.GeoSafeAdvisories.renderBadge(categoryName, { badgeColor })
         : escapeHtml(categoryName);
     }
+    const urgencyPreviewEl = document.getElementById('confirm-broadcast-urgency');
+    if (urgencyPreviewEl) urgencyPreviewEl.innerHTML = renderUrgencyBadge(urgencyLevel);
     document.getElementById('confirm-broadcast-title').textContent = title;
-    document.getElementById('confirm-broadcast-scope').textContent = zones ? `${scope} (${zones})` : scope;
+    document.getElementById('confirm-broadcast-scope').textContent = scope;
+    const confirmLocEl = document.getElementById('confirm-broadcast-location');
+    if (confirmLocEl) confirmLocEl.textContent = affectedLocation || 'Not specified (General)';
+    const confirmExpEl = document.getElementById('confirm-broadcast-expires');
+    if (confirmExpEl) confirmExpEl.textContent = expirationPreviewText;
     document.getElementById('confirm-broadcast-message').textContent = message;
 
     const modal = document.getElementById('admin-broadcast-confirm-modal');
@@ -2174,33 +2849,44 @@
     const pending = state.broadcasts.pendingBroadcast;
     const submitBtn = document.getElementById('confirm-broadcast-submit-btn');
     const cancelBtn = document.getElementById('confirm-broadcast-cancel-btn');
+    const formSubmitBtn = document.getElementById('broadcast-form-submit-btn');
 
     state.broadcasts.isSubmitting = true;
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Transmitting...';
+      submitBtn.textContent = 'Publishing...';
     }
     if (cancelBtn) cancelBtn.disabled = true;
+    if (formSubmitBtn) formSubmitBtn.disabled = true;
 
     try {
+      const payload = {
+        category_id: pending.categoryId,
+        advisory_type: pending.advisoryType,
+        urgency_level: pending.urgencyLevel,
+        title: pending.title,
+        target_scope: pending.scope,
+        target_zones: pending.affectedLocation || null,
+        location_coverage: 'Entire Barangay Bayanan',
+        location_address: pending.affectedLocation || null,
+        message: pending.message,
+      };
+      if (pending.expirationDurationMinutes) {
+        payload.expiration_duration_minutes = pending.expirationDurationMinutes;
+      } else if (pending.customExpiresAt) {
+        payload.expires_at = pending.customExpiresAt;
+      }
+
       const result = await apiRequest('/broadcasts', {
         method: 'POST',
-        body: JSON.stringify({
-          category_id: pending.categoryId,
-          advisory_type: pending.advisoryType,
-          title: pending.title,
-          target_scope: pending.scope,
-          target_zones: pending.zones || null,
-          message: pending.message
-        })
+        body: JSON.stringify(payload)
       });
 
-      showBannerMessage(result.message || 'Emergency alert transmitted successfully.');
+      showBannerMessage(result.message || 'Broadcast alert published successfully.');
       state.broadcasts.isSubmitting = false;
       closeBroadcastConfirmModal();
       document.getElementById('emergency-broadcast-form').reset();
-      const descEl = document.getElementById('broadcast-advisory-type-desc');
-      if (descEl) descEl.textContent = 'Select a category from the database.';
+      handleExpirationDurationChange();
       loadBroadcastsList();
       loadDashboardOverview();
     } catch (err) {
@@ -2208,36 +2894,64 @@
       closeBroadcastConfirmModal();
       const errEl = document.getElementById('broadcast-form-error');
       if (errEl) {
-        errEl.textContent = err.message || 'Unable to save emergency broadcast.';
+        errEl.textContent = err.message || 'Unable to save broadcast alert.';
         errEl.classList.remove('hidden');
       }
     } finally {
       state.broadcasts.isSubmitting = false;
       if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Confirm & Transmit';
+        submitBtn.textContent = 'Confirm & Publish';
       }
       if (cancelBtn) cancelBtn.disabled = false;
+      if (formSubmitBtn) formSubmitBtn.disabled = false;
     }
   }
 
+  async function cancelBroadcast(id) {
+    if (!id) return;
+    if (!window.confirm('Are you sure you want to manually cancel this active broadcast alert?')) return;
+    try {
+      const res = await apiRequest(`/broadcasts/${id}/cancel`, { method: 'PATCH' });
+      showBannerMessage((res && res.message) || 'Broadcast alert cancelled.');
+      loadBroadcastsList();
+    } catch (err) {
+      showBannerMessage(err.message || 'Unable to cancel broadcast alert.', 'error');
+    }
+  }
+
+  const CANONICAL_BROADCAST_CATEGORY_ORDER = [
+    'Weather Advisory',
+    'Flood Warning',
+    'Fire Alert',
+    'Earthquake Advisory',
+    'Evacuation Notice',
+    'Rescue Advisory',
+    'Public Safety Advisory',
+    'Emergency Announcement',
+    'General Announcement',
+  ];
+
   async function loadBroadcastCategories(selectedId = null) {
     const selectEl = document.getElementById('broadcast-advisory-type-select');
-    const descEl = document.getElementById('broadcast-advisory-type-desc');
     if (!selectEl) return;
 
     try {
       const data = await apiRequest('/broadcast-categories');
-      const categories = Array.isArray(data && data.categories) ? data.categories : [];
+      const allCategories = Array.isArray(data && data.categories) ? data.categories : [];
+      const orderMap = new Map(CANONICAL_BROADCAST_CATEGORY_ORDER.map((n, idx) => [n.toLowerCase(), idx]));
+      const canonicalOnly = allCategories
+        .filter((c) => orderMap.has(String(c.name || '').toLowerCase()))
+        .sort((a, b) => orderMap.get(String(a.name).toLowerCase()) - orderMap.get(String(b.name).toLowerCase()));
+      const categories = canonicalOnly.length > 0 ? canonicalOnly : allCategories;
+
       state.broadcasts.categories = categories;
-      selectEl.innerHTML = '<option value="">Select advisory category...</option>' + categories.map((c) =>
-        `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-color="${escapeHtml(c.badge_color || 'gray')}" data-desc="${escapeHtml(c.description || '')}">${escapeHtml(c.name)}</option>`
+      selectEl.innerHTML = '<option value="">Select alert category...</option>' + categories.map((c) =>
+        `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-color="${escapeHtml(c.badge_color || 'gray')}">${escapeHtml(c.name)}</option>`
       ).join('');
       if (selectedId) {
         selectEl.value = String(selectedId);
         selectEl.dispatchEvent(new Event('change'));
-      } else if (descEl) {
-        descEl.textContent = categories.length > 0 ? 'Select a category from the database.' : 'No active broadcast categories found.';
       }
     } catch (err) {
       console.error('[Admin] loadBroadcastCategories failed:', err.message);
@@ -2246,7 +2960,7 @@
   }
 
   async function promptNewBroadcastCategory() {
-    const rawName = window.prompt('Enter new Advisory Category name:');
+    const rawName = window.prompt('Enter new Alert Category name:');
     if (!rawName || !rawName.trim()) return;
     try {
       const res = await apiRequest('/broadcast-categories', {
@@ -2258,6 +2972,67 @@
     } catch (err) {
       showBannerMessage(err.message || 'Unable to add category.', 'error');
     }
+  }
+
+  function setBroadcastManagementTab(tab) {
+    const filterInput = document.getElementById('admin-broadcasts-status-filter');
+    if (filterInput) filterInput.value = tab;
+    document.querySelectorAll('.broadcast-tab-btn').forEach((btn) => {
+      const isActive = btn.getAttribute('data-broadcast-tab') === tab;
+      btn.className = isActive
+        ? 'broadcast-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F5B900] text-[#202020]'
+        : 'broadcast-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold text-[#555555] hover:text-[#202020]';
+    });
+    loadBroadcastsList();
+  }
+
+  function openBroadcastDetailModal(broadcastId) {
+    const b = (state.broadcasts.items || []).find((item) => Number(item.id) === Number(broadcastId));
+    const modal = document.getElementById('admin-broadcast-detail-modal');
+    if (!b || !modal) return;
+
+    const catLabel = b.categoryName || b.advisoryType || 'Other';
+    const catEl = document.getElementById('admin-bdtl-category');
+    if (catEl) {
+      catEl.innerHTML = window.GeoSafeAdvisories
+        ? window.GeoSafeAdvisories.renderBadge(catLabel, { badgeColor: b.badgeColor })
+        : escapeHtml(catLabel);
+    }
+    const urgEl = document.getElementById('admin-bdtl-urgency');
+    if (urgEl) urgEl.innerHTML = renderUrgencyBadge(b.urgencyLevel || 'Advisory');
+
+    const statusVal = b.status || (b.isActive ? 'Active' : 'Cancelled');
+    const statusEl = document.getElementById('admin-bdtl-status');
+    if (statusEl) {
+      const sCls = statusVal === 'Active'
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : (statusVal === 'Expired' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200');
+      statusEl.innerHTML = `<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold border ${sCls}">${escapeHtml(statusVal)}</span>`;
+    }
+
+    document.getElementById('admin-bdtl-title').textContent = b.title || '-';
+    document.getElementById('admin-bdtl-message').textContent = b.message || '-';
+    document.getElementById('admin-bdtl-audience').textContent = b.targetScope || '-';
+
+    const locWrap = document.getElementById('admin-bdtl-location-wrap');
+    const affectedLoc = (b.locationAddress || b.targetZones || '').trim();
+    if (locWrap) {
+      locWrap.classList.toggle('hidden', !affectedLoc);
+      if (affectedLoc) {
+        document.getElementById('admin-bdtl-coverage').textContent = affectedLoc;
+      }
+    }
+
+    document.getElementById('admin-bdtl-published').textContent = formatManilaDateTime(b.broadcastedAt);
+    document.getElementById('admin-bdtl-expires').textContent = b.expiresAt ? formatManilaDateTime(b.expiresAt) : 'No expiration';
+    document.getElementById('admin-bdtl-author').textContent = b.authorizedBy || 'Administrator';
+    document.getElementById('admin-bdtl-ref').textContent = b.referenceNumber || `BRD-${b.id}`;
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeBroadcastDetailModal() {
+    document.getElementById('admin-broadcast-detail-modal')?.classList.add('hidden');
   }
 
   async function loadBroadcastsList() {
@@ -2273,30 +3048,60 @@
     try {
       const data = await apiRequest('/broadcasts');
       state.broadcasts.items = data.broadcasts || [];
+      const statusFilter = document.getElementById('admin-broadcasts-status-filter')?.value || 'Active';
+      const filteredItems = statusFilter === 'all'
+        ? state.broadcasts.items
+        : state.broadcasts.items.filter((b) => String(b.status || (b.isActive ? 'Active' : 'Cancelled')) === statusFilter);
 
       if (emptyEl) {
-        emptyEl.classList.toggle('hidden', state.broadcasts.items.length > 0);
-        emptyEl.innerHTML = '<p class="text-xs font-semibold text-[#777777]">No broadcast notifications recorded.</p>';
+        emptyEl.classList.toggle('hidden', filteredItems.length > 0);
+        emptyEl.innerHTML = statusFilter === 'all'
+          ? '<p class="text-xs font-semibold text-[#777777]">No broadcast alerts recorded.</p>'
+          : `<p class="text-xs font-semibold text-[#777777]">No ${escapeHtml(statusFilter.toLowerCase())} broadcast alerts found.</p>`;
       }
 
-      state.broadcasts.items.forEach((b) => {
+      filteredItems.forEach((b) => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
         const catLabel = b.categoryName || b.advisoryType || 'Other';
         const advisoryBadge = window.GeoSafeAdvisories
           ? window.GeoSafeAdvisories.renderBadge(catLabel, { badgeColor: b.badgeColor })
           : escapeHtml(catLabel);
+        const urgencyBadge = renderUrgencyBadge(b.urgencyLevel || 'Advisory');
+        const statusVal = b.status || (b.isActive ? 'Active' : 'Cancelled');
+        let statusBadge = '';
+        if (statusVal === 'Active') {
+          const rem = b.expiresAt ? formatRemainingDuration(b.expiresAt) : '';
+          statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>${rem ? `<span class="block text-[10px] text-emerald-700 font-semibold mt-0.5">${escapeHtml(rem)}</span>` : ''}`;
+        } else if (statusVal === 'Expired') {
+          statusBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Expired</span>';
+        } else {
+          statusBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Cancelled</span>';
+        }
+        const expiresDisplay = b.expiresAt ? formatManilaDateTime(b.expiresAt) : 'No expiration';
+        const affectedLoc = (b.locationAddress || b.targetZones || '').trim();
+        const cancelBtnHtml = statusVal === 'Active'
+          ? `<button type="button" onclick="window.GeoSafeAdmin.cancelBroadcast(${b.id})" class="px-2.5 py-1 rounded-lg bg-[#FFF1F1] hover:bg-[#FFE0E0] border border-[#FFC2C2] text-[11px] font-bold text-[#D93636] transition-colors">Cancel</button>`
+          : '';
+
         tr.innerHTML = `
-          <td class="px-4 py-3 font-mono text-xs font-bold text-[#202020]">${escapeHtml(b.referenceNumber)}</td>
-          <td class="px-4 py-3 text-xs whitespace-nowrap">${advisoryBadge}</td>
           <td class="px-4 py-3 text-xs">
             <span class="font-bold text-[#202020] block">${escapeHtml(b.title)}</span>
             <span class="text-[11px] text-[#555555] line-clamp-1">${escapeHtml(b.message)}</span>
+            ${affectedLoc ? `<span class="block text-[10px] text-[#8A6800] font-semibold mt-0.5">Location: ${escapeHtml(affectedLoc)}</span>` : ''}
           </td>
-          <td class="px-4 py-3 text-xs text-[#555555]">${escapeHtml(b.targetScope)}</td>
-          <td class="px-4 py-3 text-xs font-bold text-[#202020]">${b.recipientsCount} users</td>
-          <td class="px-4 py-3 text-xs text-[#555555]">${escapeHtml(b.authorizedBy)}</td>
-          <td class="px-4 py-3 text-xs text-[#777777] whitespace-nowrap">${formatDateTime(b.broadcastedAt)}</td>
+          <td class="px-4 py-3 text-xs whitespace-nowrap">${advisoryBadge}</td>
+          <td class="px-4 py-3 text-xs whitespace-nowrap">${urgencyBadge}</td>
+          <td class="px-4 py-3 text-xs text-[#555555] whitespace-nowrap">${escapeHtml(b.targetScope)}</td>
+          <td class="px-4 py-3 text-xs text-[#777777] whitespace-nowrap">${formatManilaDateTime(b.broadcastedAt)}</td>
+          <td class="px-4 py-3 text-xs text-[#777777] whitespace-nowrap">${escapeHtml(expiresDisplay)}</td>
+          <td class="px-4 py-3 text-xs whitespace-nowrap">${statusBadge}</td>
+          <td class="px-4 py-3 text-xs text-right whitespace-nowrap">
+            <div class="inline-flex items-center gap-1.5">
+              <button type="button" onclick="window.GeoSafeAdmin.openBroadcastDetailModal(${b.id})" class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF9E8] border border-[#EEEEEE] text-[11px] font-bold text-[#202020] transition-colors">View</button>
+              ${cancelBtnHtml}
+            </div>
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -2381,23 +3186,32 @@
     }
 
     if (totalReports <= 0 || rawCats.length === 0) {
+      const emptyLegendItems = allCats.map((c, idx) => {
+        const color = getCategoryChartColor(c.name, idx);
+        return `
+          <div class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] opacity-60">
+            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${color};"></span>
+            <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(c.name)}</span>
+          </div>
+        `;
+      }).join('');
+
       container.innerHTML = `
         <div class="gs-doughnut-layout">
           <div class="gs-doughnut-visual">
-            <div class="relative flex-shrink-0 flex items-center justify-center" style="width: clamp(210px, 55vw, 268px); height: clamp(210px, 55vw, 268px); aspect-ratio: 1 / 1;">
+            <div class="relative flex-shrink-0 flex items-center justify-center" style="width: clamp(200px, 48vw, 248px); height: clamp(200px, 48vw, 248px); aspect-ratio: 1 / 1;">
               <svg viewBox="0 0 260 260" class="w-full h-full" role="img" aria-label="Empty disaster category distribution chart">
                 <circle cx="130" cy="130" r="95" fill="none" stroke="#EEEEEE" stroke-width="38"></circle>
               </svg>
               <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-4">
-                <span class="text-3xl font-black text-[#202020] leading-none">0</span>
+                <span class="text-3xl font-bold text-[#202020] leading-none">0</span>
                 <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider mt-1">Total Reports</span>
               </div>
             </div>
           </div>
-          <div class="gs-doughnut-legend text-center md:text-left space-y-1.5">
-            <p class="text-[11px] font-bold text-[#777777] uppercase tracking-wider">Disaster category legend</p>
-            <p class="text-sm font-bold text-[#202020]">No incident reports available.</p>
-            <p class="text-xs text-[#777777] leading-relaxed">Genuine incident reports submitted by residents will appear here grouped by disaster category.</p>
+          <div class="gs-doughnut-legend space-y-2.5">
+            ${emptyLegendItems ? `<div class="gs-doughnut-legend-list">${emptyLegendItems}</div>` : ''}
+            <p class="text-[11px] text-[#777777] text-center md:text-left">No incident reports available for the selected range.</p>
           </div>
         </div>
       `;
@@ -2495,10 +3309,10 @@
       const segIdx = segIndexByName.has(c.name) ? segIndexByName.get(c.name) : -1;
       return `
         <div
-          class="gs-doughnut-legend-item flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] ${isZero ? 'opacity-60' : 'cursor-pointer hover:bg-[#FFF9E8]/70'}"
+          class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] ${isZero ? 'opacity-60' : 'cursor-pointer hover:bg-[#FFF9E8]/70'}"
           ${segIdx >= 0 ? `data-legend-seg-idx="${segIdx}"` : ''}
         >
-          <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${color};"></span>
+          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${color};"></span>
           <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(c.name)}</span>
         </div>
       `;
@@ -2507,12 +3321,12 @@
     container.innerHTML = `
       <div class="gs-doughnut-layout">
         <div class="gs-doughnut-visual">
-          <div class="relative flex-shrink-0 flex items-center justify-center" style="width: clamp(210px, 55vw, 268px); height: clamp(210px, 55vw, 268px); aspect-ratio: 1 / 1;">
+          <div class="relative flex-shrink-0 flex items-center justify-center" style="width: clamp(200px, 48vw, 248px); height: clamp(200px, 48vw, 248px); aspect-ratio: 1 / 1;">
             <svg viewBox="0 0 260 260" class="w-full h-full" role="img" aria-label="Reports by Disaster Category doughnut chart">
               ${svgParts.join('')}
             </svg>
             <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-4">
-              <span class="text-3xl font-black text-[#202020] leading-none">${totalReports.toLocaleString()}</span>
+              <span class="text-3xl font-bold text-[#202020] leading-none">${totalReports.toLocaleString()}</span>
               <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider mt-1">Total Reports</span>
             </div>
           </div>
@@ -2520,7 +3334,6 @@
         </div>
 
         <div class="gs-doughnut-legend">
-          <p class="text-[11px] font-bold text-[#777777] uppercase tracking-wider mb-2">Disaster category legend</p>
           <div class="gs-doughnut-legend-list">
             ${legendItems}
           </div>
@@ -2727,7 +3540,7 @@
         cats.forEach((c) => {
           const item = document.createElement('div');
           item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(c.name)}</span><span class="font-black text-[#8A6800]">${c.count}</span>`;
+          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(c.name)}</span><span class="font-bold text-[#8A6800]">${c.count}</span>`;
           catList.appendChild(item);
         });
       }
@@ -2742,7 +3555,7 @@
         stats.forEach((st) => {
           const item = document.createElement('div');
           item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(st.status)}</span><span class="font-black text-[#202020]">${st.count}</span>`;
+          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(st.status)}</span><span class="font-bold text-[#202020]">${st.count}</span>`;
           statList.appendChild(item);
         });
       }
@@ -2757,7 +3570,7 @@
         locs.forEach((l) => {
           const item = document.createElement('div');
           item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(l.location_name)}</span><span class="font-black text-[#202020]">${l.count}</span>`;
+          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(l.location_name)}</span><span class="font-bold text-[#202020]">${l.count}</span>`;
           locList.appendChild(item);
         });
       }
@@ -2925,16 +3738,16 @@
           : '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]">Failure</span>';
 
         tr.innerHTML = `
-          <td class="px-4 py-2.5 text-xs text-[#777777] whitespace-nowrap">${formatDateTime(log.timestamp)}</td>
-          <td class="px-4 py-2.5 text-xs font-semibold text-[#202020]">
-            ${escapeHtml(log.userName)}
-            <span class="block text-[10px] text-[#777777]">${escapeHtml(log.userEmail)}</span>
+          <td class="px-4 py-2.5 text-xs text-[#777777] whitespace-nowrap truncate align-middle" title="${escapeHtml(formatDateTime(log.timestamp))}">${formatDateTime(log.timestamp)}</td>
+          <td class="px-4 py-2.5 text-xs font-semibold text-[#202020] align-middle overflow-hidden">
+            <span class="block truncate" title="${escapeHtml(log.userName)}">${escapeHtml(log.userName)}</span>
+            <span class="block text-[10px] font-normal text-[#777777] truncate" title="${escapeHtml(log.userEmail)}">${escapeHtml(log.userEmail)}</span>
           </td>
-          <td class="px-4 py-2.5 text-xs text-[#555555]">${escapeHtml(log.role)}</td>
-          <td class="px-4 py-2.5 text-xs font-bold text-[#202020]">${escapeHtml(log.activity)}</td>
-          <td class="px-4 py-2.5 text-xs font-mono text-[#555555]">${escapeHtml(log.module)}</td>
-          <td class="px-4 py-2.5 text-xs">${resultBadge}</td>
-          <td class="px-4 py-2.5 text-xs font-mono text-[#777777]">${escapeHtml(log.ipAddress || '-')}</td>
+          <td class="px-4 py-2.5 text-xs text-[#555555] whitespace-nowrap truncate align-middle" title="${escapeHtml(log.role)}">${escapeHtml(log.role)}</td>
+          <td class="px-4 py-2.5 text-xs font-bold text-[#202020] break-words align-middle">${escapeHtml(log.activity)}</td>
+          <td class="px-4 py-2.5 text-xs font-mono text-[#555555] truncate align-middle" title="${escapeHtml(log.module)}">${escapeHtml(log.module)}</td>
+          <td class="px-4 py-2.5 text-xs whitespace-nowrap align-middle">${resultBadge}</td>
+          <td class="px-4 py-2.5 text-xs font-mono text-[#777777] whitespace-nowrap truncate align-middle" title="${escapeHtml(log.ipAddress || '-')}">${escapeHtml(log.ipAddress || '-')}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -2991,6 +3804,7 @@
         btn.className = 'report-filter-btn px-3 py-1 rounded-lg bg-[#202020] text-[#FFF9E8] font-bold';
 
         state.reports.filters.status = btn.getAttribute('data-report-filter') || 'all';
+        state.reports.pagination.page = 1;
         loadReportsList();
       });
     });
@@ -3000,6 +3814,7 @@
     if (reportTypeSelect) {
       reportTypeSelect.addEventListener('change', (e) => {
         state.reports.filters.type = e.target.value;
+        state.reports.pagination.page = 1;
         loadReportsList();
       });
     }
@@ -3345,7 +4160,19 @@
         } catch (_) {}
       }
 
-      window.addEventListener('geosafe:realtime-update', () => {
+      window.addEventListener('geosafe:realtime-update', (ev) => {
+        const detail = (ev && ev.detail) || {};
+        if (detail.event === 'responder:location-updated') {
+          upsertAdminResponderLocationMarker(detail.data);
+          return;
+        }
+        if (detail.event === 'responder:location-offline') {
+          removeAdminResponderLocationMarker(detail.data && detail.data.userId);
+          return;
+        }
+        if (detail.event === 'reconnect-sync') {
+          loadLiveResponderLocations();
+        }
         if (state.currentSection === 'dashboard') {
           loadDashboardOverview();
         } else if (state.currentSection === 'reports') {
@@ -3354,12 +4181,184 @@
           loadRespondersList();
         } else if (state.currentSection === 'alerts') {
           loadBroadcastsList();
+        } else if (state.currentSection === 'messages') {
+          loadAdminConversationsList({ silent: true });
+          if (state.messages.activeConversationId) {
+            selectAdminConversation(state.messages.activeConversationId, { silent: true });
+          }
+        }
+
+        const reportModal = document.getElementById('admin-report-modal');
+        if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
+          openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
+        }
+
+        const assignModal = document.getElementById('admin-assign-responder-modal');
+        if (assignModal && !assignModal.classList.contains('hidden')) {
+          openAssignResponderModal();
         }
       });
     } catch (err) {
       console.error('[Admin] Session authorization verification failed:', err);
       if (loadingEl) loadingEl.classList.add('hidden');
       if (unauthEl) unauthEl.classList.remove('hidden');
+    }
+  }
+
+  async function loadAdminConversationsList({ silent = false } = {}) {
+    const listEl = document.getElementById('admin-conv-list');
+    const loadingEl = document.getElementById('admin-conv-loading');
+    const emptyEl = document.getElementById('admin-conv-empty');
+    const countBadge = document.getElementById('admin-conv-count-badge');
+    if (!listEl || !window.geoSafeStore) return;
+
+    if (!silent && loadingEl) loadingEl.classList.remove('hidden');
+    if (!silent && emptyEl) emptyEl.classList.add('hidden');
+
+    try {
+      const data = await window.geoSafeStore.request('/messages/conversations', { method: 'GET' });
+      const conversations = Array.isArray(data && data.conversations) ? data.conversations : [];
+      state.messages.items = conversations;
+
+      if (loadingEl) loadingEl.classList.add('hidden');
+      if (countBadge) {
+        countBadge.textContent = `${conversations.length} record${conversations.length === 1 ? '' : 's'}`;
+      }
+      if (emptyEl) {
+        emptyEl.classList.toggle('hidden', conversations.length > 0);
+      }
+
+      if (!conversations.length) {
+        listEl.innerHTML = '';
+        return;
+      }
+
+      listEl.innerHTML = conversations
+        .map((c) => {
+          const isSelected = Number(c.id) === Number(state.messages.activeConversationId);
+          const preview = c.lastMessagePreview
+            ? escapeHtml(c.lastMessagePreview)
+            : 'No messages exchanged yet';
+          const timeStr = c.lastMessageAt ? formatManilaDateTime(c.lastMessageAt) : formatManilaDateTime(c.createdAt);
+          const statusCls =
+            c.conversationStatus === 'Active'
+              ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+              : c.conversationStatus === 'Completed'
+              ? 'bg-slate-100 text-slate-700 border-slate-200'
+              : 'bg-rose-50 text-rose-700 border-rose-200';
+
+          return `
+            <button type="button" onclick="window.GeoSafeAdmin.selectAdminConversation(${c.id})"
+              class="w-full p-3.5 text-left transition-colors flex items-start justify-between gap-2.5 ${
+                isSelected ? 'bg-[#FFF9E8] border-l-4 border-l-[#F5B900]' : 'hover:bg-[#FFFDF7]'
+              }">
+              <div class="min-w-0 flex-1 space-y-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtml(
+                    c.rescueReference
+                  )}</span>
+                  <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(
+                    c.emergencyType
+                  )}</span>
+                </div>
+                <p class="text-[11px] text-[#202020]">
+                  Resident: <strong>${escapeHtml(c.resident.name)}</strong> • Responder: <strong>${escapeHtml(
+                    c.responder.name
+                  )}</strong>
+                </p>
+                <p class="text-[11px] text-[#555555] truncate">${preview}</p>
+                <span class="block text-[10px] text-[#777777]">${escapeHtml(timeStr)} • ${
+                  c.totalMessages
+                } msg${c.totalMessages === 1 ? '' : 's'}</span>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusCls} flex-shrink-0">${escapeHtml(
+                c.conversationStatus
+              )}</span>
+            </button>
+          `;
+        })
+        .join('');
+    } catch (err) {
+      if (loadingEl) loadingEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      console.error('[Admin] loadAdminConversationsList failed:', err.message);
+    }
+  }
+
+  async function selectAdminConversation(conversationId, { silent = false } = {}) {
+    const convId = Number(conversationId);
+    if (!Number.isInteger(convId) || convId <= 0 || !window.geoSafeStore) return;
+
+    state.messages.activeConversationId = convId;
+    loadAdminConversationsList({ silent: true });
+
+    const placeholder = document.getElementById('admin-conv-detail-placeholder');
+    const activeWrap = document.getElementById('admin-conv-detail-active');
+    const bodyEl = document.getElementById('admin-conv-messages-body');
+    if (!placeholder || !activeWrap || !bodyEl) return;
+
+    try {
+      const data = await window.geoSafeStore.request(
+        `/messages/conversations/${convId}/messages`,
+        { method: 'GET' }
+      );
+      const conv = data.conversation;
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+
+      placeholder.classList.add('hidden');
+      activeWrap.classList.remove('hidden');
+
+      document.getElementById('admin-conv-hdr-ref').textContent = conv.rescueReference;
+      document.getElementById('admin-conv-hdr-type').textContent = conv.emergencyType;
+      document.getElementById('admin-conv-hdr-participants').textContent = `Resident: ${conv.resident.name} (${conv.resident.userCode}) • Responder: ${conv.responder.name} (${conv.responder.userCode})`;
+
+      const statusEl = document.getElementById('admin-conv-hdr-status');
+      if (statusEl) {
+        const sCls =
+          conv.conversationStatus === 'Active'
+            ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+            : conv.conversationStatus === 'Completed'
+            ? 'bg-slate-100 text-slate-700 border-slate-200'
+            : 'bg-rose-50 text-rose-700 border-rose-200';
+        statusEl.innerHTML = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${sCls}">${escapeHtml(
+          conv.conversationStatus
+        )}</span>`;
+      }
+
+      if (!messages.length) {
+        bodyEl.innerHTML =
+          '<div class="py-10 text-center text-xs text-[#777777]">No messages recorded in this conversation.</div>';
+        return;
+      }
+
+      bodyEl.innerHTML = messages
+        .map((m) => {
+          const isResponder = m.senderRole === 'Responder';
+          return `
+            <div class="p-3 rounded-xl border ${
+              isResponder
+                ? 'bg-[#FFF9E8]/70 border-[#FFE872]'
+                : 'bg-white border-[#EEEEEE]'
+            } text-xs space-y-1">
+              <div class="flex items-center justify-between gap-2 text-[10px] text-[#777777]">
+                <span class="font-bold text-[#202020]">${escapeHtml(m.senderName)} <span class="text-[#8A6800]">(${escapeHtml(
+                  m.senderRole
+                )})</span></span>
+                <span>${escapeHtml(formatManilaDateTime(m.createdAt))}${
+                  m.isRead ? ' • Read' : ' • Sent'
+                }</span>
+              </div>
+              <p class="text-[#202020] whitespace-pre-line leading-relaxed">${escapeHtml(m.body)}</p>
+            </div>
+          `;
+        })
+        .join('');
+
+      if (!silent) {
+        bodyEl.scrollTop = bodyEl.scrollHeight;
+      }
+    } catch (err) {
+      showBannerMessage(err.message || 'Unable to load conversation transcript.', 'error');
     }
   }
 
@@ -3418,6 +4417,12 @@
     handleBroadcastSubmit,
     closeBroadcastConfirmModal,
     executeBroadcastTransmission,
+    handleExpirationDurationChange,
+    updateBroadcastExpirationPreview,
+    setBroadcastManagementTab,
+    openBroadcastDetailModal,
+    closeBroadcastDetailModal,
+    cancelBroadcast,
     loadBroadcastsList,
     loadBroadcastCategories,
     promptNewBroadcastCategory,
@@ -3425,7 +4430,9 @@
     downloadAnalyticsCsv,
     loadSystemSettings,
     saveSetting,
-    loadAuditLogs
+    loadAuditLogs,
+    loadAdminConversationsList,
+    selectAdminConversation
   };
 
   document.addEventListener('DOMContentLoaded', initAdminPortal);

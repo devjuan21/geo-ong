@@ -592,48 +592,39 @@
     },
 
     /**
-     * Calculate Pedestrian Route via Project-OSRM Foot Endpoint with Offline Waypoint Fallback
+     * Calculate Pedestrian / Road Route via Project-OSRM Foot Endpoint.
+     * Never returns a fabricated or straight-line fallback route on failure.
      * @param {{lat: number, lng: number}} start - Starting location
      * @param {{lat: number, lng: number}} destination - Destination location
-     * @returns {Promise<{coordinates: Array<[number, number]>, distanceMeters: number, durationSeconds: number, isOfflineFallback?: boolean}>}
+     * @returns {Promise<{coordinates: Array<[number, number]>, distanceMeters: number, durationSeconds: number, steps: Array, alternativesCount: number}>}
      */
     async calculatePedestrianRoute(start, destination) {
-      if (!start || !destination || !start.lat || !destination.lat) {
-        throw new Error('Both starting point and destination are required.');
+      const validCoord = (pt) =>
+        pt &&
+        typeof pt.lat === 'number' &&
+        typeof pt.lng === 'number' &&
+        Number.isFinite(pt.lat) &&
+        Number.isFinite(pt.lng) &&
+        Math.abs(pt.lat) <= 90 &&
+        Math.abs(pt.lng) <= 180 &&
+        !(pt.lat === 0 && pt.lng === 0);
+
+      if (!validCoord(start) || !validCoord(destination)) {
+        throw new Error('Valid origin and destination coordinates are required for road routing.');
       }
 
-      const cacheKey = `${start.lat.toFixed(5)},${start.lng.toFixed(5)}->${destination.lat.toFixed(5)},${destination.lng.toFixed(5)}`;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Device is offline. Routing service is currently unavailable.');
+      }
+
+      const cacheKey = `foot:${start.lat.toFixed(5)},${start.lng.toFixed(5)}->${destination.lat.toFixed(5)},${destination.lng.toFixed(5)}`;
       if (routeCache.has(cacheKey)) {
         return routeCache.get(cacheKey);
       }
 
-      const buildOfflineRouteFallback = () => {
-        const directMeters = computeHaversineMeters(start, destination);
-        const estimatedRoadMeters = Math.max(25, Math.round(directMeters * 1.22));
-        const estimatedDurationSeconds = Math.max(30, Math.round(estimatedRoadMeters / 1.25));
-        const midLat = (start.lat + destination.lat) / 2;
-        const midLng = (start.lng + destination.lng) / 2;
-        return {
-          coordinates: [
-            [start.lat, start.lng],
-            [midLat, destination.lng * 0.35 + start.lng * 0.65],
-            [destination.lat, destination.lng]
-          ],
-          distanceMeters: estimatedRoadMeters,
-          durationSeconds: estimatedDurationSeconds,
-          isOfflineFallback: true
-        };
-      };
-
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        const fallbackRoute = buildOfflineRouteFallback();
-        routeCache.set(cacheKey, fallbackRoute);
-        return fallbackRoute;
-      }
-
       // OSRM expects coordinates in order: {lng},{lat};{lng},{lat}
       const coordsString = `${start.lng},${start.lat};${destination.lng},${destination.lat}`;
-      const url = `${GeoSafeMapConfig.routing.baseUrl}/${coordsString}?overview=full&geometries=geojson&steps=true`;
+      const url = `${GeoSafeMapConfig.routing.baseUrl}/${coordsString}?overview=full&geometries=geojson&steps=true&alternatives=true`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), GeoSafeMapConfig.routing.timeoutMs);
@@ -646,16 +637,22 @@
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`Routing service returned error HTTP ${response.status}.`);
+          throw new Error(`Routing service returned HTTP ${response.status}.`);
         }
 
         const data = await response.json();
 
-        if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
-          throw new Error(data.message || 'No viable pedestrian route found between the selected locations.');
+        if (data.code !== 'Ok' || !Array.isArray(data.routes) || data.routes.length === 0) {
+          throw new Error(data.message || 'No navigable road route found between your location and the evacuation center.');
         }
 
-        const primaryRoute = data.routes[0];
+        // Prefer the shortest practical road route among returned alternatives
+        const sortedRoutes = [...data.routes].sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity));
+        const primaryRoute = sortedRoutes[0];
+        if (!primaryRoute.geometry || !Array.isArray(primaryRoute.geometry.coordinates) || primaryRoute.geometry.coordinates.length < 2) {
+          throw new Error('Routing service returned an incomplete road geometry.');
+        }
+
         // Convert GeoJSON [lng, lat] coordinates to Leaflet [lat, lng] format
         const leafletCoordinates = primaryRoute.geometry.coordinates.map((pt) => [pt[1], pt[0]]);
         const rawSteps = (primaryRoute.legs && primaryRoute.legs[0] && Array.isArray(primaryRoute.legs[0].steps))
@@ -670,6 +667,7 @@
             type: maneuver.type || '',
             modifier: maneuver.modifier || '',
             name: s.name || '',
+            instruction: this.formatManeuverInstruction(maneuver.type, maneuver.modifier, s.name),
             distanceMeters: Math.round(s.distance || 0),
             durationSeconds: Math.round(s.duration || 0),
             location: loc
@@ -681,6 +679,7 @@
           distanceMeters: Math.round(primaryRoute.distance || 0),
           durationSeconds: Math.round(primaryRoute.duration || 0),
           steps,
+          alternativesCount: data.routes.length,
           isOfflineFallback: false
         };
 
@@ -688,10 +687,10 @@
         return result;
       } catch (err) {
         clearTimeout(timeoutId);
-        console.warn('[GeoSafeMapping] OSRM Route calculation unavailable, using offline waypoint calculation:', err.message);
-        const fallbackRoute = buildOfflineRouteFallback();
-        routeCache.set(cacheKey, fallbackRoute);
-        return fallbackRoute;
+        if (err.name === 'AbortError') {
+          throw new Error('Routing request timed out. Please retry.');
+        }
+        throw err;
       }
     },
 
@@ -818,7 +817,7 @@
         case 'depart':
           return `Head ${mod || 'forward'}${road}`;
         case 'arrive':
-          return 'Arrive at assigned destination';
+          return `Proceed to destination${road}`;
         case 'turn':
           return `Turn ${mod || ''}${road}`.trim();
         case 'new name':
@@ -945,6 +944,1021 @@
         iconSize: [sizePx, sizePx],
         iconAnchor: [anchorPx, anchorPx],
         popupAnchor: [0, -anchorPx - 2]
+      });
+    },
+
+    NAV_STATES: Object.freeze({
+      IDLE: 'Idle',
+      REQUESTING_LOCATION: 'Requesting Location',
+      NAVIGATING: 'Navigating',
+      RECALCULATING_ROUTE: 'Recalculating Route',
+      ARRIVED: 'Arrived',
+      GPS_UNAVAILABLE: 'GPS Unavailable',
+      NAVIGATION_STOPPED: 'Navigation Stopped'
+    }),
+
+    /**
+     * Reusable Live GPS & Route Navigation Engine (shared architecture between Responder & Resident Navigation)
+     * - Distinct states: Idle, Requesting Location, Navigating, Recalculating Route, Arrived, GPS Unavailable, Navigation Stopped
+     * - Synchronizes live GPS every 10 seconds while active (non-overlapping)
+     * - Uses navigator.geolocation.watchPosition() to detect movement between 10s intervals
+     * - Ignores outdated GPS fixes and outdated route responses via sessionId, sequence & timestamp guards
+     * - Confirm arrival only after consecutive valid GPS readings within proximity & accuracy thresholds
+     * - Automatically stops all GPS timers/watches, clears route data, and locks Arrived state against delayed responses
+     */
+    createLiveNavigator(options = {}) {
+      const NAV_STATES = GeoSafeMapping.NAV_STATES;
+      const cfg = {
+        syncIntervalMs: Number(options.syncIntervalMs) || 10000,
+        staleTimeoutMs: Number(options.staleTimeoutMs) || 25000,
+        maxAccuracyMeters: Number(options.maxAccuracyMeters) || 1000,
+        routeAccuracyMaxMeters: Number(options.routeAccuracyMaxMeters) || 150,
+        cycleMoveThresholdMeters: Number(options.cycleMoveThresholdMeters) || 5,
+        watchMoveThresholdMeters: Number(options.watchMoveThresholdMeters) || 35,
+        offRouteThresholdMeters: Number(options.offRouteThresholdMeters) || 45,
+        routeCooldownMs: Number(options.routeCooldownMs) || 9000,
+        arrivalRadiusMeters: Number(options.arrivalRadiusMeters) || 15,
+        arrivalMaxAccuracyMeters: Number(options.arrivalMaxAccuracyMeters) || 150,
+        consecutiveArrivalReadingsRequired: Math.max(1, Number(options.consecutiveArrivalReadingsRequired) || 2),
+        arrivalRecheckIntervalMs: Number(options.arrivalRecheckIntervalMs) || 800,
+        routeFn:
+          typeof options.routeFn === 'function'
+            ? options.routeFn
+            : (start, dest) => GeoSafeMapping.calculatePedestrianRoute(start, dest),
+        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => {},
+        onGpsUpdate: typeof options.onGpsUpdate === 'function' ? options.onGpsUpdate : () => {},
+        onRouteCalculated: typeof options.onRouteCalculated === 'function' ? options.onRouteCalculated : () => {},
+        onRouteProgress: typeof options.onRouteProgress === 'function' ? options.onRouteProgress : () => {},
+        onArrival: typeof options.onArrival === 'function' ? options.onArrival : () => {},
+        onError: typeof options.onError === 'function' ? options.onError : () => {},
+        onClearError: typeof options.onClearError === 'function' ? options.onClearError : () => {},
+        onStop: typeof options.onStop === 'function' ? options.onStop : () => {}
+      };
+
+      const state = {
+        sessionId: 0,
+        navState: NAV_STATES.IDLE,
+        active: false,
+        arrived: false,
+        arrivalNotified: false,
+        consecutiveArrivalCount: 0,
+        firstInsideAt: null,
+        arrivalRecheckTimer: null,
+        pausedByUser: false,
+        watchId: null,
+        syncIntervalId: null,
+        staleGpsTimer: null,
+        gpsRequestInFlight: false,
+        gpsSeq: 0,
+        latestAppliedGpsSeq: 0,
+        lastPositionTimestamp: 0,
+        isRouting: false,
+        routeRequestSeq: 0,
+        hasFittedInitialBounds: false,
+        hasConfirmedFirstRoute: false,
+        currentGps: null,
+        destCoords: null,
+        destId: null,
+        lastRouteOrigin: null,
+        lastRouteAttemptAt: 0,
+        lastGpsAt: 0,
+        routeCoords: [],
+        routeData: null,
+        listenersAttached: false
+      };
+
+      function setNavState(nextState, meta = {}) {
+        // Once Arrived in the current session, no delayed callback can overwrite Arrived
+        if (state.arrived && nextState !== NAV_STATES.ARRIVED) {
+          return;
+        }
+        state.navState = nextState;
+        cfg.onStatusChange(nextState, { ...meta, navState: nextState, state });
+      }
+
+      function clearStaleGpsWatchdog() {
+        if (state.staleGpsTimer !== null) {
+          clearTimeout(state.staleGpsTimer);
+          state.staleGpsTimer = null;
+        }
+      }
+
+      function clearArrivalRecheckTimer() {
+        if (state.arrivalRecheckTimer !== null) {
+          clearTimeout(state.arrivalRecheckTimer);
+          state.arrivalRecheckTimer = null;
+        }
+      }
+
+      function resetArrivalTracking() {
+        clearArrivalRecheckTimer();
+        state.consecutiveArrivalCount = 0;
+        state.firstInsideAt = null;
+      }
+
+      function resetStaleGpsWatchdog() {
+        clearStaleGpsWatchdog();
+        if (!state.active || state.arrived) return;
+
+        const sessionAtSchedule = state.sessionId;
+        state.staleGpsTimer = setTimeout(() => {
+          if (!state.active || state.arrived || state.sessionId !== sessionAtSchedule) return;
+          resetArrivalTracking();
+          const lastTime = state.lastGpsAt
+            ? new Date(state.lastGpsAt).toLocaleTimeString('en-PH', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              })
+            : 'never';
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'STALE_GPS', lastGpsAt: state.lastGpsAt });
+          cfg.onError(
+            state.lastGpsAt
+              ? `GPS signal lost — last update at ${lastTime}. Waiting for live coordinates...`
+              : 'Waiting for initial GPS signal from device...',
+            'STALE_GPS',
+            true
+          );
+        }, cfg.staleTimeoutMs);
+      }
+
+      function scheduleArrivalRecheck() {
+        clearArrivalRecheckTimer();
+        if (!state.active || state.arrived || state.arrivalNotified) return;
+        if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+
+        const sessionAtSchedule = state.sessionId;
+        state.arrivalRecheckTimer = setTimeout(() => {
+          state.arrivalRecheckTimer = null;
+          if (!state.active || state.arrived || state.arrivalNotified || state.sessionId !== sessionAtSchedule) return;
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (!state.active || state.arrived || state.sessionId !== sessionAtSchedule) return;
+              const seq = ++state.gpsSeq;
+              state.latestAppliedGpsSeq = seq;
+              handleGpsSuccess(pos, false, seq, sessionAtSchedule);
+            },
+            (err) => {
+              if (!state.active || state.arrived || state.sessionId !== sessionAtSchedule) return;
+              handleGpsError(err, sessionAtSchedule);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 0
+            }
+          );
+        }, cfg.arrivalRecheckIntervalMs);
+      }
+
+      function confirmArrival(gps, distMeters, sessionId) {
+        if (state.arrived || state.arrivalNotified || sessionId !== state.sessionId) return;
+
+        // Lock arrival state first so no in-flight or synchronous callback can overwrite it
+        state.arrived = true;
+        state.arrivalNotified = true;
+        state.active = false;
+        state.pausedByUser = false;
+        state.isRouting = false;
+        state.gpsRequestInFlight = false;
+
+        // Invalidate all in-flight GPS and route sequence numbers
+        state.routeRequestSeq += 1;
+        state.gpsSeq += 1;
+        state.latestAppliedGpsSeq = state.gpsSeq;
+
+        // Stop 10s sync interval, watchPosition, timers, and lifecycle listeners immediately
+        clearStaleGpsWatchdog();
+        clearArrivalRecheckTimer();
+        if (state.syncIntervalId !== null) {
+          clearInterval(state.syncIntervalId);
+          state.syncIntervalId = null;
+        }
+        if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+          try {
+            navigator.geolocation.clearWatch(state.watchId);
+          } catch (_) {}
+        }
+        state.watchId = null;
+        detachLifecycleListeners();
+
+        // Clear active route geometry and guidance state
+        state.routeCoords = [];
+        state.routeData = null;
+
+        cfg.onClearError();
+        setNavState(NAV_STATES.ARRIVED, {
+          isArrived: true,
+          isSuccess: true,
+          gps,
+          distMeters
+        });
+        cfg.onArrival(gps, distMeters, state);
+      }
+
+      async function calculateAndDisplayRoute(originGps, forceRecalc = false) {
+        const sessionAtStart = state.sessionId;
+        if (!state.active || state.arrived || !state.destCoords || !originGps) return;
+        if (state.isRouting && !forceRecalc) return;
+
+        const hadValidRoute = Array.isArray(state.routeCoords) && state.routeCoords.length >= 2;
+        const reqSeq = ++state.routeRequestSeq;
+        state.isRouting = true;
+        state.lastRouteAttemptAt = Date.now();
+        state.lastRouteOrigin = { lat: originGps.lat, lng: originGps.lng };
+        setNavState(NAV_STATES.RECALCULATING_ROUTE, {
+          isRouting: true,
+          hadValidRoute
+        });
+
+        try {
+          const route = await cfg.routeFn(originGps, state.destCoords);
+          // Discard delayed route response if stopped, arrived, confirming arrival inside radius, session changed, or superseded
+          if (
+            !state.active ||
+            state.arrived ||
+            state.consecutiveArrivalCount > 0 ||
+            state.navState === NAV_STATES.ARRIVED ||
+            sessionAtStart !== state.sessionId ||
+            reqSeq !== state.routeRequestSeq
+          ) {
+            return;
+          }
+
+          state.routeData = route;
+          state.routeCoords = Array.isArray(route.coordinates) ? route.coordinates : [];
+          const isInitialRoute = !state.hasConfirmedFirstRoute;
+          state.hasConfirmedFirstRoute = true;
+          state.hasFittedInitialBounds = true;
+
+          cfg.onClearError();
+          cfg.onRouteCalculated(route, state.currentGps || originGps, isInitialRoute, state);
+          setNavState(NAV_STATES.NAVIGATING);
+        } catch (err) {
+          if (
+            !state.active ||
+            state.arrived ||
+            state.navState === NAV_STATES.ARRIVED ||
+            sessionAtStart !== state.sessionId ||
+            reqSeq !== state.routeRequestSeq
+          ) {
+            return;
+          }
+          if (hadValidRoute) {
+            setNavState(NAV_STATES.NAVIGATING, { isWarning: true, routeDelayed: true });
+            cfg.onError(
+              'Temporary routing or network interruption — retaining last valid road route.',
+              'ROUTE_DELAYED',
+              true
+            );
+          } else {
+            setNavState(NAV_STATES.RECALCULATING_ROUTE, { isError: true, routeUnavailable: true });
+            cfg.onError(
+              (err && err.message) || 'Unable to calculate a road route right now.',
+              'ROUTE_UNAVAILABLE',
+              true
+            );
+          }
+        } finally {
+          if (reqSeq === state.routeRequestSeq && sessionAtStart === state.sessionId) {
+            state.isRouting = false;
+            if (state.active && !state.arrived && state.currentGps && state.lastRouteOrigin) {
+              const movedDuringRoute = computeHaversineMeters(state.currentGps, state.lastRouteOrigin);
+              if (movedDuringRoute > cfg.watchMoveThresholdMeters) {
+                calculateAndDisplayRoute(state.currentGps);
+              }
+            }
+          }
+        }
+      }
+
+      function handleGpsSuccess(position, isCycleSync = false, seq = 0, sessionId = state.sessionId) {
+        if (
+          !state.active ||
+          state.arrived ||
+          state.navState === NAV_STATES.ARRIVED ||
+          sessionId !== state.sessionId ||
+          !position ||
+          !position.coords
+        ) {
+          return;
+        }
+
+        // Ignore outdated GPS callbacks when a newer sequence or timestamp (> 5s older) was already processed
+        if (seq > 0 && seq < state.latestAppliedGpsSeq) return;
+        const posTimestamp = Number(position.timestamp) || Date.now();
+        if (state.lastPositionTimestamp > 0 && posTimestamp < state.lastPositionTimestamp - 5000) {
+          return;
+        }
+
+        const lat = Number(position.coords.latitude);
+        const lng = Number(position.coords.longitude);
+        const accuracy = Number(position.coords.accuracy);
+        const heading = Number(position.coords.heading);
+        const speed = Number(position.coords.speed);
+
+        if (
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng) ||
+          Math.abs(lat) > 90 ||
+          Math.abs(lng) > 180 ||
+          (lat === 0 && lng === 0)
+        ) {
+          resetArrivalTracking();
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'INVALID_GPS' });
+          cfg.onError('Received invalid GPS coordinates from device.', 'INVALID_GPS', true);
+          return;
+        }
+
+        const now = Date.now();
+        state.lastPositionTimestamp = Math.max(state.lastPositionTimestamp, posTimestamp);
+        state.lastGpsAt = now;
+        resetStaleGpsWatchdog();
+
+        // Reject severely inaccurate fixes (> 1000m) to avoid misleading routing or false arrival
+        if (Number.isFinite(accuracy) && accuracy > cfg.maxAccuracyMeters) {
+          resetArrivalTracking();
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'INACCURATE_GPS', accuracy, updatedAt: now });
+          cfg.onError(
+            `GPS accuracy is currently insufficient (±${Math.round(accuracy)}m). Move to an open area and retry.`,
+            'INACCURATE_GPS',
+            true
+          );
+          return;
+        }
+
+        const gps = {
+          lat,
+          lng,
+          accuracy: Number.isFinite(accuracy) ? accuracy : null,
+          heading: Number.isFinite(heading) ? heading : null,
+          speed: Number.isFinite(speed) ? speed : null,
+          timestamp: now
+        };
+        state.currentGps = gps;
+        cfg.onGpsUpdate(gps, isCycleSync, state);
+
+        // Reliable Arrival Detection:
+        // 1. Validate against active session's destination coordinates
+        // 2. Require valid GPS accuracy (0 < accuracy <= arrivalMaxAccuracyMeters)
+        // 3. Require consecutive valid GPS readings within arrivalRadiusMeters
+        if (state.destCoords) {
+          const distToDest = computeHaversineMeters(gps, state.destCoords);
+          const accuracyValidForArrival =
+            !Number.isFinite(accuracy) || (accuracy > 0 && accuracy <= cfg.arrivalMaxAccuracyMeters);
+
+          if (Number.isFinite(distToDest) && distToDest <= cfg.arrivalRadiusMeters) {
+            if (accuracyValidForArrival) {
+              state.consecutiveArrivalCount += 1;
+              if (!state.firstInsideAt) {
+                state.firstInsideAt = now;
+              }
+              if (state.consecutiveArrivalCount >= cfg.consecutiveArrivalReadingsRequired) {
+                confirmArrival(gps, distToDest, sessionId);
+                return;
+              }
+              // Schedule a fresh high-accuracy GPS recheck to confirm consecutive arrival reading
+              // and do NOT calculate or draw a tiny route while already inside the arrival radius
+              scheduleArrivalRecheck();
+              return;
+            } else {
+              // Inside radius but GPS accuracy is too coarse (> 150m): do not confirm arrival yet
+              clearArrivalRecheckTimer();
+            }
+          } else {
+            // Outside arrival proximity threshold: reset consecutive arrival readings
+            resetArrivalTracking();
+          }
+        }
+
+        if (!state.active || state.arrived) return;
+
+        const hasRoute = Array.isArray(state.routeCoords) && state.routeCoords.length >= 2;
+        const offRouteMeters = hasRoute
+          ? GeoSafeMapping.pointToRouteDistanceMeters(gps, state.routeCoords)
+          : Infinity;
+        const movedFromLastOrigin = state.lastRouteOrigin
+          ? computeHaversineMeters(gps, state.lastRouteOrigin)
+          : Infinity;
+
+        const accuracyOkForRoute = !Number.isFinite(accuracy) || accuracy <= cfg.routeAccuracyMaxMeters;
+        const cooldownElapsed = now - state.lastRouteAttemptAt >= cfg.routeCooldownMs;
+
+        if (!hasRoute && (state.lastRouteAttemptAt === 0 || cooldownElapsed)) {
+          calculateAndDisplayRoute(gps);
+        } else if (
+          isCycleSync &&
+          hasRoute &&
+          accuracyOkForRoute &&
+          (movedFromLastOrigin >= cfg.cycleMoveThresholdMeters || offRouteMeters > cfg.offRouteThresholdMeters)
+        ) {
+          calculateAndDisplayRoute(gps);
+        } else if (
+          hasRoute &&
+          accuracyOkForRoute &&
+          (offRouteMeters > cfg.offRouteThresholdMeters || movedFromLastOrigin > cfg.watchMoveThresholdMeters) &&
+          cooldownElapsed
+        ) {
+          calculateAndDisplayRoute(gps);
+        } else if (hasRoute) {
+          cfg.onClearError();
+          setNavState(NAV_STATES.NAVIGATING);
+          cfg.onRouteProgress(state.routeData, gps, state);
+        }
+      }
+
+      function handleGpsError(err, sessionId = state.sessionId) {
+        if (!state.active || state.arrived || state.navState === NAV_STATES.ARRIVED || sessionId !== state.sessionId) {
+          return;
+        }
+        resetArrivalTracking();
+        let msg = 'Unable to retrieve your current GPS location.';
+        let code = 'GPS_ERROR';
+        const isInsecure =
+          typeof window !== 'undefined' &&
+          window.isSecureContext === false &&
+          window.location &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1';
+
+        if (isInsecure || (err && err.code === 'INSECURE_CONTEXT_LAN')) {
+          msg = 'Browser blocked GPS because this page is not running in a secure HTTPS context (or localhost).';
+          code = 'HTTPS_REQUIRED';
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: code });
+          cfg.onError(msg, code, false);
+          return;
+        }
+
+        if (err) {
+          if (err.code === 1) {
+            msg = 'GPS location permission was denied. Please enable location access in your browser settings and retry.';
+            code = 'PERMISSION_DENIED';
+            setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: code });
+            cfg.onError(msg, code, true);
+            return;
+          } else if (err.code === 2) {
+            msg = 'GPS position is currently unavailable. Check device location services and retry.';
+            code = 'POSITION_UNAVAILABLE';
+          } else if (err.code === 3) {
+            msg = 'GPS location request timed out. Please retry.';
+            code = 'TIMEOUT';
+          } else if (err.message) {
+            msg = err.message;
+          }
+        }
+        setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: code });
+        cfg.onError(msg, code, true);
+      }
+
+      function runTenSecondNavigationSync() {
+        if (!state.active || state.arrived || state.navState === NAV_STATES.ARRIVED || !state.destCoords) return;
+        if (typeof document !== 'undefined' && document.hidden) return;
+        if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+        if (state.gpsRequestInFlight) return;
+
+        const sessionAtSync = state.sessionId;
+        state.gpsRequestInFlight = true;
+        if (!state.hasConfirmedFirstRoute) {
+          setNavState(NAV_STATES.REQUESTING_LOCATION, { isSyncing: true });
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            state.gpsRequestInFlight = false;
+            if (!state.active || state.arrived || state.sessionId !== sessionAtSync) return;
+            const seq = ++state.gpsSeq;
+            state.latestAppliedGpsSeq = seq;
+            handleGpsSuccess(position, true, seq, sessionAtSync);
+          },
+          (err) => {
+            state.gpsRequestInFlight = false;
+            if (!state.active || state.arrived || state.sessionId !== sessionAtSync) return;
+            handleGpsError(err, sessionAtSync);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 9000,
+            maximumAge: 0
+          }
+        );
+      }
+
+      function onVisibilityChange() {
+        if (!state.active || state.arrived) return;
+        if (typeof document !== 'undefined' && !document.hidden) {
+          runTenSecondNavigationSync();
+        }
+      }
+
+      function onOnline() {
+        if (!state.active || state.arrived) return;
+        runTenSecondNavigationSync();
+        if (state.currentGps && state.destCoords && (!state.routeCoords || state.routeCoords.length < 2)) {
+          calculateAndDisplayRoute(state.currentGps, true);
+        }
+      }
+
+      function attachLifecycleListeners() {
+        if (state.listenersAttached) return;
+        if (typeof document !== 'undefined') {
+          document.addEventListener('visibilitychange', onVisibilityChange);
+        }
+        if (typeof window !== 'undefined') {
+          window.addEventListener('online', onOnline);
+        }
+        state.listenersAttached = true;
+      }
+
+      function detachLifecycleListeners() {
+        if (!state.listenersAttached) return;
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+        }
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('online', onOnline);
+        }
+        state.listenersAttached = false;
+      }
+
+      function stop({ clearRoute = true, userPaused = false, preserveArrived = false } = {}) {
+        clearStaleGpsWatchdog();
+        clearArrivalRecheckTimer();
+        if (state.syncIntervalId !== null) {
+          clearInterval(state.syncIntervalId);
+          state.syncIntervalId = null;
+        }
+        if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+          try {
+            navigator.geolocation.clearWatch(state.watchId);
+          } catch (_) {}
+        }
+        state.watchId = null;
+        state.active = false;
+        state.pausedByUser = Boolean(userPaused);
+        state.isRouting = false;
+        state.gpsRequestInFlight = false;
+        state.routeRequestSeq += 1;
+        state.gpsSeq += 1;
+        state.latestAppliedGpsSeq = state.gpsSeq;
+        state.hasFittedInitialBounds = false;
+        state.hasConfirmedFirstRoute = false;
+        state.lastRouteOrigin = null;
+        state.lastRouteAttemptAt = 0;
+        state.lastGpsAt = 0;
+        state.consecutiveArrivalCount = 0;
+        state.firstInsideAt = null;
+        detachLifecycleListeners();
+
+        if (!preserveArrived) {
+          state.arrived = false;
+          state.arrivalNotified = false;
+        }
+
+        if (clearRoute) {
+          state.routeCoords = [];
+          state.routeData = null;
+        }
+        if (!preserveArrived) {
+          if (userPaused) {
+            setNavState(NAV_STATES.NAVIGATION_STOPPED, { isPaused: true });
+          } else {
+            state.navState = NAV_STATES.IDLE;
+          }
+        }
+        cfg.onStop({ clearRoute, userPaused, preserveArrived, state });
+      }
+
+      function start(destCoords, destMeta = {}) {
+        const lat = Number(destCoords && destCoords.lat);
+        const lng = Number(destCoords && destCoords.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+          setNavState(NAV_STATES.NAVIGATION_STOPPED, { isError: true, reason: 'INVALID_DEST' });
+          cfg.onError('Destination coordinates are missing or invalid.', 'INVALID_DEST', false);
+          return false;
+        }
+
+        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'UNSUPPORTED' });
+          cfg.onError('Your browser does not support GPS geolocation.', 'UNSUPPORTED', false);
+          return false;
+        }
+
+        const isInsecureLan =
+          typeof window !== 'undefined' &&
+          window.isSecureContext === false &&
+          window.location &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1';
+        if (isInsecureLan || (typeof window !== 'undefined' && window.isSecureContext === false)) {
+          setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'HTTPS_REQUIRED' });
+          cfg.onError(
+            'Browser blocked geolocation because this page is not running in a secure HTTPS context (or localhost).',
+            'HTTPS_REQUIRED',
+            false
+          );
+          return false;
+        }
+
+        // Cleanly stop any previous session and initialize a brand-new session
+        stop({ clearRoute: true, userPaused: false, preserveArrived: false });
+        state.sessionId += 1;
+        const currentSessionId = state.sessionId;
+        state.destCoords = { lat, lng };
+        state.destId = destMeta && destMeta.id !== undefined ? destMeta.id : null;
+        state.active = true;
+        state.arrived = false;
+        state.arrivalNotified = false;
+        state.consecutiveArrivalCount = 0;
+        state.firstInsideAt = null;
+        state.pausedByUser = false;
+        state.hasFittedInitialBounds = false;
+        state.hasConfirmedFirstRoute = false;
+        state.lastRouteAttemptAt = 0;
+        state.lastGpsAt = 0;
+        state.lastPositionTimestamp = 0;
+        state.currentGps = null;
+
+        attachLifecycleListeners();
+        cfg.onClearError();
+        setNavState(NAV_STATES.REQUESTING_LOCATION, { isAcquiring: true });
+        resetStaleGpsWatchdog();
+
+        state.watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (!state.active || state.arrived || state.sessionId !== currentSessionId) return;
+            const seq = ++state.gpsSeq;
+            state.latestAppliedGpsSeq = seq;
+            handleGpsSuccess(pos, false, seq, currentSessionId);
+          },
+          (err) => handleGpsError(err, currentSessionId),
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+          }
+        );
+
+        // Immediate initial GPS & route sync + automatic 10-second live synchronization cycle
+        runTenSecondNavigationSync();
+        state.syncIntervalId = setInterval(runTenSecondNavigationSync, cfg.syncIntervalMs);
+        return true;
+      }
+
+      function setDestination(destCoords, { recalculate = true, destId = null } = {}) {
+        const lat = Number(destCoords && destCoords.lat);
+        const lng = Number(destCoords && destCoords.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return false;
+
+        // If switching destination after arrival or during active navigation, reset arrival state
+        resetArrivalTracking();
+        state.arrived = false;
+        state.arrivalNotified = false;
+        state.destCoords = { lat, lng };
+        state.destId = destId;
+        state.routeCoords = [];
+        state.routeData = null;
+        state.lastRouteOrigin = null;
+        state.lastRouteAttemptAt = 0;
+        state.hasFittedInitialBounds = false;
+        state.hasConfirmedFirstRoute = false;
+        state.routeRequestSeq += 1;
+        state.isRouting = false;
+
+        if (state.active && recalculate) {
+          if (state.currentGps) {
+            calculateAndDisplayRoute(state.currentGps, true);
+          } else {
+            runTenSecondNavigationSync();
+          }
+        }
+        return true;
+      }
+
+      function retry() {
+        if (!state.destCoords) return;
+        if (!state.active || state.arrived) {
+          start(state.destCoords, { id: state.destId });
+          return;
+        }
+        cfg.onClearError();
+        state.lastRouteAttemptAt = 0;
+        if (state.currentGps) {
+          calculateAndDisplayRoute(state.currentGps, true);
+        }
+        runTenSecondNavigationSync();
+      }
+
+      return {
+        start,
+        stop,
+        setDestination,
+        syncNow: runTenSecondNavigationSync,
+        retry,
+        recalculateRoute: () => {
+          if (state.active && !state.arrived && state.currentGps && state.destCoords) {
+            state.lastRouteAttemptAt = 0;
+            calculateAndDisplayRoute(state.currentGps, true);
+          }
+        },
+        getState: () => state
+      };
+    },
+
+    /**
+     * Render or smoothly update a live GPS marker + accuracy ring on any Leaflet map
+     * without rebuilding the map or destroying layers unnecessarily.
+     *
+     * @param {L.Map} map
+     * @param {{ marker: L.Marker|null, accuracyCircle: L.Circle|null }} markerState
+     * @param {{ lat: number, lng: number, accuracy?: number|null, updatedAt?: number, isStale?: boolean }} reading
+     * @param {{ title?: string, zIndexOffset?: number, openPopup?: boolean }} options
+     */
+    renderLiveGpsMarker(map, markerState, reading, options = {}) {
+      if (!map || !markerState || !reading || !Number.isFinite(Number(reading.lat)) || !Number.isFinite(Number(reading.lng))) {
+        return;
+      }
+      const lat = Number(reading.lat);
+      const lng = Number(reading.lng);
+      const accuracy = Number.isFinite(Number(reading.accuracy)) && Number(reading.accuracy) > 0 ? Number(reading.accuracy) : null;
+      const isStale = Boolean(reading.isStale);
+      const title = options.title || 'Your Current GPS Location';
+      const timeLabel = reading.updatedAt ? new Date(reading.updatedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
+      const statusBadge = isStale
+        ? '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;background:#FFF9E8;color:#8A6800;border:1px solid #FFE872;font-size:10px;font-weight:700;">Stale</span>'
+        : '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;background:#ECFDF5;color:#047857;border:1px solid #A7F3D0;font-size:10px;font-weight:700;">Live</span>';
+
+      const popupHtml = `
+        <div class="text-xs p-1 space-y-0.5">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <strong class="text-[#202020]">${title}</strong>
+            ${statusBadge}
+          </div>
+          <span class="block font-mono text-[11px] text-[#555555]">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
+          ${accuracy ? `<span class="block text-[10px] text-[#777777]">Accuracy: ±${Math.round(accuracy)}m</span>` : ''}
+          <span class="block text-[10px] text-[#777777]">Updated ${timeLabel}</span>
+        </div>
+      `;
+
+      const iconType = isStale ? 'user-stale' : 'user';
+      if (!markerState.marker) {
+        const icon = GeoSafeMapping.createCustomIcon(iconType === 'user-stale' ? 'user' : 'user');
+        markerState.marker = L.marker([lat, lng], {
+          icon,
+          zIndexOffset: options.zIndexOffset || 1000
+        }).addTo(map);
+        markerState.marker.bindPopup(popupHtml);
+        if (options.openPopup) markerState.marker.openPopup();
+      } else {
+        markerState.marker.setLatLng([lat, lng]);
+        markerState.marker.setPopupContent(popupHtml);
+      }
+
+      if (accuracy !== null) {
+        const ringColor = isStale ? '#D97706' : '#2563EB';
+        const ringFill = isStale ? '#F59E0B' : '#3B82F6';
+        if (!markerState.accuracyCircle) {
+          markerState.accuracyCircle = L.circle([lat, lng], {
+            radius: accuracy,
+            color: ringColor,
+            fillColor: ringFill,
+            fillOpacity: 0.1,
+            weight: 1.5,
+            interactive: false
+          }).addTo(map);
+        } else {
+          markerState.accuracyCircle.setLatLng([lat, lng]);
+          markerState.accuracyCircle.setRadius(accuracy);
+          markerState.accuracyCircle.setStyle({ color: ringColor, fillColor: ringFill });
+        }
+      } else if (markerState.accuracyCircle) {
+        try { map.removeLayer(markerState.accuracyCircle); } catch (_) {}
+        markerState.accuracyCircle = null;
+      }
+    },
+
+    /**
+     * Create a reusable, independent 10-second Live GPS Tracker for any GeoSafe map.
+     * Operates independently of route navigation: starts automatically on map load,
+     * uses watchPosition + 10s sync interval, guards against overlapping/stale updates,
+     * refreshes on visibility/focus, and cleans up on stop/logout/unload.
+     */
+    createLiveGpsTracker(options = {}) {
+      if (!window.__geosafeLiveGpsTrackers) {
+        window.__geosafeLiveGpsTrackers = new Set();
+      }
+
+      const cfg = {
+        syncIntervalMs: Number(options.syncIntervalMs) || 10000,
+        staleThresholdMs: Number(options.staleThresholdMs) || 35000,
+        highAccuracy: options.highAccuracy !== false,
+        maximumAgeMs: Number.isFinite(Number(options.maximumAgeMs)) ? Number(options.maximumAgeMs) : 5000,
+        timeoutMs: Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 12000,
+        onLocation: typeof options.onLocation === 'function' ? options.onLocation : () => {},
+        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => {},
+        onError: typeof options.onError === 'function' ? options.onError : () => {},
+      };
+
+      const state = {
+        active: false,
+        watchId: null,
+        syncIntervalId: null,
+        inFlight: false,
+        readingSeq: 0,
+        lastAcceptedSeq: 0,
+        lastReading: null,
+        status: 'idle', // 'idle' | 'acquiring' | 'active' | 'stale' | 'denied' | 'unavailable' | 'stopped'
+      };
+
+      function setStatus(nextStatus, message) {
+        state.status = nextStatus;
+        cfg.onStatusChange({ status: nextStatus, message: message || '', reading: state.lastReading });
+      }
+
+      function acceptPosition(pos, sourceSeq) {
+        if (!state.active || !pos || !pos.coords) return null;
+        if (sourceSeq !== undefined && sourceSeq < state.lastAcceptedSeq) return null;
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+          return null;
+        }
+        const rawTs = Number(pos.timestamp || Date.now());
+        if (state.lastReading && rawTs < state.lastReading.timestamp - 2000) {
+          return null; // Prevent older cached reading from overwriting newer coordinates
+        }
+        if (sourceSeq !== undefined) {
+          state.lastAcceptedSeq = sourceSeq;
+        }
+        const reading = {
+          lat,
+          lng,
+          accuracy: Number.isFinite(Number(pos.coords.accuracy)) ? Number(pos.coords.accuracy) : null,
+          heading: Number.isFinite(Number(pos.coords.heading)) ? Number(pos.coords.heading) : null,
+          speed: Number.isFinite(Number(pos.coords.speed)) ? Number(pos.coords.speed) : null,
+          timestamp: rawTs,
+          updatedAt: Date.now(),
+          isStale: false,
+        };
+        state.lastReading = reading;
+        setStatus('active', 'Live GPS active');
+        cfg.onLocation(reading);
+        return reading;
+      }
+
+      function handleGpsError(err) {
+        if (!state.active) return;
+        const code = err && err.code;
+        if (code === 1) {
+          setStatus('denied', 'Location access denied. Enable GPS permission in browser site settings.');
+        } else if (state.lastReading) {
+          state.lastReading = { ...state.lastReading, isStale: true };
+          setStatus('stale', 'GPS signal temporarily unavailable — showing last valid location (stale).');
+          cfg.onLocation(state.lastReading);
+        } else {
+          setStatus('unavailable', (err && err.message) || 'Unable to acquire current GPS location.');
+        }
+        cfg.onError(err);
+      }
+
+      function fetchCurrentOnce(forceFresh = false) {
+        if (!state.active || state.inFlight) return Promise.resolve(state.lastReading);
+        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+          handleGpsError(new Error('Browser geolocation is unavailable.'));
+          return Promise.resolve(null);
+        }
+
+        state.inFlight = true;
+        const seq = ++state.readingSeq;
+        if (!state.lastReading) {
+          setStatus('acquiring', 'Detecting GPS location...');
+        }
+
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              state.inFlight = false;
+              const r = acceptPosition(pos, seq);
+              resolve(r);
+            },
+            (err) => {
+              state.inFlight = false;
+              handleGpsError(err);
+              resolve(null);
+            },
+            {
+              enableHighAccuracy: cfg.highAccuracy,
+              maximumAge: forceFresh ? 0 : cfg.maximumAgeMs,
+              timeout: cfg.timeoutMs,
+            }
+          );
+        });
+      }
+
+      function handleVisibilityOrFocus() {
+        if (!state.active) return;
+        if (document.visibilityState === 'visible' || document.visibilityState === undefined) {
+          fetchCurrentOnce(true);
+        }
+      }
+
+      function handleLogoutOrUnload() {
+        stop();
+      }
+
+      function start() {
+        if (state.active) return; // Prevent duplicate watchers / loops
+        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+          state.active = true;
+          handleGpsError(new Error('Browser geolocation is not supported.'));
+          return;
+        }
+
+        state.active = true;
+        window.__geosafeLiveGpsTrackers.add(api);
+
+        // Request initial GPS position immediately
+        fetchCurrentOnce(true);
+
+        // Start watchPosition for movement between 10-second ticks
+        try {
+          state.watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              const seq = ++state.readingSeq;
+              acceptPosition(pos, seq);
+            },
+            (err) => {
+              // Avoid spamming errors on temporary watch timeouts if we already have a reading
+              if (err && err.code === 1) {
+                handleGpsError(err);
+              } else if (state.lastReading && Date.now() - state.lastReading.updatedAt > cfg.staleThresholdMs) {
+                handleGpsError(err);
+              }
+            },
+            {
+              enableHighAccuracy: cfg.highAccuracy,
+              maximumAge: cfg.maximumAgeMs,
+              timeout: cfg.timeoutMs,
+            }
+          );
+        } catch (err) {
+          handleGpsError(err);
+        }
+
+        // Controlled 10-second synchronization interval
+        state.syncIntervalId = setInterval(() => {
+          if (!state.active) return;
+          if (state.lastReading && Date.now() - state.lastReading.updatedAt > cfg.staleThresholdMs) {
+            state.lastReading = { ...state.lastReading, isStale: true };
+            setStatus('stale', 'GPS signal stale — retrying...');
+          }
+          fetchCurrentOnce(true);
+        }, cfg.syncIntervalMs);
+
+        document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.addEventListener('focus', handleVisibilityOrFocus);
+        window.addEventListener('pagehide', handleLogoutOrUnload);
+        window.addEventListener('beforeunload', handleLogoutOrUnload);
+        window.addEventListener('geosafe:logout', handleLogoutOrUnload);
+      }
+
+      function stop() {
+        if (!state.active && state.watchId === null && state.syncIntervalId === null) return;
+        state.active = false;
+        state.inFlight = false;
+        if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+          try { navigator.geolocation.clearWatch(state.watchId); } catch (_) {}
+          state.watchId = null;
+        }
+        if (state.syncIntervalId !== null) {
+          clearInterval(state.syncIntervalId);
+          state.syncIntervalId = null;
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        window.removeEventListener('pagehide', handleLogoutOrUnload);
+        window.removeEventListener('beforeunload', handleLogoutOrUnload);
+        window.removeEventListener('geosafe:logout', handleLogoutOrUnload);
+        if (window.__geosafeLiveGpsTrackers) {
+          window.__geosafeLiveGpsTrackers.delete(api);
+        }
+        setStatus('stopped', 'GPS tracking stopped');
+      }
+
+      const api = {
+        start,
+        stop,
+        refreshNow: (forceFresh = true) => fetchCurrentOnce(forceFresh),
+        getLastReading: () => state.lastReading,
+        getStatus: () => state.status,
+        isActive: () => state.active,
+      };
+      return api;
+    },
+
+    stopAllLiveGpsTrackers() {
+      if (!window.__geosafeLiveGpsTrackers) return;
+      Array.from(window.__geosafeLiveGpsTrackers).forEach((tracker) => {
+        try { tracker.stop(); } catch (_) {}
       });
     }
   };

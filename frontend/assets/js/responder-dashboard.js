@@ -136,18 +136,18 @@ function renderActiveAssignments(assignments) {
     let statusBadge = 'bg-slate-100 text-slate-700 border-slate-200';
     const s = (a.status || '').toLowerCase();
     if (s === 'en route' || s === 'responding') statusBadge = 'bg-blue-50 text-[#3478C7] border-blue-200 font-bold';
-    else if (s === 'on scene') statusBadge = 'bg-amber-50 text-[#E99524] border-amber-200 font-bold';
+    else if (s === 'on scene' || s === 'in progress') statusBadge = 'bg-amber-50 text-[#E99524] border-amber-200 font-bold';
     else if (s === 'accepted') statusBadge = 'bg-purple-50 text-purple-700 border-purple-200';
     else if (s === 'completed' || s === 'resolved') statusBadge = 'bg-emerald-50 text-[#278653] border-emerald-200';
 
     return `
-      <div class="bg-white rounded-3xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card transition-all hover:border-[#F5B900] hover:shadow-card-hover space-y-3">
+      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card transition-all hover:border-[#F5B900] hover:shadow-card-hover space-y-3">
         
         <!-- Header: Ref #, Type, Status -->
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2">
-            <span class="font-mono text-xs sm:text-sm font-black text-[#202020]">${a.referenceNumber || a.id}</span>
-            <span class="text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}">
+            <span class="font-mono text-xs sm:text-sm font-bold text-[#202020]">${a.referenceNumber || a.id}</span>
+            <span class="text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}">
               ${isRescue ? 'Rescue' : 'Incident'}
             </span>
           </div>
@@ -194,6 +194,40 @@ function renderActiveAssignments(assignments) {
   }).join('');
 }
 
+const miniGpsMarkerState = { marker: null, accuracyCircle: null };
+let miniGpsTracker = null;
+let lastMiniRespSyncAt = 0;
+
+function startMiniMapLiveGps() {
+  if (!miniPreviewMap || miniGpsTracker || !window.GeoSafeMapping || typeof window.GeoSafeMapping.createLiveGpsTracker !== 'function') {
+    return;
+  }
+  miniGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
+    syncIntervalMs: 10000,
+    onLocation: (reading) => {
+      window.GeoSafeMapping.renderLiveGpsMarker(miniPreviewMap, miniGpsMarkerState, reading, {
+        title: 'Responder Position',
+        zIndexOffset: 900
+      });
+      if (!reading.isStale && window.geoSafeStore && typeof window.geoSafeStore.syncResponderLocation === 'function') {
+        const now = Date.now();
+        if (now - lastMiniRespSyncAt >= 9000) {
+          lastMiniRespSyncAt = now;
+          let sharingEnabled = true;
+          try { sharingEnabled = localStorage.getItem('geosafe_responder_location_sharing') !== 'false'; } catch (_) {}
+          window.geoSafeStore.syncResponderLocation({
+            lat: reading.lat,
+            lng: reading.lng,
+            accuracy: reading.accuracy,
+            sharingEnabled
+          }).catch(() => {});
+        }
+      }
+    }
+  });
+  miniGpsTracker.start();
+}
+
 function initMiniMapPreview() {
   const container = document.getElementById('dash-map-preview');
   if (!container || typeof L === 'undefined') return;
@@ -208,6 +242,7 @@ function initMiniMapPreview() {
     });
     miniMapLayerGroup = L.layerGroup().addTo(miniPreviewMap);
     updateMiniEocMarker(eoc);
+    startMiniMapLiveGps();
   } catch (err) {
     console.warn('[ResponderDashboard] Could not initialize mini map preview:', err);
   }

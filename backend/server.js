@@ -7,6 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const pool = require('./config/db');
 const { initSocket } = require('./services/socketService');
+const { startBroadcastExpirationScheduler } = require('./services/broadcastExpirationService');
 const { ROLE_IDS } = require('./config/roles');
 const { verifyRequestSession } = require('./middleware/auth');
 const { portalForRoleId } = require('./controllers/authController');
@@ -18,6 +19,7 @@ const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const evacRoutes = require('./routes/evacRoutes');
 const hospitalRoutes = require('./routes/hospitalRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 const portalRoutes = require('./routes/portalRoutes');
 
 const app = express();
@@ -39,6 +41,7 @@ for (const prefix of ['/api/v1', '/api']) {
   app.use(`${prefix}/admin`, adminRoutes);
   app.use(`${prefix}/evacuation-centers`, evacRoutes);
   app.use(`${prefix}/hospitals`, hospitalRoutes);
+  app.use(`${prefix}/messages`, messageRoutes);
 }
 for (const prefix of ['/api/v1', '/api']) {
   app.use(prefix, portalRoutes);
@@ -60,6 +63,7 @@ const RESIDENT_HTML_PAGES = new Set([
   '/report-rescue.html',
   '/rescue-requests.html',
   '/hazard-alerts.html',
+  '/messages.html',
   '/notifications.html',
   '/profile.html',
   '/settings.html',
@@ -69,6 +73,8 @@ const RESPONDER_HTML_PAGES = new Set([
   '/responder-dashboard.html',
   '/responder-assignments.html',
   '/responder-map.html',
+  '/responder-alerts.html',
+  '/responder-messages.html',
   '/responder-profile.html',
 ]);
 
@@ -342,6 +348,7 @@ if (require.main === module) {
       console.log(`[LAN Access] Bound to 0.0.0.0:${PORT} (no external IPv4 interface detected)`);
     }
     await verifySchemaReady();
+    startBroadcastExpirationScheduler(10000);
   });
 }
 

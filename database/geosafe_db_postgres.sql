@@ -232,6 +232,8 @@ CREATE TABLE incident_assignments (
 CREATE INDEX idx_incident_assign_report ON incident_assignments(report_id);
 CREATE INDEX idx_incident_assign_responder ON incident_assignments(responder_user_id);
 CREATE INDEX idx_incident_assign_status ON incident_assignments(assignment_status);
+CREATE UNIQUE INDEX uq_incident_assignments_active ON incident_assignments(report_id)
+  WHERE assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene');
 
 -- 2.6 Incident Progress Updates & Field Notes Table
 CREATE TABLE incident_updates (
@@ -300,6 +302,8 @@ CREATE TABLE rescue_assignments (
 CREATE INDEX idx_rescue_assign_rescue ON rescue_assignments(rescue_id);
 CREATE INDEX idx_rescue_assign_responder ON rescue_assignments(responder_user_id);
 CREATE INDEX idx_rescue_assign_status ON rescue_assignments(assignment_status);
+CREATE UNIQUE INDEX uq_rescue_assignments_active ON rescue_assignments(rescue_id)
+  WHERE assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene');
 
 -- 3.3 Rescue Attachments Table
 CREATE TABLE rescue_attachments (
@@ -520,12 +524,75 @@ CREATE TABLE emergency_broadcast_logs (
   authorized_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   broadcasted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMPTZ DEFAULT NULL,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Expired', 'Cancelled')),
+  expired_at TIMESTAMPTZ DEFAULT NULL,
+  cancelled_at TIMESTAMPTZ DEFAULT NULL,
+  cancelled_by INTEGER DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL,
+  location_coverage VARCHAR(30) NOT NULL DEFAULT 'Entire Barangay Bayanan' CHECK (location_coverage IN ('Entire Barangay Bayanan', 'Specific Location')),
+  latitude DOUBLE PRECISION DEFAULT NULL,
+  longitude DOUBLE PRECISION DEFAULT NULL,
+  location_address VARCHAR(255) DEFAULT NULL
 );
 
 CREATE INDEX idx_broadcast_active ON emergency_broadcast_logs(is_active);
 CREATE INDEX idx_broadcast_severity ON emergency_broadcast_logs(severity);
 CREATE INDEX idx_broadcast_time ON emergency_broadcast_logs(broadcasted_at);
+CREATE INDEX idx_broadcast_expires_at ON emergency_broadcast_logs(expires_at);
+CREATE INDEX idx_broadcast_status ON emergency_broadcast_logs(status);
+
+-- 5.5 Rescue Request Messaging & Conversations
+CREATE TABLE conversations (
+  id SERIAL PRIMARY KEY,
+  rescue_id INTEGER NOT NULL UNIQUE REFERENCES rescue_requests(id) ON DELETE CASCADE,
+  assignment_id INTEGER DEFAULT NULL REFERENCES rescue_assignments(id) ON DELETE SET NULL,
+  resident_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  responder_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Completed', 'Closed')),
+  last_message_at TIMESTAMPTZ DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_conversations_resident ON conversations(resident_user_id);
+CREATE INDEX idx_conversations_responder ON conversations(responder_user_id);
+CREATE INDEX idx_conversations_last_msg ON conversations(last_message_at DESC);
+
+CREATE TABLE conversation_participants (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('Resident', 'Responder')),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  left_at TIMESTAMPTZ DEFAULT NULL,
+  UNIQUE (conversation_id, user_id)
+);
+
+CREATE INDEX idx_conv_participants_user ON conversation_participants(user_id, is_active);
+
+CREATE TABLE messages (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  client_message_id VARCHAR(80) DEFAULT NULL,
+  body TEXT NOT NULL CHECK (char_length(trim(body)) > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (conversation_id, sender_user_id, client_message_id)
+);
+
+CREATE INDEX idx_messages_conversation_time ON messages(conversation_id, created_at ASC, id ASC);
+
+CREATE TABLE message_read_status (
+  id SERIAL PRIMARY KEY,
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (message_id, user_id)
+);
+
+CREATE INDEX idx_msg_read_conv_user ON message_read_status(conversation_id, user_id);
 
 -- ============================================================================
 -- MODULE 6: SECURITY, AUDIT TRAIL & SYSTEM SETTINGS
@@ -714,7 +781,40 @@ CREATE TRIGGER trg_auth_security_logs_immutable BEFORE UPDATE OR DELETE ON auth_
 CREATE TRIGGER trg_account_status_history_immutable BEFORE UPDATE OR DELETE ON account_status_history FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_modification();
 CREATE TRIGGER trg_incident_status_history_immutable BEFORE UPDATE OR DELETE ON incident_status_history FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_modification();
 CREATE TRIGGER trg_rescue_status_history_immutable BEFORE UPDATE OR DELETE ON rescue_status_history FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_modification();
-CREATE TRIGGER trg_emergency_broadcast_logs_immutable BEFORE UPDATE OR DELETE ON emergency_broadcast_logs FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_modification();
+CREATE OR REPLACE FUNCTION fn_emergency_broadcast_logs_protect()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Deletion of immutable records in emergency_broadcast_logs is prohibited.';
+  END IF;
+
+  IF NEW.id IS DISTINCT FROM OLD.id
+    OR NEW.title IS DISTINCT FROM OLD.title
+    OR NEW.message IS DISTINCT FROM OLD.message
+    OR NEW.category_id IS DISTINCT FROM OLD.category_id
+    OR NEW.advisory_type IS DISTINCT FROM OLD.advisory_type
+    OR NEW.target_scope IS DISTINCT FROM OLD.target_scope
+    OR NEW.target_zones IS DISTINCT FROM OLD.target_zones
+    OR NEW.recipients_count IS DISTINCT FROM OLD.recipients_count
+    OR NEW.authorized_by IS DISTINCT FROM OLD.authorized_by
+    OR NEW.broadcasted_at IS DISTINCT FROM OLD.broadcasted_at
+    OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+    OR NEW.location_coverage IS DISTINCT FROM OLD.location_coverage
+    OR NEW.latitude IS DISTINCT FROM OLD.latitude
+    OR NEW.longitude IS DISTINCT FROM OLD.longitude
+    OR NEW.location_address IS DISTINCT FROM OLD.location_address THEN
+    RAISE EXCEPTION 'Modification of immutable broadcast fields in emergency_broadcast_logs is prohibited.';
+  END IF;
+
+  IF OLD.status IN ('Expired', 'Cancelled') AND (NEW.status = 'Active' OR NEW.is_active = TRUE) THEN
+    RAISE EXCEPTION 'Expired or cancelled broadcast alerts cannot be reactivated.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_emergency_broadcast_logs_immutable BEFORE UPDATE OR DELETE ON emergency_broadcast_logs FOR EACH ROW EXECUTE FUNCTION fn_emergency_broadcast_logs_protect();
 
 -- ============================================================================
 -- CANONICAL SEED DATA (ROLES, SEQUENCES & BARANGAY BAYANAN GEOGRAPHY)

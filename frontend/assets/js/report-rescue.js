@@ -49,7 +49,46 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load authenticated resident's genuine submitted reports & rescue requests
   loadSubmittedReports();
   window.addEventListener('geosafe:realtime-update', loadSubmittedReports);
+  startReportRescueLiveGps();
+
+  // Live validation for mandatory Incident Report fields & camera photo evidence
+  ['rep-type', 'rep-title', 'rep-desc', 'rep-loc'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateReportSubmitState);
+      el.addEventListener('change', updateReportSubmitState);
+    }
+  });
+  updateReportSubmitState();
 });
+
+let reportRescueLiveGpsTracker = null;
+const reportLiveGpsState = { marker: null, accuracyCircle: null };
+const rescueLiveGpsState = { marker: null, accuracyCircle: null };
+
+function startReportRescueLiveGps() {
+  if (reportRescueLiveGpsTracker || !window.GeoSafeMapping || typeof window.GeoSafeMapping.createLiveGpsTracker !== 'function') {
+    return;
+  }
+  reportRescueLiveGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
+    syncIntervalMs: 10000,
+    onLocation: (reading) => {
+      if (reportMap) {
+        window.GeoSafeMapping.renderLiveGpsMarker(reportMap, reportLiveGpsState, reading, {
+          title: 'Your Current GPS Location',
+          zIndexOffset: 500
+        });
+      }
+      if (rescueMap) {
+        window.GeoSafeMapping.renderLiveGpsMarker(rescueMap, rescueLiveGpsState, reading, {
+          title: 'Your Current GPS Location',
+          zIndexOffset: 500
+        });
+      }
+    }
+  });
+  reportRescueLiveGpsTracker.start();
+}
 
 /**
  * Initialize Date & Time display
@@ -80,8 +119,8 @@ window.switchActionTab = function (tab) {
   const sectionRescue = document.getElementById('section-rescue');
 
   if (tab === 'rescue') {
-    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-3xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
-    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-3xl bg-white border-2 border-[#D93636] shadow-emergency-glow ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
+    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
+    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white border-2 border-[#D93636] shadow-card ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
 
     if (sectionReport) sectionReport.classList.add('hidden');
     if (sectionRescue) sectionRescue.classList.remove('hidden');
@@ -94,8 +133,8 @@ window.switchActionTab = function (tab) {
       }
     }, 150);
   } else {
-    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-3xl bg-white border-2 border-[#F5B900] shadow-card text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
-    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-3xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none';
+    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white border-2 border-[#F5B900] shadow-card text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
+    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none';
 
     if (sectionReport) sectionReport.classList.remove('hidden');
     if (sectionRescue) sectionRescue.classList.add('hidden');
@@ -178,6 +217,7 @@ function resetReportCoordinates() {
   const lngDisp = document.getElementById('rep-lng-display');
   if (latDisp) latDisp.textContent = 'Not captured';
   if (lngDisp) lngDisp.textContent = 'Not captured';
+  updateReportSubmitState();
 }
 
 async function updateReportPosition(lat, lng) {
@@ -211,6 +251,7 @@ async function updateReportPosition(lat, lng) {
     locInput.value = address;
     reportLocAutoFilled = true;
   }
+  updateReportSubmitState();
 }
 
 /**
@@ -479,6 +520,7 @@ window.captureCameraPhoto = function () {
   }
 
   window.closeCameraCapture();
+  updateReportSubmitState();
   GeoSafeUI.showToast('Photo captured.', 'success');
 };
 
@@ -492,7 +534,45 @@ window.removeCapturedPhoto = function (prefix) {
   const previewContainer = document.getElementById(`${prefix}-photo-preview-container`);
   if (previewImg) previewImg.src = '';
   if (previewContainer) previewContainer.classList.add('hidden');
+  if (prefix === 'rep') {
+    updateReportSubmitState();
+  }
 };
+
+function isValidReportPhoto(dataUrl) {
+  return typeof dataUrl === 'string' && /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUrl);
+}
+
+function hasValidReportCoordinates() {
+  return (
+    Number.isFinite(reportCoords.lat) &&
+    Number.isFinite(reportCoords.lng) &&
+    reportCoords.lat >= -90 &&
+    reportCoords.lat <= 90 &&
+    reportCoords.lng >= -180 &&
+    reportCoords.lng <= 180 &&
+    !(reportCoords.lat === 0 && reportCoords.lng === 0)
+  );
+}
+
+function updateReportSubmitState() {
+  const type = document.getElementById('rep-type')?.value;
+  const title = document.getElementById('rep-title')?.value.trim();
+  const desc = document.getElementById('rep-desc')?.value.trim();
+  const loc = document.getElementById('rep-loc')?.value.trim();
+  const hasPhoto = isValidReportPhoto(reportPhotoBase64);
+  const hasCoords = hasValidReportCoordinates();
+
+  const photoBadge = document.getElementById('rep-photo-status-badge');
+  const photoHint = document.getElementById('rep-photo-required-hint');
+  if (photoBadge) photoBadge.classList.toggle('hidden', !hasPhoto);
+  if (photoHint) photoHint.classList.toggle('hidden', hasPhoto);
+
+  const openBtn = document.getElementById('btn-open-report-confirm');
+  if (openBtn) {
+    openBtn.disabled = !(type && title && desc && loc && hasCoords && hasPhoto);
+  }
+}
 
 /* ========================================================================= */
 /* ACTION 1: REPORT SUBMISSION                                               */
@@ -509,17 +589,14 @@ window.openReportConfirmModal = function () {
     return;
   }
 
-  const hasValidCoords =
-    Number.isFinite(reportCoords.lat) &&
-    Number.isFinite(reportCoords.lng) &&
-    reportCoords.lat >= -90 &&
-    reportCoords.lat <= 90 &&
-    reportCoords.lng >= -180 &&
-    reportCoords.lng <= 180 &&
-    !(reportCoords.lat === 0 && reportCoords.lng === 0);
-
-  if (!hasValidCoords) {
+  if (!hasValidReportCoordinates()) {
     GeoSafeUI.showToast('Please capture your GPS location or tap the incident location on the map.', 'error');
+    return;
+  }
+
+  if (!isValidReportPhoto(reportPhotoBase64)) {
+    updateReportSubmitState();
+    GeoSafeUI.showToast('Take a photo of the incident as evidence. A photo is required to submit your report.', 'error');
     return;
   }
 
@@ -539,6 +616,14 @@ let isSubmittingRescue = false;
 
 window.submitReportFinal = async function () {
   if (isSubmittingReport) return;
+
+  if (!isValidReportPhoto(reportPhotoBase64)) {
+    closeReportConfirmModal();
+    updateReportSubmitState();
+    GeoSafeUI.showToast('Take a photo of the incident as evidence. A photo is required to submit your report.', 'error');
+    return;
+  }
+
   const submitBtn = document.getElementById('btn-submit-report-final');
   isSubmittingReport = true;
   if (submitBtn) {
@@ -577,6 +662,7 @@ window.submitReportFinal = async function () {
     reportPhotoBase64 = null;
     resetReportCoordinates();
     initDateTimeDisplay();
+    updateReportSubmitState();
     loadSubmittedReports();
   } catch (err) {
     console.error('Report submission error:', err);

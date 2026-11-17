@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages - GeoSafe Resident Portal | Barangay Bayanan</title>
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body data-messages-role="Resident"
+  class="bg-[#FFFDF7] text-[#202020] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden resident-layout">
+
+  <!-- Top Navigation Bar -->
+  <div id="geosafe-nav-container"></div>
+
+  <!-- Main Content -->
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 pb-24 lg:pb-6 max-w-6xl mx-auto w-full flex flex-col space-y-3">
+
+    <!-- Page Title & Status Header -->
+    <div class="flex items-center justify-between gap-2.5 flex-shrink-0">
+      <div class="flex items-center gap-2.5">
+        <h1 class="text-lg sm:text-xl font-extrabold text-[#202020] tracking-tight">Messages</h1>
+        <span id="messages-active-count-badge"
+          class="text-[10px] font-bold text-[#8A6800] bg-[#FFF9E8] border border-[#FFE872] px-2.5 py-0.5 rounded-full">0
+          Conversations</span>
+      </div>
+      <button type="button" onclick="window.GeoSafeMessages.refreshAll()"
+        class="h-8 px-3 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020]">
+        Refresh
+      </button>
+    </div>
+
+    <!-- Access / Connection Error Banner -->
+    <div id="messages-error-banner"
+      class="hidden p-3 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] flex items-center justify-between gap-3 text-xs text-[#D93636] font-semibold">
+      <span id="messages-error-banner-text">Unable to load messages.</span>
+      <button type="button" onclick="window.GeoSafeMessages.dismissErrorBanner()"
+        class="text-[11px] font-bold underline">Dismiss</button>
+    </div>
+
+    <!-- Pending Rescue Requests Notice (Unaccepted Assignments) -->
+    <div id="messages-pending-requests-wrap" class="hidden space-y-2 flex-shrink-0"></div>
+
+    <!-- Master-Detail Messaging Workspace -->
+    <div id="messages-workspace-grid" class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
+
+      <!-- Left Column: Conversation List -->
+      <div id="messages-list-panel"
+        class="lg:col-span-4 bg-white rounded-2xl border border-[#EEEEEE] shadow-card flex flex-col overflow-hidden">
+        <div class="px-4 py-3 border-b border-[#EEEEEE] bg-[#FFFDF7] flex items-center justify-between">
+          <span class="text-xs font-bold text-[#202020] uppercase tracking-wider">Rescue Conversations</span>
+          <span id="messages-unread-pill"
+            class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#D93636] text-white">0 Unread</span>
+        </div>
+
+        <div id="messages-conversations-loading" class="p-8 text-center">
+          <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#FFE872] border-t-[#F5B900] mb-2">
+          </div>
+          <p class="text-xs text-[#777777]">Loading conversations...</p>
+        </div>
+
+        <div id="messages-conversations-empty" class="hidden p-6 text-center space-y-1.5 my-auto">
+          <p class="text-xs font-bold text-[#202020]">No active rescue conversations</p>
+          <p class="text-[11px] text-[#777777] leading-relaxed">
+            A private conversation with your assigned Responder becomes available once your rescue request is assigned
+            and accepted.
+          </p>
+        </div>
+
+        <div id="messages-conversations-list" class="divide-y divide-[#EEEEEE] overflow-y-auto flex-1"></div>
+      </div>
+
+      <!-- Right Column: Active Conversation Panel -->
+      <div id="messages-thread-panel"
+        class="hidden lg:flex lg:col-span-8 bg-white rounded-2xl border border-[#EEEEEE] shadow-card flex-col overflow-hidden">
+
+        <!-- Empty Placeholder when no conversation is selected -->
+        <div id="messages-thread-placeholder" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <div
+            class="w-10 h-10 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mb-2.5">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z">
+              </path>
+            </svg>
+          </div>
+          <p class="text-xs font-bold text-[#202020]">Select a conversation</p>
+          <p class="text-[11px] text-[#777777] mt-0.5 max-w-xs">
+            Choose an accepted rescue request conversation on the left to view messages and communicate with your
+            assigned Responder.
+          </p>
+        </div>
+
+        <!-- Active Thread View -->
+        <div id="messages-thread-active" class="hidden flex-1 flex flex-col min-h-0">
+          <!-- Thread Header -->
+          <div class="px-4 py-3 border-b border-[#EEEEEE] bg-[#FFFDF7] flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <button type="button" onclick="window.GeoSafeMessages.backToConversationList()"
+                class="lg:hidden p-1.5 rounded-xl border border-[#EEEEEE] bg-white text-[#202020] hover:bg-[#FFF9E8]"
+                title="Back to list">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+              </button>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h2 id="thread-participant-name" class="text-xs sm:text-sm font-bold text-[#202020] truncate">—</h2>
+                  <span id="thread-rescue-ref"
+                    class="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">—</span>
+                  <span id="thread-status-badge"
+                    class="text-[10px] font-bold px-2 py-0.5 rounded-full border">Active</span>
+                </div>
+                <p id="thread-participant-sub" class="text-[11px] text-[#777777] truncate mt-0.5">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Messages History Scroll Container -->
+          <div id="messages-thread-body" class="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto bg-[#FFFDF7]/50"></div>
+
+          <!-- Real-Time Typing Indicator -->
+          <div id="messages-typing-indicator" class="gs-typing-indicator hidden" aria-live="polite">
+            <span class="gs-typing-dots" aria-hidden="true">
+              <span class="gs-typing-dot"></span>
+              <span class="gs-typing-dot"></span>
+              <span class="gs-typing-dot"></span>
+            </span>
+            <span id="messages-typing-text" class="truncate"></span>
+          </div>
+
+          <!-- Closed Conversation Notice -->
+          <div id="messages-closed-banner" class="hidden px-4 py-2 bg-[#FFF1F1] border-t border-[#FFC2C2] text-[11px] font-semibold text-[#B82828] flex items-center gap-2 flex-shrink-0">
+            <span class="w-2 h-2 rounded-full bg-[#D93636] flex-shrink-0"></span>
+            <span id="messages-closed-banner-text">Conversation Closed – Assignment Completed. Messaging is unavailable because this assignment has been completed.</span>
+          </div>
+
+          <!-- Message Input Bar -->
+          <form id="messages-compose-form" onsubmit="window.GeoSafeMessages.handleSendSubmit(event)"
+            class="p-3 border-t border-[#EEEEEE] bg-white flex items-center gap-2 flex-shrink-0">
+            <textarea id="messages-compose-input" rows="1" maxlength="2000"
+              placeholder="Message"
+              onkeydown="window.GeoSafeMessages.handleInputKeydown(event)"
+              style="resize: none;"
+              class="flex-1 min-h-[36px] max-h-24 px-3.5 py-2 rounded-xl border border-[#EEEEEE] text-xs leading-5 text-[#202020] focus:outline-none focus:border-[#F5B900] resize-none overflow-y-auto"></textarea>
+            <button type="submit" id="messages-send-btn"
+              class="h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+              Send
+            </button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Scripts -->
+  <script src="./assets/js/mock-data.js"></script>
+  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/toast.js"></script>
+  <script src="./assets/js/components.js"></script>
+  <script src="./assets/js/messages.js"></script>
+</body>
+
+</html>

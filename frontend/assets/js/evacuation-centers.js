@@ -11,13 +11,31 @@
 let evacMap = null;
 let evacMarkers = {};
 let allCenters = [];
+const evacCentersGpsMarkerState = { marker: null, accuracyCircle: null };
+let evacCentersGpsTracker = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   GeoSafeUI.init('evacuation-centers', 'Evacuation Centers');
   initEvacMap();
+  startEvacCentersLiveGps();
   setupFilterButtons();
   await loadEvacuationCenters();
 });
+
+function startEvacCentersLiveGps() {
+  if (!evacMap || evacCentersGpsTracker || !window.GeoSafeMapping || typeof window.GeoSafeMapping.createLiveGpsTracker !== 'function') {
+    return;
+  }
+  evacCentersGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
+    syncIntervalMs: 10000,
+    onLocation: (reading) => {
+      window.GeoSafeMapping.renderLiveGpsMarker(evacMap, evacCentersGpsMarkerState, reading, {
+        title: 'Your Current GPS Location'
+      });
+    }
+  });
+  evacCentersGpsTracker.start();
+}
 
 function initEvacMap() {
   const mapEl = document.getElementById('evac-map');

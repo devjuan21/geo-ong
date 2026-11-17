@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="./assets/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Leaflet CSS for Evacuation Routes Map -->
   <link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css"/>
   <style>
@@ -29,20 +29,11 @@
   <!-- Main Content Area -->
   <main class="evac-main flex-1 px-3 py-3 sm:p-5 lg:p-6 max-w-7xl mx-auto w-full space-y-3 pb-28 md:pb-10">
 
-    <!-- Compact Page Heading & GPS Control -->
+    <!-- Compact Page Heading -->
     <section class="flex flex-col gap-1.5">
-      <div class="flex items-center justify-between gap-2">
-        <h1 class="text-base sm:text-xl font-extrabold text-[#202020] tracking-tight leading-tight">Evacuation Routes</h1>
-
-        <button
-          type="button"
-          onclick="acquireUserGpsLocation()"
-          id="btn-gps-header"
-          class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] active:scale-[0.98] text-[#202020] font-bold text-xs shadow-subtle transition-all flex-shrink-0"
-        >
-          <svg class="w-3.5 h-3.5 text-[#202020] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
-          <span>Use My GPS</span>
-        </button>
+      <div>
+        <h1 class="text-base sm:text-xl font-extrabold text-[#202020] tracking-tight leading-tight">Evacuation Routes &amp; Live GPS Navigation</h1>
+        <p class="text-[11px] text-[#777777]">Select an evacuation center and start live GPS navigation with automatic 10-second location synchronization.</p>
       </div>
 
       <p class="text-[11px] text-[#555555] bg-[#FFF9E8] border border-[#FFE872] rounded-xl px-2.5 py-1 leading-snug">
@@ -50,136 +41,82 @@
       </p>
     </section>
 
-    <!-- Balanced Rectangular Map Container -->
-    <section id="evacuation-map-section" aria-label="Evacuation Navigation Map" style="height: clamp(340px, 50vh, 520px);" class="relative w-full rounded-2xl sm:rounded-3xl border border-[#EEEEEE] overflow-hidden shadow-card bg-white">
-      <!-- Leaflet Map Container -->
-      <div id="evacuation-map" class="w-full h-full z-10"></div>
+    <!-- Single Unified Navigation Control Bar: Destination Selector + Start Navigation, Recenter Location, Stop Navigation -->
+    <section id="route-floating-panel" aria-label="Evacuation Navigation Controls" class="bg-white rounded-2xl border border-[#EEEEEE] shadow-subtle p-2.5 sm:p-3 space-y-2">
+      <div id="route-panel-expanded" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <label for="route-destination-select" class="text-[10px] font-bold uppercase tracking-wider text-[#777777] block mb-0.5">Destination Evacuation Center</label>
+          <select
+            id="route-destination-select"
+            onchange="handleDestinationSelectChange()"
+            title="Destination evacuation center"
+            class="w-full px-2.5 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] truncate"
+          >
+            <option value="" disabled selected>Select an evacuation center...</option>
+          </select>
+        </div>
 
-      <!-- Waze-Inspired Top Maneuver Banner (Shown when route is active) -->
-      <div id="nav-maneuver-banner" class="hidden absolute top-2 left-2 right-2 z-20 pointer-events-auto">
-        <div class="bg-[#202020]/95 backdrop-blur-md text-white rounded-2xl border border-[#333333] shadow-lg px-3 py-2 flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <div id="nav-maneuver-icon" class="w-8 h-8 rounded-xl bg-[#F5B900] text-[#202020] flex items-center justify-center flex-shrink-0">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-            </div>
-            <div class="min-w-0">
-              <p id="nav-maneuver-distance" class="text-xs font-extrabold text-[#F5B900] leading-tight">—</p>
-              <p id="nav-maneuver-text" class="text-xs font-semibold text-white truncate">Follow highlighted route</p>
-            </div>
-          </div>
+        <!-- Required Controls Only: Start Navigation, Recenter Location, Stop Navigation -->
+        <div class="flex items-center flex-wrap gap-1.5 sm:pt-4 flex-shrink-0">
           <button
             type="button"
-            onclick="showRouteSelectorPanel()"
-            class="px-2 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold flex-shrink-0 transition-colors"
-            title="Change start or destination"
+            id="btn-start-nav"
+            onclick="startLiveNavigation()"
+            class="px-3.5 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] disabled:opacity-50 text-[#202020] font-bold text-xs shadow-subtle inline-flex items-center justify-center gap-1.5 transition-all active:scale-95"
           >
-            Route
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
+            <span>Start Navigation</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-recenter-nav"
+            onclick="recenterNavigationMap()"
+            class="px-3 py-1.5 rounded-xl bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#8A6800] border border-[#FFE872] font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
+            title="Recenter map on your current GPS location"
+          >
+            <svg class="w-3.5 h-3.5 text-[#3478C7] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+            <span>Recenter Location</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-stop-nav"
+            onclick="stopLiveNavigation()"
+            class="hidden px-3.5 py-1.5 rounded-xl bg-[#D93636] hover:bg-[#B82828] text-white font-bold text-xs shadow-subtle inline-flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"></rect></svg>
+            <span>Stop Navigation</span>
           </button>
         </div>
       </div>
 
-      <!-- Compact Collapsible Floating Route Panel -->
-      <div id="route-floating-panel" class="absolute top-2 left-2 right-2 z-20 pointer-events-auto">
-        <div class="bg-white/95 backdrop-blur-md rounded-2xl border border-[#EEEEEE] shadow-md overflow-hidden">
+      <!-- GPS Status / Permission / Error Notice Banner -->
+      <div id="gps-status-banner" class="hidden px-3 py-2 rounded-xl bg-[#FFF9E8] border border-[#FFE872] flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span id="gps-status-text" class="text-[#202020] font-semibold leading-snug">Acquiring device GPS location...</span>
+        <div id="gps-status-actions" class="flex items-center gap-1.5 flex-shrink-0">
+          <button type="button" onclick="retryLiveNavigation()" class="px-2.5 py-1 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-[11px]">
+            Retry GPS
+          </button>
+        </div>
+      </div>
+    </section>
 
-          <!-- Collapsed Summary Bar (Hidden when expanded) -->
-          <div id="route-panel-collapsed" class="hidden px-2.5 py-1.5 flex items-center justify-between gap-2">
-            <button type="button" onclick="toggleRoutePanel(false)" class="flex-1 min-w-0 flex items-center gap-1.5 text-left focus:outline-none">
-              <svg class="w-3.5 h-3.5 text-[#8A6800] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
-              <span id="route-collapsed-summary" class="text-[11px] font-bold text-[#202020] truncate">Select route destination</span>
-            </button>
-            <div class="flex items-center gap-1 flex-shrink-0">
-              <button
-                type="button"
-                onclick="toggleRoutePanel(false)"
-                class="px-2 py-1 rounded-lg bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#8A6800] border border-[#FFE872] text-[10px] font-bold transition-colors"
-                aria-expanded="false"
-              >
-                Expand
-              </button>
-            </div>
+    <!-- Balanced Rectangular Map Container -->
+    <section id="evacuation-map-section" aria-label="Evacuation Navigation Map" style="height: clamp(340px, 50vh, 520px);" class="relative w-full rounded-2xl border border-[#EEEEEE] overflow-hidden shadow-card bg-white">
+      <!-- Leaflet Map Container -->
+      <div id="evacuation-map" class="w-full h-full z-10"></div>
+
+      <!-- Top Next-Maneuver Banner (Shown on map when live route is active) -->
+      <div id="nav-maneuver-banner" class="hidden absolute top-2.5 left-2.5 right-2.5 sm:right-auto sm:max-w-md z-20 pointer-events-auto">
+        <div class="bg-[#202020]/95 backdrop-blur-md text-white rounded-2xl border border-[#333333] shadow-lg px-3 py-2 flex items-center gap-2.5">
+          <div id="nav-maneuver-icon" class="w-8 h-8 rounded-xl bg-[#F5B900] text-[#202020] flex items-center justify-center flex-shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
           </div>
-
-          <!-- Expanded Compact Controls -->
-          <div id="route-panel-expanded" class="p-2 flex flex-col sm:flex-row sm:items-center gap-1.5">
-            <div class="grid grid-cols-2 sm:flex sm:flex-1 gap-1.5 min-w-0">
-              <!-- Starting Location Selector -->
-              <div class="min-w-0 sm:flex-1">
-                <label for="route-start-select" class="sr-only">From</label>
-                <select
-                  id="route-start-select"
-                  onchange="handleStartLocationChange()"
-                  title="Starting location"
-                  class="w-full px-2 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] text-[11px] sm:text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] truncate"
-                >
-                  <option value="" disabled selected>From: Waiting for GPS...</option>
-                </select>
-              </div>
-
-              <!-- Destination Selector -->
-              <div class="min-w-0 sm:flex-1">
-                <label for="route-destination-select" class="sr-only">Destination</label>
-                <select
-                  id="route-destination-select"
-                  onchange="updateCollapsedSummary()"
-                  title="Destination evacuation center"
-                  class="w-full px-2 py-1.5 rounded-xl border border-[#EEEEEE] bg-white text-[11px] sm:text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] truncate"
-                >
-                  <option value="" disabled selected>To: Select center...</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Action Controls: Route, Reset, Collapse -->
-            <div class="flex items-center justify-end gap-1.5 flex-shrink-0">
-              <button
-                type="button"
-                id="btn-calc-route"
-                onclick="handleCalculateRoute()"
-                class="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] disabled:opacity-60 text-[#202020] font-bold text-[11px] sm:text-xs shadow-subtle inline-flex items-center justify-center gap-1 transition-all active:scale-95"
-              >
-                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                <span>Route</span>
-              </button>
-
-              <button
-                type="button"
-                id="btn-reset-route"
-                onclick="resetMapView()"
-                title="Reset map view"
-                aria-label="Reset map view"
-                class="p-1.5 rounded-xl bg-white hover:bg-[#FFF9E8] text-[#555555] hover:text-[#202020] border border-[#EEEEEE] transition-colors"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-              </button>
-
-              <button
-                type="button"
-                id="btn-collapse-route-panel"
-                onclick="toggleRoutePanel(true)"
-                title="Collapse route controls"
-                aria-label="Collapse route controls"
-                aria-expanded="true"
-                class="p-1.5 rounded-xl bg-white hover:bg-[#FFF9E8] text-[#555555] hover:text-[#202020] border border-[#EEEEEE] transition-colors"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"></path></svg>
-              </button>
-            </div>
+          <div class="min-w-0">
+            <p id="nav-maneuver-distance" class="text-xs font-extrabold text-[#F5B900] leading-tight">—</p>
+            <p id="nav-maneuver-text" class="text-xs font-semibold text-white truncate">Follow highlighted road route</p>
           </div>
-
-          <!-- GPS Status / Error / Manual-Pick Banner -->
-          <div id="gps-status-banner" class="hidden px-2.5 py-1.5 bg-[#FFF9E8] border-t border-[#FFE872] flex flex-wrap items-center justify-between gap-2 text-[11px]">
-            <span id="gps-status-text" class="text-[#202020] font-semibold leading-snug">Acquiring device GPS location...</span>
-            <div id="gps-status-actions" class="flex items-center gap-1 flex-shrink-0">
-              <button type="button" onclick="acquireUserGpsLocation()" class="px-2 h-7 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-[10px]">
-                Retry GPS
-              </button>
-              <button type="button" onclick="enableManualStartPicker()" class="px-2 h-7 rounded-lg bg-white hover:bg-slate-50 text-[#202020] border border-[#EEEEEE] font-bold text-[10px]">
-                Pick on Map
-              </button>
-            </div>
-          </div>
-
         </div>
       </div>
 
@@ -190,86 +127,85 @@
           <span id="route-loading-text">Calculating route...</span>
         </div>
       </div>
+    </section>
 
-      <!-- Compact Waze-Inspired Navigation HUD Card (Hidden until valid route calculated) -->
-      <div id="route-result-card" class="hidden absolute bottom-2.5 left-2.5 right-2.5 sm:right-auto sm:w-96 z-20 pointer-events-auto" style="max-width: calc(100% - 4.25rem);">
-        <div class="px-3 py-2 bg-white/95 backdrop-blur-md rounded-2xl border border-[#EEEEEE] shadow-lg space-y-2">
-          <!-- Arrival Banner (Shown only when GPS proximity <= 30m) -->
-          <div id="nav-arrival-banner" class="hidden px-2 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2">
-            <span id="nav-arrival-text" class="text-[11px] font-bold text-[#278653] truncate">You have arrived!</span>
-            <button type="button" onclick="returnToEvacuationCenters()" class="px-2 h-7 rounded-lg bg-[#278653] text-white text-[10px] font-bold flex-shrink-0">
-              Centers
-            </button>
+    <!-- Live Navigation Status, Telemetry & Turn-by-Turn Panel (Docked below map — never covers map controls) -->
+    <section id="route-result-card" aria-label="Live Navigation Status and Route Details" class="hidden rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] p-3.5 shadow-card space-y-3 text-xs">
+      <!-- Status Bar & GPS Telemetry -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span id="route-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-50 text-[#3478C7] border border-blue-200">
+            Idle
+          </span>
+          <span id="nav-gps-accuracy" class="text-[11px] text-[#777777] font-medium"></span>
+        </div>
+      </div>
+
+      <!-- Clean Arrival State Card (Shown only after reliable consecutive GPS arrival confirmation) -->
+      <div id="nav-arrival-banner" class="hidden rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-start gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-xl bg-[#278653] text-white flex items-center justify-center shrink-0 mt-0.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
           </div>
-
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <p id="route-dest-name" class="text-xs font-extrabold text-[#202020] truncate">—</p>
-              <div class="flex items-center gap-2 text-[11px] text-[#555555]">
-                <strong id="route-distance-val" class="text-[#202020]">—</strong>
-                <span>&bull;</span>
-                <strong id="route-duration-val" class="text-[#278653]">—</strong>
-                <span id="route-eta-val" class="text-[10px] text-[#6B7280]"></span>
-              </div>
-            </div>
-            <span id="route-status-badge" class="text-[10px] font-bold text-[#278653] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex-shrink-0">Pedestrian</span>
+          <div class="min-w-0">
+            <h3 class="text-sm font-extrabold text-[#278653] leading-tight">You have arrived</h3>
+            <p id="nav-arrival-dest-name" class="text-xs font-bold text-[#202020] mt-0.5 truncate">—</p>
+            <p id="nav-arrival-text" class="text-[11px] font-medium text-[#278653] mt-0.5">Arrival at your selected evacuation center has been confirmed via live GPS.</p>
           </div>
+        </div>
+        <button type="button" onclick="returnToEvacuationCenters()" class="px-3 py-1.5 rounded-xl bg-[#278653] hover:bg-[#1E6E43] text-white text-xs font-bold transition-colors shadow-subtle shrink-0 self-start sm:self-center">
+          Choose Another Center
+        </button>
+      </div>
 
-          <div class="flex items-center justify-between gap-1 flex-wrap">
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                id="btn-start-nav"
-                onclick="startLiveNavigation()"
-                class="px-3 h-7 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-[11px] font-bold inline-flex items-center gap-1 shadow-subtle transition-colors"
-              >
-                <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path></svg>
-                <span>Start Navigation</span>
-              </button>
-              <button
-                type="button"
-                id="btn-stop-nav"
-                onclick="stopLiveNavigation()"
-                class="hidden px-3 h-7 rounded-lg bg-[#202020] hover:bg-[#333333] text-white text-[11px] font-bold inline-flex items-center gap-1 shadow-subtle transition-colors"
-              >
-                <span>Stop</span>
-              </button>
-              <button
-                type="button"
-                id="btn-recenter-nav"
-                onclick="recenterNavigationMap()"
-                class="hidden px-2 h-7 rounded-lg bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#8A6800] border border-[#FFE872] text-[11px] font-bold inline-flex items-center gap-1 transition-colors"
-                title="Recenter on my location"
-              >
-                <span>Recenter</span>
-              </button>
-            </div>
-
-            <div class="flex items-center gap-1">
-              <a id="btn-external-osm" target="_blank" rel="noopener noreferrer" href="#" class="px-2 h-7 inline-flex items-center justify-center bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#202020] border border-[#FFE872] rounded-lg text-[10px] font-bold transition-colors" title="Open in OpenStreetMap">
-                OSM
-              </a>
-              <button type="button" onclick="returnToEvacuationCenters()" class="px-2 h-7 text-[11px] font-bold text-[#555555] hover:text-[#202020] rounded-lg hover:bg-slate-100 transition-colors">
-                Centers
-              </button>
-              <button type="button" onclick="clearCurrentRoute()" class="px-2 h-7 text-[11px] font-bold text-[#6B7280] hover:text-[#D93636] rounded-lg hover:bg-slate-100 transition-colors">
-                Clear
-              </button>
-            </div>
+      <!-- Route Metrics Grid: Selected Evacuation Center, Remaining Distance, Estimated Travel Time / Arrival -->
+      <div id="evac-nav-metrics" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white rounded-xl border border-[#EEEEEE] p-3">
+        <div>
+          <span class="text-[10px] font-bold text-[#777777] uppercase block">Selected Evacuation Center</span>
+          <strong id="route-dest-name" class="text-xs sm:text-sm font-extrabold text-[#202020] block truncate">—</strong>
+          <span id="route-dest-address" class="text-[11px] text-[#6B7280] block truncate">Barangay Bayanan</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-[#777777] uppercase block">Remaining Distance</span>
+          <strong id="route-distance-val" class="text-sm font-extrabold text-[#202020]">—</strong>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-[#777777] uppercase block">Estimated Travel Time</span>
+          <div class="flex items-baseline gap-1.5 flex-wrap">
+            <strong id="route-duration-val" class="text-sm font-extrabold text-[#278653]">—</strong>
+            <span id="route-eta-val" class="text-[11px] font-semibold text-[#6B7280]"></span>
           </div>
         </div>
       </div>
 
-      <!-- Routing Error Box -->
-      <div id="route-error-box" class="hidden absolute bottom-2.5 left-2.5 right-2.5 sm:right-auto sm:w-80 z-20 pointer-events-auto p-3 bg-[#FFF1F1] border border-[#FFC2C2] rounded-2xl text-xs text-[#D93636] shadow-lg space-y-2" style="max-width: calc(100% - 4.25rem);">
-        <div class="flex items-start gap-2">
+      <!-- Next Direction Highlight -->
+      <div id="evac-nav-next-step" class="hidden rounded-xl bg-[#FFF9E8] border border-[#FFE872] px-3 py-2 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-[#8A6800] block">Next Direction</span>
+          <p id="evac-nav-next-instruction" class="text-xs font-bold text-[#202020] truncate">—</p>
+        </div>
+        <span id="evac-nav-next-dist" class="text-xs font-bold text-[#8A6800] shrink-0">—</span>
+      </div>
+
+      <!-- Turn-by-Turn Navigation Instructions -->
+      <div id="evac-nav-steps-wrap" class="hidden space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider">Turn-by-Turn Directions</span>
+          <span id="evac-nav-steps-count" class="text-[10px] text-[#777777] font-semibold"></span>
+        </div>
+        <ol id="evac-nav-steps-list" class="max-h-36 overflow-y-auto space-y-1 pr-1 text-[11px] text-[#202020]"></ol>
+      </div>
+
+      <!-- Honest GPS / Routing Error Box -->
+      <div id="route-error-box" class="hidden rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] p-3 flex items-start justify-between gap-2 text-xs text-[#D93636]">
+        <div class="flex items-start gap-2 min-w-0">
           <svg class="w-4 h-4 text-[#D93636] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           <div class="min-w-0">
-            <strong class="font-bold block">Route Unavailable</strong>
+            <strong id="route-error-title" class="font-bold block">Navigation Notice</strong>
             <p id="route-error-msg" class="text-[11px] text-[#D93636] mt-0.5 break-words"></p>
           </div>
         </div>
-        <button type="button" onclick="handleCalculateRoute()" class="w-full py-1.5 px-2 bg-[#D93636] hover:bg-[#B82828] text-white font-bold rounded-xl text-xs transition-colors">
+        <button type="button" id="route-error-retry-btn" onclick="retryLiveNavigation()" class="px-2.5 py-1 bg-white border border-[#FFC2C2] hover:bg-[#FFE4E4] text-[#D93636] font-bold rounded-lg text-[11px] transition-colors shrink-0">
           Retry
         </button>
       </div>
@@ -292,8 +228,8 @@
         <span class="text-xs sm:text-sm font-bold text-[#202020]">No evacuation centers are currently available.</span>
       </div>
 
-      <!-- Center Cards 2x2 Grid -->
-      <div id="evacuation-centers-list" class="grid grid-cols-2 gap-2 max-w-4xl hidden">
+      <!-- Center Cards Grid -->
+      <div id="evacuation-centers-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-5xl hidden">
         <!-- Dynamically populated via evacuation-routes.js -->
       </div>
     </section>
@@ -303,11 +239,11 @@
   <!-- Leaflet JS -->
   <script src="./assets/vendor/leaflet/leaflet.js"></script>
   <!-- Mapping Service, Store, Components & Evacuation Page Logic -->
-  <script src="./assets/js/mapping-service.js"></script>
-  <script src="./assets/js/mock-data.js"></script>
-  <script src="./assets/js/store.js"></script>
-  <script src="./assets/js/toast.js"></script>
-  <script src="./assets/js/components.js"></script>
-  <script src="./assets/js/evacuation-routes.js"></script>
+  <script src="./assets/js/mapping-service.js?v=20261117d"></script>
+  <script src="./assets/js/mock-data.js?v=20261117d"></script>
+  <script src="./assets/js/store.js?v=20261117d"></script>
+  <script src="./assets/js/toast.js?v=20261117d"></script>
+  <script src="./assets/js/components.js?v=20261117d"></script>
+  <script src="./assets/js/evacuation-routes.js?v=20261117d"></script>
 </body>
 </html>

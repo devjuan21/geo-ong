@@ -49,9 +49,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load Map Data from Store
   await loadMapData();
 
-  // Try acquiring responder GPS
-  await acquireResponderGps(true);
+  // Start automatic 10-second live GPS tracking & authorized backend location sync
+  startResponderLiveGps();
+
+  window.addEventListener('geosafe:realtime-update', (ev) => {
+    const detail = (ev && ev.detail) || {};
+    const payload = detail.data || detail.payload || {};
+    const st = String(payload.status || '').toLowerCase();
+    const isTerminal = ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(st) ||
+      detail.event === 'incident-resolved';
+    if (isTerminal) {
+      const targetRef = String(payload.referenceNumber || payload.id || '');
+      if (targetRef) {
+        const keepActive = (t) => String(t.referenceNumber || t.id || '') !== targetRef && String(t.dbId || '') !== String(payload.dbId || '');
+        allMapData.assignments = (allMapData.assignments || []).filter(keepActive);
+        allMapData.incidents = (allMapData.incidents || []).filter(keepActive);
+        if (selectedTask && (String(selectedTask.referenceNumber || selectedTask.id || '') === targetRef || String(selectedTask.dbId || '') === String(payload.dbId || ''))) {
+          closeTaskBottomSheet();
+        }
+        renderMapMarkers();
+      }
+    }
+    loadMapData();
+  });
 });
+
+let respMapResizeObserver = null;
+let respBodyClassObserver = null;
 
 function initResponderMap() {
   const container = document.getElementById('responder-operational-map');
@@ -61,19 +85,54 @@ function initResponderMap() {
     respMap = GeoSafeMapping.createMap('responder-operational-map', {
       center: [GeoSafeMapping.config.center.lat, GeoSafeMapping.config.center.lng],
       zoom: 15,
-      zoomControl: true
+      zoomControl: false
     });
 
     markerLayerGroup = L.layerGroup().addTo(respMap);
+
+    const refreshSize = () => {
+      if (respMap) {
+        try { respMap.invalidateSize({ animate: false }); } catch (_) {}
+      }
+    };
+    requestAnimationFrame(refreshSize);
+    setTimeout(refreshSize, 150);
+    setTimeout(refreshSize, 350);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      if (respMapResizeObserver) respMapResizeObserver.disconnect();
+      respMapResizeObserver = new ResizeObserver(() => refreshSize());
+      respMapResizeObserver.observe(container);
+    }
+    if (typeof MutationObserver !== 'undefined' && document.body) {
+      if (respBodyClassObserver) respBodyClassObserver.disconnect();
+      respBodyClassObserver = new MutationObserver(() => setTimeout(refreshSize, 220));
+      respBodyClassObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+    window.addEventListener('resize', refreshSize);
   } catch (err) {
     console.error('[ResponderMap] Map init failed:', err);
     GeoSafeResponderUI.showToast('Could not initialize operational map.', 'error');
   }
 }
 
-async function loadMapData() {
+window.zoomResponderMap = function (delta) {
+  if (!respMap) return;
+  if (delta > 0) respMap.zoomIn();
+  else respMap.zoomOut();
+};
+
+let mapDataFetchSeq = 0;
+
+window.loadMapData = async function loadMapData() {
+  const reqSeq = ++mapDataFetchSeq;
+  const errBanner = document.getElementById('map-data-error-banner');
+  const errText = document.getElementById('map-data-error-text');
+  if (errBanner) errBanner.classList.add('hidden');
+
   try {
     const data = await window.geoSafeStore.getResponderMapData();
+    if (reqSeq !== mapDataFetchSeq) return;
     const isNotTerminal = (t) =>
       !['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(String(t.status || '').toLowerCase());
     allMapData = {
@@ -88,10 +147,15 @@ async function loadMapData() {
     }
     renderMapMarkers();
   } catch (err) {
+    if (reqSeq !== mapDataFetchSeq) return;
     console.error('[ResponderMap] Error loading map data:', err);
+    if (errBanner) {
+      if (errText) errText.textContent = err.message || 'Database or API request failed.';
+      errBanner.classList.remove('hidden');
+    }
     GeoSafeResponderUI.showToast('Failed to load operational map records.', 'error');
   }
-}
+};
 
 window.filterMapMarkers = function (filterType) {
   activeFilter = filterType;
@@ -116,6 +180,7 @@ function renderMapMarkers() {
   if (!markerLayerGroup || !respMap) return;
 
   markerLayerGroup.clearLayers();
+  let visibleTargetCount = 0;
 
   // 1. Render Assigned Tasks (Rescue Requests & Incident Reports) & Active Verified Incidents
   const assignmentKeys = new Set();
@@ -151,6 +216,7 @@ function renderMapMarkers() {
     const marker = L.marker([task.coordinates.lat, task.coordinates.lng], { icon });
     marker.on('click', () => selectTaskForNavigation(task));
     markerLayerGroup.addLayer(marker);
+    visibleTargetCount += 1;
   });
 
   // 2. Render Evacuation Centers (Green Shelter Pins)
@@ -173,11 +239,12 @@ function renderMapMarkers() {
       m.bindPopup(`
         <div class="text-xs p-1">
           <strong class="text-emerald-800 block">${center.name}</strong>
-          <span class="text-[10px] text-[#777777]">${center.address || 'Barangay Bayanan'}</span><br>
-          <span class="text-[10px] font-bold text-emerald-600">Capacity: ${center.currentEvacuees || 0} / ${center.capacity || 200}</span>
+          <span class="text-[10px] text-[#777777] block">${center.address || 'Barangay Bayanan'}</span>
+          <span class="text-[10px] font-bold text-emerald-600">${center.status || 'Open - Accommodating'}</span>
         </div>
       `);
       markerLayerGroup.addLayer(m);
+      if (activeFilter === 'Shelter') visibleTargetCount += 1;
     });
   }
 
@@ -224,61 +291,153 @@ function renderMapMarkers() {
       markerLayerGroup.addLayer(eocMarker);
     }
   }
+
+  const emptyPill = document.getElementById('map-empty-state-pill');
+  const emptyText = document.getElementById('map-empty-state-text');
+  if (emptyPill && emptyText) {
+    if (visibleTargetCount === 0) {
+      if (activeFilter === 'Rescue') emptyText.textContent = 'No active rescue requests.';
+      else if (activeFilter === 'Incident') emptyText.textContent = 'No active incident reports.';
+      else if (activeFilter === 'Shelter') emptyText.textContent = 'No evacuation shelters available.';
+      else emptyText.textContent = 'No active operational targets.';
+      emptyPill.classList.remove('hidden');
+    } else {
+      emptyPill.classList.add('hidden');
+    }
+  }
+}
+
+let responderLiveGpsTracker = null;
+let hasCenteredResponderGps = false;
+let lastResponderSyncSentAt = 0;
+
+function isResponderLocationSharingEnabled() {
+  try {
+    return localStorage.getItem('geosafe_responder_location_sharing') !== 'false';
+  } catch (_) {
+    return true;
+  }
+}
+
+async function syncResponderPositionToBackend(reading) {
+  if (!reading || !window.geoSafeStore || typeof window.geoSafeStore.syncResponderLocation !== 'function') return;
+  const now = Date.now();
+  if (now - lastResponderSyncSentAt < 9000) return; // Prevent duplicate 10s sync bursts
+  lastResponderSyncSentAt = now;
+  try {
+    await window.geoSafeStore.syncResponderLocation({
+      lat: reading.lat,
+      lng: reading.lng,
+      accuracy: reading.accuracy,
+      sharingEnabled: isResponderLocationSharingEnabled()
+    });
+  } catch (err) {
+    console.warn('[ResponderMap] Live location sync warning:', err.message);
+  }
+}
+
+function startResponderLiveGps() {
+  if (!respMap || responderLiveGpsTracker || !window.GeoSafeMapping || typeof window.GeoSafeMapping.createLiveGpsTracker !== 'function') {
+    return;
+  }
+  const gpsStatusEl = document.getElementById('gps-status-indicator');
+
+  responderLiveGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
+    syncIntervalMs: 10000,
+    onLocation: (reading) => {
+      currentGpsLocation = { lat: reading.lat, lng: reading.lng, accuracy: reading.accuracy, isStale: Boolean(reading.isStale) };
+      renderResponderGpsMarker(reading.lat, reading.lng, reading.accuracy, reading.isStale, reading.updatedAt);
+
+      if (!hasCenteredResponderGps && respMap && !selectedTask) {
+        hasCenteredResponderGps = true;
+        respMap.setView([reading.lat, reading.lng], 16);
+      }
+
+      if (gpsStatusEl) {
+        const accPart = Number.isFinite(Number(reading.accuracy)) ? ` (±${Math.round(reading.accuracy)}m)` : '';
+        const timePart = new Date(reading.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        if (reading.isStale) {
+          gpsStatusEl.textContent = `GPS: Stale${accPart} • ${timePart}`;
+          gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-[#FFF9E8] px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
+        } else {
+          gpsStatusEl.textContent = `GPS: Live${accPart} • ${timePart}`;
+          gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#278653] bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 truncate';
+        }
+      }
+
+      if (!reading.isStale) {
+        syncResponderPositionToBackend(reading);
+      }
+    },
+    onStatusChange: ({ status }) => {
+      if (!gpsStatusEl) return;
+      if (status === 'acquiring') {
+        gpsStatusEl.textContent = 'GPS: Acquiring...';
+        gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-[#FFF9E8] px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
+      } else if (status === 'denied') {
+        currentGpsLocation = null;
+        gpsStatusEl.textContent = 'GPS: Denied';
+        gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#D93636] bg-[#FFF1F1] px-2.5 py-1 rounded-full border border-[#FFC2C2] truncate';
+      } else if (status === 'unavailable' && !responderLiveGpsTracker.getLastReading()) {
+        currentGpsLocation = null;
+        gpsStatusEl.textContent = 'GPS: Unavailable';
+        gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#D93636] bg-[#FFF1F1] px-2.5 py-1 rounded-full border border-[#FFC2C2] truncate';
+      }
+    }
+  });
+
+  responderLiveGpsTracker.start();
 }
 
 /**
- * Acquire GPS location for responder
+ * Manual GPS refresh / recenter for responder
  */
 window.acquireResponderGps = async function (silent = false) {
+  if (!responderLiveGpsTracker) {
+    startResponderLiveGps();
+  }
   const btn = document.getElementById('btn-gps-locate');
-  const gpsStatusEl = document.getElementById('gps-status-indicator');
-
   if (btn) btn.classList.add('animate-pulse');
 
   try {
-    const pos = await window.GeoSafeMapping.getCurrentLocation();
-    currentGpsLocation = { lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy };
-
-    if (!silent) {
-      GeoSafeResponderUI.showToast(`Responder GPS acquired (Accuracy: ±${Math.round(pos.accuracy || 15)}m).`, 'success');
+    const reading = responderLiveGpsTracker ? await responderLiveGpsTracker.refreshNow(true) : null;
+    if (reading) {
+      if (respMap && !selectedTask) {
+        respMap.setView([reading.lat, reading.lng], 16);
+      }
+      if (!silent) {
+        GeoSafeResponderUI.showToast(
+          Number.isFinite(Number(reading.accuracy))
+            ? `Responder GPS updated (±${Math.round(reading.accuracy)}m).`
+            : 'Responder GPS updated.',
+          'success'
+        );
+      }
+    } else if (!silent) {
+      const isDenied = responderLiveGpsTracker && responderLiveGpsTracker.getStatus() === 'denied';
+      GeoSafeResponderUI.showToast(
+        isDenied
+          ? 'Location access denied. Enable GPS in browser settings to view your live position.'
+          : 'Unable to retrieve your current GPS location.',
+        'warning'
+      );
     }
-
-    if (gpsStatusEl) {
-      gpsStatusEl.textContent = `GPS: Active (±${Math.round(pos.accuracy || 15)}m)`;
-      gpsStatusEl.className = 'text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200';
-    }
-
-    renderResponderGpsMarker(pos.lat, pos.lng, pos.accuracy);
-
-    // Pan map to responder
-    if (respMap && !selectedTask) {
-      respMap.setView([pos.lat, pos.lng], 16);
-    }
-  } catch (err) {
-    console.warn('[ResponderMap] GPS acquisition failed:', err.message);
-    if (!silent) {
-      GeoSafeResponderUI.showToast('GPS unavailable. Using Barangay Bayanan base coordinates.', 'warning');
-    }
-    if (gpsStatusEl) {
-      gpsStatusEl.textContent = 'GPS: Base Location';
-      gpsStatusEl.className = 'text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200';
-    }
-    currentGpsLocation = { lat: GeoSafeMapping.config.center.lat, lng: GeoSafeMapping.config.center.lng, accuracy: 50 };
-    renderResponderGpsMarker(currentGpsLocation.lat, currentGpsLocation.lng, 50);
   } finally {
     if (btn) btn.classList.remove('animate-pulse');
   }
 };
 
-function renderResponderGpsMarker(lat, lng, accuracy) {
+function renderResponderGpsMarker(lat, lng, accuracy, isStale = false, updatedAt = null) {
   if (!respMap) return;
+  const timeLabel = updatedAt ? new Date(updatedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const statusTag = isStale ? 'Stale' : 'Live';
 
   const responderGpsIcon = L.divIcon({
     className: 'geosafe-gps-pulse',
     html: `
       <div class="relative flex items-center justify-center">
-        <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-blue-400 opacity-75"></span>
-        <div class="w-6 h-6 rounded-full bg-[#3478C7] border-2 border-white shadow-xl text-white flex items-center justify-center font-bold text-[9px]">
+        <span class="${isStale ? '' : 'animate-ping'} absolute inline-flex h-8 w-8 rounded-full ${isStale ? 'bg-amber-400 opacity-40' : 'bg-blue-400 opacity-75'}"></span>
+        <div class="w-6 h-6 rounded-full ${isStale ? 'bg-amber-600' : 'bg-[#3478C7]'} border-2 border-white shadow-xl text-white flex items-center justify-center font-bold text-[9px]">
           ME
         </div>
       </div>
@@ -287,16 +446,25 @@ function renderResponderGpsMarker(lat, lng, accuracy) {
     iconAnchor: [12, 12]
   });
 
+  const popupHtml = `
+    <div class="text-xs p-1 space-y-0.5">
+      <div class="flex items-center justify-between gap-2">
+        <strong class="text-blue-900">Responder Position</strong>
+        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isStale ? 'bg-[#FFF9E8] text-[#8A6800]' : 'bg-emerald-50 text-[#278653]'}">${statusTag}</span>
+      </div>
+      <span class="block font-mono text-[10px] text-slate-600">${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}</span>
+      ${accuracy ? `<span class="block text-[10px] text-slate-500">Accuracy: ±${Math.round(accuracy)}m</span>` : ''}
+      <span class="block text-[10px] text-slate-400">Updated ${timeLabel}</span>
+    </div>
+  `;
+
   if (!userGpsMarker) {
     userGpsMarker = L.marker([lat, lng], { icon: responderGpsIcon, zIndexOffset: 1000 }).addTo(respMap);
-    userGpsMarker.bindPopup(`
-      <div class="text-xs p-1">
-        <strong class="text-blue-900 block">Responder Position</strong>
-        <span class="text-[10px] text-slate-500">Your current operational field coordinates</span>
-      </div>
-    `);
+    userGpsMarker.bindPopup(popupHtml);
   } else {
     userGpsMarker.setLatLng([lat, lng]);
+    userGpsMarker.setIcon(responderGpsIcon);
+    userGpsMarker.setPopupContent(popupHtml);
   }
 
   if (accuracy && accuracy > 0) {
@@ -328,8 +496,20 @@ window.selectTaskForNavigation = function (task) {
 
   document.getElementById('sheet-ref').textContent = task.referenceNumber || task.id;
   document.getElementById('sheet-type-badge').textContent = isRescue ? 'Rescue Request' : 'Incident Report';
-  document.getElementById('sheet-type-badge').className = `text-[9px] font-black px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}`;
-  document.getElementById('sheet-prio-badge').textContent = task.priority || 'Normal';
+  document.getElementById('sheet-type-badge').className = `text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}`;
+  const prioEl = document.getElementById('sheet-prio-badge');
+  if (prioEl) {
+    prioEl.textContent = task.status || (task.isPublicIncident ? 'Verified' : 'Assigned');
+  }
+  const viewBtn = document.getElementById('sheet-btn-view');
+  if (viewBtn) {
+    if (task.isPublicIncident) {
+      viewBtn.classList.add('hidden');
+    } else {
+      viewBtn.classList.remove('hidden');
+      viewBtn.href = `responder-assignments.html?id=${encodeURIComponent(task.id)}`;
+    }
+  }
   document.getElementById('sheet-title').textContent = task.title || task.category;
   document.getElementById('sheet-location').textContent = task.location || 'Barangay Bayanan';
 

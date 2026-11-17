@@ -9,8 +9,9 @@
 
 let incidentMap = null;
 let incidentMarkersGroup = null;
-let userLocationMarker = null;
-let isLocatingUser = false;
+const homeGpsMarkerState = { marker: null, accuracyCircle: null };
+let homeGpsTracker = null;
+let hasCenteredHomeGps = false;
 
 let currentLoadedReports = [];
 let currentLoadedAlerts = [];
@@ -24,8 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize interactive Leaflet map
   initIncidentMap();
 
-  // Start automatic GPS detection without blocking genuine operational data loading
-  detectUserGpsLocation({ isAuto: true });
+  // Start automatic 10-second live GPS tracking without blocking genuine operational data loading
+  startHomeLiveGps();
 
   // Load all live homepage records
   await loadHomepageData();
@@ -403,11 +404,68 @@ function updateGpsStatusIndicator(tone, text) {
 }
 
 /**
- * Detect Resident GPS Location (automatic on load, or manual refresh via Location button)
+ * Start automatic 10-second Live GPS Tracking for the Community Map
  */
-async function detectUserGpsLocation({ isAuto = false } = {}) {
-  if (isLocatingUser || !incidentMap) return;
-  isLocatingUser = true;
+function startHomeLiveGps() {
+  if (!incidentMap || homeGpsTracker || !GeoSafeMapping || typeof GeoSafeMapping.createLiveGpsTracker !== 'function') {
+    return;
+  }
+
+  homeGpsTracker = GeoSafeMapping.createLiveGpsTracker({
+    syncIntervalMs: 10000,
+    onLocation: (reading) => {
+      currentUserLocation = { lat: reading.lat, lng: reading.lng };
+      renderNearestEvacuationCenter();
+      GeoSafeMapping.renderLiveGpsMarker(incidentMap, homeGpsMarkerState, reading, {
+        title: 'Your Current GPS Location'
+      });
+
+      if (!hasCenteredHomeGps) {
+        hasCenteredHomeGps = true;
+        incidentMap.setView([reading.lat, reading.lng], 16);
+      }
+
+      const accText = Number.isFinite(Number(reading.accuracy)) && reading.accuracy > 0
+        ? ` (±${Math.round(reading.accuracy)} m)`
+        : '';
+      const timeText = new Date(reading.updatedAt || Date.now()).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      if (reading.isStale) {
+        updateGpsStatusIndicator('warning', `GPS stale${accText} • ${timeText}`);
+      } else {
+        updateGpsStatusIndicator('success', `Live GPS${accText} • ${timeText}`);
+      }
+    },
+    onStatusChange: ({ status }) => {
+      if (status === 'acquiring') {
+        updateGpsStatusIndicator('loading', 'Detecting GPS location...');
+      } else if (status === 'denied') {
+        currentUserLocation = null;
+        renderNearestEvacuationCenter();
+        updateGpsStatusIndicator(
+          'warning',
+          'Location access disabled. Enable permission in browser site settings or use map controls.'
+        );
+      } else if (status === 'unavailable' && !homeGpsTracker.getLastReading()) {
+        currentUserLocation = null;
+        renderNearestEvacuationCenter();
+        updateGpsStatusIndicator('neutral', 'Location unavailable. Tap Location to retry.');
+      }
+    }
+  });
+
+  homeGpsTracker.start();
+}
+
+/**
+ * Manual Location / Recenter trigger for Community Map
+ */
+window.locateUserOnMap = async function () {
+  if (!incidentMap) return;
+  if (!homeGpsTracker) startHomeLiveGps();
 
   const btn = document.getElementById('btn-locate-me');
   if (btn) {
@@ -416,92 +474,20 @@ async function detectUserGpsLocation({ isAuto = false } = {}) {
   }
 
   try {
-    if (isAuto && typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function') {
-      try {
-        const perm = await navigator.permissions.query({ name: 'geolocation' });
-        if (perm.state === 'denied') {
-          currentUserLocation = null;
-          renderNearestEvacuationCenter();
-          updateGpsStatusIndicator(
-            'warning',
-            'Location access disabled. Enable permission in browser site settings or use map controls.'
-          );
-          return;
-        }
-        if (perm.state === 'prompt') {
-          updateGpsStatusIndicator('loading', 'Requesting location permission...');
-        } else {
-          updateGpsStatusIndicator('loading', 'Detecting GPS location...');
-        }
-      } catch (_) {
-        updateGpsStatusIndicator('loading', 'Detecting GPS location...');
-      }
+    const reading = homeGpsTracker ? await homeGpsTracker.refreshNow(true) : null;
+    if (reading) {
+      incidentMap.setView([reading.lat, reading.lng], 16);
+      if (homeGpsMarkerState.marker) homeGpsMarkerState.marker.openPopup();
+      const acc = Number.isFinite(Number(reading.accuracy)) && reading.accuracy > 0
+        ? ` (±${Math.round(reading.accuracy)} m)`
+        : '';
+      GeoSafeUI.showToast(`GPS location updated${acc}.`, 'info');
+    } else if (homeGpsTracker && homeGpsTracker.getStatus() === 'denied') {
+      GeoSafeUI.showToast('Location permission is denied. Enable it in your browser site settings.', 'warning');
     } else {
-      updateGpsStatusIndicator('loading', 'Detecting GPS location...');
-    }
-
-    const pos = await GeoSafeMapping.getCurrentLocation();
-    currentUserLocation = { lat: Number(pos.lat), lng: Number(pos.lng) };
-    renderNearestEvacuationCenter();
-    const latLng = [pos.lat, pos.lng];
-    const hasAccuracy = Number.isFinite(Number(pos.accuracy)) && Number(pos.accuracy) > 0;
-    const accuracyMeters = hasAccuracy ? Math.round(Number(pos.accuracy)) : null;
-
-    const popupHtml = accuracyMeters !== null
-      ? `<div class="text-xs space-y-0.5"><strong class="block">Your Current GPS Location</strong><span class="text-[#555555]">Accuracy: &plusmn;${accuracyMeters} m</span></div>`
-      : '<strong class="text-xs">Your Current GPS Location</strong>';
-
-    if (!userLocationMarker) {
-      const userIcon = GeoSafeMapping.createCustomIcon('user');
-      userLocationMarker = L.marker(latLng, { icon: userIcon }).addTo(incidentMap);
-      userLocationMarker.bindPopup(popupHtml);
-    } else {
-      userLocationMarker.setLatLng(latLng);
-      userLocationMarker.setPopupContent(popupHtml);
-    }
-
-    incidentMap.setView(latLng, 16);
-    if (!isAuto) {
-      userLocationMarker.openPopup();
-      GeoSafeUI.showToast(
-        accuracyMeters !== null
-          ? `GPS location updated (±${accuracyMeters} m).`
-          : 'Acquired current GPS location.',
-        'info'
-      );
-    }
-
-    updateGpsStatusIndicator(
-      'success',
-      accuracyMeters !== null ? `GPS active (±${accuracyMeters} m)` : 'GPS active'
-    );
-  } catch (err) {
-    currentUserLocation = null;
-    renderNearestEvacuationCenter();
-    const code = err && err.code;
-    if (code === 'INSECURE_CONTEXT_LAN') {
-      updateGpsStatusIndicator(
-        'warning',
-        'GPS blocked over non-HTTPS LAN. Use HTTPS or localhost for automatic GPS.'
-      );
-    } else if (code === 1) {
-      updateGpsStatusIndicator(
-        'warning',
-        'Location access denied. Enable location in browser settings to view your position.'
-      );
-      if (!isAuto) {
-        GeoSafeUI.showToast('Location permission is denied. Enable it in your browser site settings.', 'warning');
-      }
-    } else if (code === 'UNSUPPORTED') {
-      updateGpsStatusIndicator('warning', 'Browser does not support GPS geolocation.');
-    } else {
-      updateGpsStatusIndicator('neutral', 'Location unavailable. Tap Location to retry.');
-      if (!isAuto) {
-        GeoSafeUI.showToast((err && err.message) || 'Unable to access current GPS position.', 'warning');
-      }
+      GeoSafeUI.showToast('Unable to access current GPS position.', 'warning');
     }
   } finally {
-    isLocatingUser = false;
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `
@@ -510,13 +496,6 @@ async function detectUserGpsLocation({ isAuto = false } = {}) {
       `;
     }
   }
-}
-
-/**
- * GPS Locate Me on Community Map (Manual refresh & recenter)
- */
-window.locateUserOnMap = function () {
-  return detectUserGpsLocation({ isAuto: false });
 };
 
 window.refreshCommunityMap = async function () {

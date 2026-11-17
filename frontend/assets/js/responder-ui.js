@@ -5,7 +5,7 @@
  * 1. Dashboard (responder-dashboard.html)
  * 2. Assignments (responder-assignments.html)
  * 3. Map (responder-map.html)
- * 4. Profile (responder-profile.html)
+ * 4. Hazard Alerts (responder-alerts.html)
  * 
  * - Mobile: Fixed 4-item bottom navigation bar with active yellow pill highlight.
  * - Desktop/Tablet: Responsive operational header with duty status switcher.
@@ -39,17 +39,26 @@ const GeoSafeResponderUI = {
       icon: 'map-pin'
     },
     {
-      id: 'profile',
-      label: 'Responder Profile',
-      shortLabel: 'Profile',
-      href: 'responder-profile.html',
-      icon: 'user-shield'
+      id: 'alerts',
+      label: 'Hazard Alerts',
+      shortLabel: 'Alerts',
+      href: 'responder-alerts.html',
+      icon: 'alert-triangle'
+    },
+    {
+      id: 'messages',
+      label: 'Messages',
+      shortLabel: 'Messages',
+      href: 'responder-messages.html',
+      icon: 'message-square'
     }
   ],
 
   // SVG Icon definitions (NO emojis)
   getIcon(name, extraClasses = 'w-5 h-5') {
     const icons = {
+      'alert-triangle': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`,
+      'message-square': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>`,
       'layout-grid': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke-width="2"></rect><rect x="14" y="3" width="7" height="7" rx="1.5" stroke-width="2"></rect><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-width="2"></rect><rect x="3" y="14" width="7" height="7" rx="1.5" stroke-width="2"></rect></svg>`,
       'clipboard-list': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>`,
       'map-pin': `<svg class="${extraClasses}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`,
@@ -76,6 +85,8 @@ const GeoSafeResponderUI = {
       const path = (window.location.pathname || '').toLowerCase();
       if (path.includes('assignment')) return 'assignments';
       if (path.includes('map')) return 'map';
+      if (path.includes('alert')) return 'alerts';
+      if (path.includes('message')) return 'messages';
       if (path.includes('profile')) return 'profile';
       if (path.includes('dashboard')) return 'dashboard';
     }
@@ -95,6 +106,10 @@ const GeoSafeResponderUI = {
         --gs-resp-sidebar-width: 240px;
         --gs-resp-sidebar-collapsed-width: 76px;
         --gs-resp-bottom-nav-height: 64px;
+      }
+
+      body.gs-resp-shell {
+        padding-top: 3.5rem;
       }
 
       /* Guarantee Operations Map container never collapses to 0px height */
@@ -123,6 +138,14 @@ const GeoSafeResponderUI = {
         }
         body.gs-resp-shell.gs-resp-sidebar-collapsed {
           padding-left: var(--gs-resp-sidebar-collapsed-width);
+        }
+
+        #geosafe-responder-top-header {
+          left: var(--gs-resp-sidebar-width);
+          transition: left 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        body.gs-resp-shell.gs-resp-sidebar-collapsed #geosafe-responder-top-header {
+          left: var(--gs-resp-sidebar-collapsed-width);
         }
 
         #geosafe-responder-sidebar {
@@ -303,7 +326,8 @@ const GeoSafeResponderUI = {
           <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">
             ${this.getIcon(item.icon, 'w-5 h-5')}
           </span>
-          <span class="gs-resp-sidebar-text truncate whitespace-nowrap">${item.label}</span>
+          <span class="gs-resp-sidebar-text flex-1 truncate whitespace-nowrap">${item.label}</span>
+          ${item.id === 'messages' ? '<span data-resp-nav-unread="messages" class="hidden gs-resp-sidebar-text px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D93636] text-white leading-none">0</span>' : ''}
         </a>
       `;
     }).join('');
@@ -312,13 +336,13 @@ const GeoSafeResponderUI = {
       <!-- Top Brand & Responder Identification -->
       <div class="gs-resp-sidebar-brand h-14 px-4 border-b border-[#EEEEEE] flex items-center gap-2.5 flex-shrink-0">
         <a href="responder-dashboard.html" class="flex items-center gap-2.5 min-w-0 group" title="GeoSafe Responder Portal">
-          <div class="w-9 h-9 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
+          <div class="w-9 h-9 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-bold text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
             <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
           </div>
           <div class="gs-resp-sidebar-text min-w-0">
             <div class="flex items-center gap-1.5">
-              <span class="font-black text-sm tracking-tight text-[#202020]">GeoSafe</span>
-              <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase">Responder</span>
+              <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020]">GeoSafe</span>
+              <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase">Responder</span>
             </div>
             <span id="sidebar-responder-unit" class="text-[10px] text-[#777777] font-medium block leading-tight truncate">Emergency Operations</span>
           </div>
@@ -358,7 +382,7 @@ const GeoSafeResponderUI = {
     const isCollapsed = document.body.classList.contains('gs-resp-sidebar-collapsed');
 
     container.innerHTML = `
-      <header class="bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] sticky top-0 z-30 shadow-subtle">
+      <header id="geosafe-responder-top-header" class="bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] fixed top-0 left-0 right-0 z-30 shadow-subtle">
         <div class="w-full px-3 sm:px-5 lg:px-6">
           <div class="flex items-center justify-between h-14 gap-2">
             
@@ -381,13 +405,13 @@ const GeoSafeResponderUI = {
 
               <!-- Mobile/Tablet Brand (<1024px only; Desktop shows brand in Sidebar) -->
               <a href="responder-dashboard.html" class="gs-resp-header-brand flex items-center gap-2 group min-w-0 flex-1 lg:flex-initial">
-                <div class="w-8 h-8 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-black text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
+                <div class="w-8 h-8 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-bold text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
                   <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 </div>
                 <div class="min-w-0 flex-1 overflow-hidden">
                   <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="font-black text-sm tracking-tight text-[#202020] truncate">GeoSafe</span>
-                    <span class="hidden sm:inline-flex text-[9px] font-black px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase flex-shrink-0">Responder</span>
+                    <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020] truncate">GeoSafe</span>
+                    <span class="hidden sm:inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase flex-shrink-0">Responder</span>
                   </div>
                   <span id="header-responder-unit" class="text-[10px] text-[#777777] font-medium block leading-tight truncate">Emergency Operations</span>
                 </div>
@@ -427,7 +451,7 @@ const GeoSafeResponderUI = {
                   aria-expanded="false"
                   title="Account menu"
                 >
-                  <div id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#202020] border-2 border-[#F5B900] text-[#F5B900] font-black text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
+                  <div id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#202020] border-2 border-[#F5B900] text-[#F5B900] font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
                     —
                   </div>
                   <div class="text-left hidden sm:block min-w-0">
@@ -509,10 +533,11 @@ const GeoSafeResponderUI = {
               ? 'bg-[#FFF1BF] shadow-sm'
               : 'bg-transparent hover:bg-[#FFF9E8]/50'
           }">
-            <span class="flex-shrink-0 transition-colors ${isActive ? 'text-[#B88600]' : 'text-[#777777]'}">
+            <span class="gs-msg-icon-wrap transition-colors ${isActive ? 'text-[#B88600]' : 'text-[#777777]'}">
               ${this.getIcon(item.icon, 'w-5 h-5')}
+              ${item.id === 'messages' ? '<span data-resp-nav-unread="messages" class="gs-msg-badge hidden">0</span>' : ''}
             </span>
-            <span class="text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
+            <span class="gs-bottom-nav-label text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
               isActive ? 'font-bold text-[#202020]' : 'font-medium text-[#777777]'
             }">
               ${item.shortLabel}
@@ -558,7 +583,7 @@ const GeoSafeResponderUI = {
   renderUnauthorizedScreen(container, message) {
     if (!container) return;
     container.innerHTML = `
-      <div class="max-w-md mx-auto my-8 p-6 sm:p-8 bg-white rounded-3xl border border-[#EEEEEE] shadow-card text-center space-y-4">
+      <div class="max-w-md mx-auto my-8 p-6 sm:p-8 bg-white rounded-2xl border border-[#EEEEEE] shadow-card text-center space-y-4">
         <div class="w-14 h-14 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center mx-auto shadow-subtle">
           <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </div>
@@ -566,7 +591,7 @@ const GeoSafeResponderUI = {
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase mb-1">
             Restricted Operational Access
           </span>
-          <h2 class="text-base sm:text-lg font-black text-[#202020] tracking-tight">Responder Authentication Required</h2>
+          <h2 class="text-base sm:text-lg font-bold text-[#202020] tracking-tight">Responder Authentication Required</h2>
           <p class="text-xs text-[#777777] mt-1.5 leading-relaxed">
             ${message || 'This operations portal is restricted to authorized Barangay Bayanan emergency responders. To receive dispatch assignments, view coordinates, and submit situation reports, please authenticate with your responder credentials.'}
           </p>
@@ -576,7 +601,7 @@ const GeoSafeResponderUI = {
           <a href="index.html" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#202020] text-xs font-bold transition-all text-center">
             Return to Resident Portal
           </a>
-          <a href="login.html" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-black shadow-subtle transition-all text-center">
+          <a href="login.html" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-all text-center">
             Sign In with Credentials
           </a>
         </div>
@@ -652,9 +677,33 @@ const GeoSafeResponderUI = {
           badge.classList.add('hidden');
         }
       }
+
+      // Sync unread messages badge
+      await this.refreshMessagesUnreadBadge();
+      if (!this._respMsgUnreadListenerBound) {
+        this._respMsgUnreadListenerBound = true;
+        window.addEventListener('geosafe:realtime-update', (ev) => {
+          const evt = ev && ev.detail ? ev.detail.event : '';
+          if (['conversation:new-message', 'messages:unread-update', 'messages:incoming-notification', 'conversation:messages-read', 'reconnect-sync'].includes(evt)) {
+            this.refreshMessagesUnreadBadge();
+          }
+        });
+      }
     } catch (err) {
       console.warn('[ResponderUI] Error syncing header responder data:', err);
     }
+  },
+
+  async refreshMessagesUnreadBadge() {
+    if (!window.geoSafeStore) return;
+    try {
+      const msgUnreadRes = await window.geoSafeStore.request('/messages/unread-count', { method: 'GET' }).catch(() => null);
+      const unreadMsgCount = Number((msgUnreadRes && msgUnreadRes.unreadCount) || 0);
+      document.querySelectorAll('[data-resp-nav-unread="messages"]').forEach((el) => {
+        el.textContent = unreadMsgCount > 99 ? '99+' : String(unreadMsgCount);
+        el.classList.toggle('hidden', unreadMsgCount <= 0);
+      });
+    } catch (_) {}
   },
 
   /**
@@ -675,7 +724,8 @@ const GeoSafeResponderUI = {
     } else if (status === 'Off Duty') {
       btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-subtle border cursor-pointer bg-slate-100 text-[#777777] border-slate-200 hover:bg-slate-200';
       dot.className = 'w-2 h-2 rounded-full bg-[#777777]';
-    } else if (status === 'Unavailable') {
+    } else if (status === 'On Break' || status === 'Unavailable') {
+      label.textContent = 'On Break';
       btn.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-subtle border cursor-pointer bg-amber-50 text-[#E99524] border-amber-200 hover:bg-amber-100';
       dot.className = 'w-2 h-2 rounded-full bg-[#E99524]';
     } else {
@@ -832,7 +882,7 @@ const GeoSafeResponderUI = {
     modal.id = 'responder-notif-modal';
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden';
     modal.innerHTML = `
-      <div class="bg-white rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE] max-h-[85vh] flex flex-col">
+      <div class="bg-white rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE] max-h-[85vh] flex flex-col">
         <div class="flex items-center justify-between pb-3 border-b border-[#EEEEEE]">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center">
@@ -942,7 +992,7 @@ const GeoSafeResponderUI = {
             <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] uppercase">${escapeTxt(badgeLabel)}</span>
             <span class="text-[10px] text-[#777777]">${GeoSafeResponderUI.formatRelativeTime(n.timestamp)}</span>
           </div>
-          <h4 class="text-sm font-black text-[#202020]">${escapeTxt(n.title)}</h4>
+          <h4 class="text-sm font-bold text-[#202020]">${escapeTxt(n.title)}</h4>
           <p class="text-xs text-[#333333] whitespace-pre-line leading-relaxed">${escapeTxt(n.description)}</p>
         </div>
       </div>
@@ -973,7 +1023,7 @@ const GeoSafeResponderUI = {
     modal.id = 'duty-status-modal';
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden';
     modal.innerHTML = `
-      <div class="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE]">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-4 sm:p-5 shadow-modal border border-[#EEEEEE]">
         <div class="flex items-center justify-between pb-3 border-b border-[#EEEEEE]">
           <h3 class="font-bold text-sm text-[#202020]">Update Duty Availability</h3>
           <button onclick="GeoSafeResponderUI.closeDutyStatusModal()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8]">
@@ -986,9 +1036,11 @@ const GeoSafeResponderUI = {
         </p>
 
         <div class="space-y-2">
-          <button type="button" onclick="GeoSafeResponderUI.setDutyStatus('On Duty')" class="w-full p-3 rounded-2xl border-2 border-emerald-500/30 hover:border-emerald-500 bg-emerald-50/60 text-left transition-all flex items-center justify-between">
+          <button type="button" data-duty-option="On Duty" onclick="GeoSafeResponderUI.selectDutyOption('On Duty')" class="w-full p-3 rounded-2xl border border-emerald-200 hover:border-emerald-500 bg-emerald-50/60 text-left transition-all flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <span class="w-3 h-3 rounded-full bg-[#278653] animate-pulse"></span>
+              <span data-duty-check="On Duty" class="w-5 h-5 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center flex-shrink-0 transition-colors">
+                <svg class="w-3 h-3 text-white hidden" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+              </span>
               <div>
                 <span class="font-bold text-xs text-[#202020] block">On Duty</span>
                 <span class="text-[10px] text-[#777777]">Available for active emergency dispatch</span>
@@ -997,20 +1049,24 @@ const GeoSafeResponderUI = {
             <span class="text-[10px] font-bold text-[#278653] bg-emerald-100 px-2 py-0.5 rounded-full">Active</span>
           </button>
 
-          <button type="button" onclick="GeoSafeResponderUI.setDutyStatus('Unavailable')" class="w-full p-3 rounded-2xl border border-amber-200 hover:border-amber-400 bg-amber-50/50 text-left transition-all flex items-center justify-between">
+          <button type="button" data-duty-option="On Break" onclick="GeoSafeResponderUI.selectDutyOption('On Break')" class="w-full p-3 rounded-2xl border border-amber-200 hover:border-amber-400 bg-amber-50/50 text-left transition-all flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <span class="w-3 h-3 rounded-full bg-[#E99524]"></span>
+              <span data-duty-check="On Break" class="w-5 h-5 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center flex-shrink-0 transition-colors">
+                <svg class="w-3 h-3 text-white hidden" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+              </span>
               <div>
-                <span class="font-bold text-xs text-[#202020] block">Unavailable</span>
+                <span class="font-bold text-xs text-[#202020] block">On Break</span>
                 <span class="text-[10px] text-[#777777]">Meal break, vehicle maintenance, or on-task</span>
               </div>
             </div>
             <span class="text-[10px] font-bold text-[#E99524] bg-amber-100 px-2 py-0.5 rounded-full">Standby</span>
           </button>
 
-          <button type="button" onclick="GeoSafeResponderUI.setDutyStatus('Off Duty')" class="w-full p-3 rounded-2xl border border-slate-200 hover:border-slate-300 bg-slate-50 text-left transition-all flex items-center justify-between">
+          <button type="button" data-duty-option="Off Duty" onclick="GeoSafeResponderUI.selectDutyOption('Off Duty')" class="w-full p-3 rounded-2xl border border-slate-200 hover:border-slate-300 bg-slate-50 text-left transition-all flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <span class="w-3 h-3 rounded-full bg-slate-400"></span>
+              <span data-duty-check="Off Duty" class="w-5 h-5 rounded-full border-2 border-slate-300 bg-white flex items-center justify-center flex-shrink-0 transition-colors">
+                <svg class="w-3 h-3 text-white hidden" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+              </span>
               <div>
                 <span class="font-bold text-xs text-[#202020] block">Off Duty</span>
                 <span class="text-[10px] text-[#777777]">Shift concluded; not dispatched</span>
@@ -1020,9 +1076,12 @@ const GeoSafeResponderUI = {
           </button>
         </div>
 
-        <div class="mt-4 pt-3 border-t border-[#EEEEEE] text-right">
+        <div class="mt-4 pt-3 border-t border-[#EEEEEE] flex items-center justify-end gap-2">
           <button type="button" onclick="GeoSafeResponderUI.closeDutyStatusModal()" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-[#202020] hover:bg-slate-200">
             Cancel
+          </button>
+          <button type="button" id="duty-status-save-btn" onclick="GeoSafeResponderUI.saveDutyStatus()" class="px-4 py-1.5 rounded-xl text-xs font-bold bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            Save
           </button>
         </div>
       </div>
@@ -1030,12 +1089,71 @@ const GeoSafeResponderUI = {
     document.body.appendChild(modal);
   },
 
+  selectDutyOption(status) {
+    this.pendingDutyStatus = status;
+    this.syncDutyModalSelection(status);
+  },
+
+  syncDutyModalSelection(currentStatus) {
+    const activeColors = {
+      'On Duty': { check: 'bg-[#278653] border-[#278653]', card: 'ring-2 ring-emerald-400/50 border-emerald-500' },
+      'On Break': { check: 'bg-[#E99524] border-[#E99524]', card: 'ring-2 ring-amber-400/50 border-amber-500' },
+      'Off Duty': { check: 'bg-slate-600 border-slate-600', card: 'ring-2 ring-slate-400/50 border-slate-400' },
+    };
+    const normalized = currentStatus === 'Unavailable' ? 'On Break' : currentStatus;
+    document.querySelectorAll('#duty-status-modal [data-duty-option]').forEach((btn) => {
+      const opt = btn.getAttribute('data-duty-option');
+      const isSelected = opt === normalized;
+      const checkEl = btn.querySelector('[data-duty-check]');
+      const svgEl = checkEl ? checkEl.querySelector('svg') : null;
+
+      btn.classList.remove('ring-2', 'ring-emerald-400/50', 'border-emerald-500', 'ring-amber-400/50', 'border-amber-500', 'ring-slate-400/50', 'border-slate-400');
+      if (isSelected && activeColors[opt]) {
+        btn.classList.add(...activeColors[opt].card.split(' '));
+      }
+
+      if (checkEl) {
+        checkEl.className = `w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+          isSelected && activeColors[opt] ? activeColors[opt].check : 'border-slate-300 bg-white'
+        }`;
+      }
+      if (svgEl) {
+        svgEl.classList.toggle('hidden', !isSelected);
+      }
+    });
+  },
+
   openDutyStatusModal() {
+    const currentStatus = document.getElementById('responder-duty-label')?.textContent?.trim() || '';
+    const normalized = currentStatus === 'Unavailable' ? 'On Break' : currentStatus;
+    this.pendingDutyStatus = normalized;
+    this.syncDutyModalSelection(normalized);
     document.getElementById('duty-status-modal')?.classList.remove('hidden');
   },
 
   closeDutyStatusModal() {
     document.getElementById('duty-status-modal')?.classList.add('hidden');
+  },
+
+  async saveDutyStatus() {
+    const status = this.pendingDutyStatus;
+    if (!status) {
+      this.showToast('Please select a duty availability option.', 'error');
+      return;
+    }
+    const saveBtn = document.getElementById('duty-status-save-btn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+    try {
+      await this.setDutyStatus(status);
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    }
   },
 
   async setDutyStatus(status) {
@@ -1059,7 +1177,7 @@ const GeoSafeResponderUI = {
     modal.id = 'responder-auth-modal';
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm hidden';
     modal.innerHTML = `
-      <div class="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE]">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE]">
         <div class="flex items-center justify-between pb-3 border-b border-[#EEEEEE]">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center">
@@ -1101,7 +1219,7 @@ const GeoSafeResponderUI = {
             <button type="button" onclick="GeoSafeResponderUI.closeResponderLoginModal()" class="px-3.5 py-2 rounded-xl border border-[#EEEEEE] text-[#777777] font-bold text-xs hover:bg-[#FFF9E8]">
               Cancel
             </button>
-            <button type="submit" class="px-4 py-2 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-black text-xs shadow-subtle">
+            <button type="submit" class="px-4 py-2 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle">
               Verify & Sign In
             </button>
           </div>

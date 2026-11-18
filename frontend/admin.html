@@ -277,41 +277,41 @@
 </head>
 
 <body
-  class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen font-sans selection:bg-[#F5B900] selection:text-[#202020] overflow-x-hidden">
+  class="bg-slate-50 text-slate-900 antialiased min-h-screen font-sans selection:bg-amber-200 selection:text-slate-900 overflow-x-hidden">
 
   <!-- ====================================================================== -->
   <!-- 1. LOADING & RBAC UNVERIFIED SCREENS                                   -->
   <!-- ====================================================================== -->
 
   <!-- Loading Verification State -->
-  <div id="admin-loading" class="fixed inset-0 z-50 bg-[#FFF9E8] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl p-8 border border-[#EEEEEE] shadow-card text-center space-y-3 max-w-sm w-full">
-      <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto"></div>
-      <h2 class="text-sm font-bold text-[#202020]">GeoSafe Operations</h2>
-      <p class="text-xs text-[#777777] font-medium">Verifying Administrator session...</p>
+  <div id="admin-loading" class="fixed inset-0 z-50 bg-slate-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg p-8 border border-slate-200 shadow-subtle text-center space-y-3 max-w-sm w-full">
+      <div class="w-7 h-7 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <h2 class="text-sm font-semibold text-slate-900">GeoSafe Operations</h2>
+      <p class="text-xs text-slate-500 font-medium">Verifying Administrator session...</p>
     </div>
   </div>
 
   <!-- Unauthorized Access Screen (RBAC Enforcement: isAuthorizedAdmin) -->
-  <div id="admin-unauthorized" class="hidden fixed inset-0 z-50 bg-[#FFF9E8] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl p-8 border border-[#FFC2C2] shadow-card text-center space-y-4 max-w-md w-full">
+  <div id="admin-unauthorized" class="hidden fixed inset-0 z-50 bg-slate-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg p-8 border border-red-200 shadow-subtle text-center space-y-4 max-w-md w-full">
       <div
-        class="w-12 h-12 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center mx-auto">
-        <svg class="w-6 h-6 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        class="w-10 h-10 rounded-md bg-red-50 border border-red-200 text-red-600 flex items-center justify-center mx-auto">
+        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
           <line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line>
           <line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line>
         </svg>
       </div>
       <div>
-        <h2 class="text-base font-bold text-[#202020]">Access Restricted</h2>
-        <p class="text-xs text-[#777777] mt-1 leading-relaxed">
+        <h2 class="text-base font-semibold text-slate-900">Access Restricted</h2>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">
           The GeoSafe Administrator Portal requires authenticated Administrator permissions.
         </p>
       </div>
       <div class="flex items-center justify-center gap-2 pt-1">
         <a href="login.html"
-          class="px-4 py-2 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs transition-colors shadow-subtle">
+          class="gs-btn-primary">
           Sign In as Administrator
         </a>
       </div>
@@ -323,34 +323,34 @@
   <!-- ====================================================================== -->
 
   <aside id="admin-sidebar"
-    class="fixed top-0 bottom-0 left-0 z-40 w-64 bg-white border-r border-[#EEEEEE] flex flex-col justify-between transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 shadow-subtle select-none">
+    class="fixed top-0 bottom-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col justify-between transition-all duration-300 ease-in-out -translate-x-full lg:translate-x-0 select-none">
 
     <!-- Sidebar Header (Logo Only - No Minimize Buttons Inside Sidebar) -->
     <div id="sidebar-header"
-      class="h-16 border-b border-[#EEEEEE] flex items-center px-4 flex-shrink-0 bg-white transition-all duration-200">
+      class="h-14 border-b border-slate-200 flex items-center px-4 flex-shrink-0 bg-white transition-all duration-200">
       <a href="admin.html" id="sidebar-logo-link"
-        class="flex items-center gap-3 min-w-0 focus:outline-none transition-all duration-200"
+        class="flex items-center gap-2.5 min-w-0 focus:outline-none transition-all duration-200"
         title="GeoSafe Admin - Barangay Bayanan">
         <div
-          class="w-9 h-9 rounded-xl bg-[#202020] text-[#F5B900] flex items-center justify-center font-bold text-xs shadow-subtle ring-2 ring-[#FFE872] flex-shrink-0">
-          <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          class="w-8 h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
           </svg>
         </div>
         <div class="min-w-0 sidebar-label-wrap">
           <div class="flex items-center gap-1.5">
-            <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020]">GeoSafe</span>
+            <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
             <span
-              class="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] uppercase tracking-wider">Admin</span>
+              class="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">Admin</span>
           </div>
-          <span class="text-[10px] text-[#777777] font-medium block truncate">Barangay Bayanan</span>
+          <span class="text-[10px] text-slate-500 font-medium block truncate">Barangay Bayanan</span>
         </div>
       </a>
 
       <!-- Mobile Close Drawer Button (Only Visible on Mobile < 1024px) -->
       <button type="button" onclick="window.GeoSafeAdmin.closeMobileDrawer()"
-        class="lg:hidden ml-auto p-1.5 rounded-lg border border-[#EEEEEE] hover:bg-[#FFF9E8] text-[#777777] hover:text-[#202020]"
+        class="lg:hidden ml-auto p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-900"
         aria-label="Close navigation">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -364,7 +364,7 @@
 
         <!-- 1. Dashboard -->
         <button type="button" data-admin-nav="dashboard" title="Dashboard Overview"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold bg-[#F5B900] text-[#202020] shadow-subtle transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-bold bg-[#F5B900] text-[#202020] shadow-subtle transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -377,7 +377,7 @@
 
         <!-- 2. Incident Reports -->
         <button type="button" data-admin-nav="reports" title="Incident Reports"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -392,7 +392,7 @@
 
         <!-- 3. Responder Management -->
         <button type="button" data-admin-nav="responders" title="Responder Management"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -405,7 +405,7 @@
 
         <!-- 4. User Management -->
         <button type="button" data-admin-nav="users" title="User Management"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -418,7 +418,7 @@
 
         <!-- 5. Alerts & Notifications -->
         <button type="button" data-admin-nav="alerts" title="Alerts &amp; Notifications"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -431,7 +431,7 @@
 
         <!-- 6. Reports & Analytics -->
         <button type="button" data-admin-nav="analytics" title="Reports &amp; Analytics"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -444,7 +444,7 @@
 
         <!-- 7. System Settings -->
         <button type="button" data-admin-nav="settings" title="System Settings"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -459,7 +459,7 @@
 
         <!-- 8. Audit Logs -->
         <button type="button" data-admin-nav="audit" title="Audit Logs"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -472,7 +472,7 @@
 
         <!-- 9. Messages -->
         <button type="button" data-admin-nav="messages" title="Messages"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all">
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
           <span class="flex items-center gap-3 min-w-0">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -499,13 +499,13 @@
 
     <!-- Fixed Top Header within Main Content Area -->
     <header
-      class="h-16 bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] sticky top-0 z-20 flex-shrink-0 shadow-subtle min-w-0">
+      class="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 flex-shrink-0 shadow-subtle min-w-0">
       <div class="h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
 
         <div class="flex items-center gap-3 min-w-0">
           <!-- Single Unified Sidebar Toggle Button (Hamburger) -->
           <button id="topbar-sidebar-toggle-btn" type="button" onclick="window.GeoSafeAdmin.handleSidebarToggle()"
-            class="p-2 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] text-[#202020] flex items-center justify-center flex-shrink-0 transition-colors shadow-xs focus:outline-none"
+            class="p-2 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[#202020] flex items-center justify-center flex-shrink-0 transition-colors shadow-xs focus:outline-none"
             title="Collapse sidebar" aria-label="Toggle navigation sidebar">
             <svg id="topbar-toggle-icon" class="w-5 h-5 text-[#555555]" fill="none" stroke="currentColor"
               viewBox="0 0 24 24">
@@ -523,7 +523,7 @@
 
         <div class="flex items-center gap-3 flex-shrink-0">
           <div
-            class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+            class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Live System</span>
           </div>
@@ -535,7 +535,7 @@
           <!-- Interactive Admin Profile Section & Dropdown -->
           <div class="relative" id="admin-header-profile-wrapper">
             <button type="button" id="admin-profile-menu-btn" onclick="window.GeoSafeAdmin.toggleProfileDropdown(event)"
-              class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
+              class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-lg hover:bg-slate-100 border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
               aria-haspopup="true" aria-expanded="false" title="Administrator menu">
               <div id="admin-header-avatar"
                 class="w-8 h-8 rounded-full bg-[#FFF3D0] border border-[#FFD54F] text-[#202020] font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
@@ -556,9 +556,9 @@
 
             <!-- Dropdown Menu -->
             <div id="admin-profile-dropdown"
-              class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-[#EEEEEE] shadow-modal py-1.5 z-50 transform origin-top-right transition-all"
+              class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-lg border border-slate-200 shadow-modal py-1.5 z-50 transform origin-top-right transition-all"
               role="menu" aria-orientation="vertical">
-              <div class="px-3.5 py-2 border-b border-[#EEEEEE] sm:hidden">
+              <div class="px-3.5 py-2 border-b border-slate-200 sm:hidden">
                 <span id="admin-header-name-mobile"
                   class="text-xs font-bold text-[#202020] block truncate">Administrator</span>
                 <span id="admin-header-role-mobile"
@@ -566,14 +566,14 @@
               </div>
               <button type="button" id="admin-menu-item-profile" role="menuitem"
                 onclick="window.GeoSafeAdmin.openAdminProfileModal()"
-                class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-[#FFF9E8] hover:text-[#8A6800] transition-colors text-left">
+                class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-slate-100 hover:text-[#8A6800] transition-colors text-left">
                 <svg class="w-4 h-4 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                 </svg>
                 <span>Profile</span>
               </button>
-              <div class="my-1 border-t border-[#EEEEEE]"></div>
+              <div class="my-1 border-t border-slate-200"></div>
               <button type="button" id="admin-menu-item-logout" role="menuitem" onclick="handleAdminLogout()"
                 class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#D93636] hover:bg-[#FFF1F1] transition-colors text-left">
                 <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -600,33 +600,33 @@
 
         <!-- 6 Summary Statistics Cards (Uniform Responsive CSS Grid) -->
         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Total Reports</span>
             <span id="stat-total-reports" class="text-2xl font-bold text-[#202020] mt-2 block">0</span>
           </div>
 
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Pending Review</span>
             <span id="stat-pending-review" class="text-2xl font-bold text-[#8A6800] mt-2 block">0</span>
           </div>
 
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Verified Incidents</span>
             <span id="stat-verified-incidents" class="text-2xl font-bold text-emerald-700 mt-2 block">0</span>
           </div>
 
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Active Rescues</span>
             <span id="stat-active-rescues" class="text-2xl font-bold text-[#D93636] mt-2 block">0</span>
           </div>
 
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Available
               Responders</span>
             <span id="stat-available-responders" class="text-2xl font-bold text-[#202020] mt-2 block">0</span>
           </div>
 
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card flex flex-col justify-between">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle flex flex-col justify-between">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Registered
               Residents</span>
             <span id="stat-registered-residents" class="text-2xl font-bold text-[#202020] mt-2 block">0</span>
@@ -638,21 +638,21 @@
 
           <!-- Left Column: Large Interactive Incident Map (8 cols on desktop) -->
           <div
-            class="lg:col-span-8 bg-white rounded-2xl border border-[#EEEEEE] shadow-card flex flex-col overflow-hidden h-[600px]">
+            class="lg:col-span-8 bg-white rounded-lg border border-slate-200 shadow-subtle flex flex-col overflow-hidden h-[600px]">
             <!-- Map Toolbar Header -->
             <div
-              class="p-4 border-b border-[#EEEEEE] flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 bg-white">
+              class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 bg-white">
               <div class="flex items-center gap-2.5">
                 <h2 class="text-sm font-bold text-[#202020]">Real-Time Incident Map</h2>
                 <span id="admin-map-count-badge"
-                  class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">0
+                  class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">0
                   markers</span>
               </div>
 
               <!-- Map Filter Controls (Consistent 36px / h-9 Heights) -->
               <div class="flex flex-wrap items-center gap-2">
                 <select id="map-filter-type" aria-label="Filter by Report Type"
-                  class="h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="all">All Types</option>
                   <option value="incident">Incident Reports</option>
                   <option value="rescue">Rescue Requests</option>
@@ -660,7 +660,7 @@
                 </select>
 
                 <select id="map-filter-status" aria-label="Filter by Status"
-                  class="h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="all">All Statuses</option>
                   <option value="pending">Pending</option>
                   <option value="under_review">Under Review</option>
@@ -670,21 +670,21 @@
                 </select>
 
                 <button type="button" onclick="window.GeoSafeAdmin.loadDashboardOverview()"
-                  class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+                  class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
                   Refresh
                 </button>
               </div>
             </div>
 
             <!-- Map Viewport Container -->
-            <div class="relative flex-1 w-full bg-[#FFF9E8]/30">
+            <div class="relative flex-1 w-full bg-slate-50">
               <div id="admin-incident-map" class="w-full h-full z-10"></div>
 
               <!-- Map Loading Overlay -->
               <div id="admin-map-loading"
                 class="hidden absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex items-center justify-center">
                 <div
-                  class="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white border border-[#EEEEEE] shadow-card text-xs font-semibold text-[#555555]">
+                  class="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 shadow-subtle text-xs font-semibold text-[#555555]">
                   <div class="w-4 h-4 border-2 border-[#F5B900] border-t-transparent rounded-full animate-spin"></div>
                   <span>Loading incident coordinates...</span>
                 </div>
@@ -694,25 +694,25 @@
               <div id="admin-map-error"
                 class="hidden absolute inset-0 z-20 bg-white/90 flex items-center justify-center p-4">
                 <div
-                  class="max-w-sm bg-white rounded-2xl p-4 border border-[#FFC2C2] shadow-card text-center space-y-2">
+                  class="max-w-sm bg-white rounded-lg p-4 border border-[#FFC2C2] shadow-subtle text-center space-y-2">
                   <p id="admin-map-error-text" class="text-xs font-semibold text-[#D93636]">Unable to load map markers.
                   </p>
                   <button type="button" onclick="window.GeoSafeAdmin.loadDashboardOverview()"
-                    class="px-3 py-1.5 rounded-xl bg-[#F5B900] text-[#202020] text-xs font-bold">Retry</button>
+                    class="px-3 py-1.5 rounded-md bg-[#F5B900] text-[#202020] text-xs font-bold">Retry</button>
                 </div>
               </div>
 
               <!-- Map Empty State Overlay -->
               <div id="admin-map-empty" class="hidden absolute bottom-4 left-4 z-20 pointer-events-none">
                 <div
-                  class="px-3.5 py-2 rounded-xl bg-white/95 border border-[#EEEEEE] shadow-card text-xs font-semibold text-[#555555]">
+                  class="px-3.5 py-2 rounded-md bg-white/95 border border-slate-200 shadow-subtle text-xs font-semibold text-[#555555]">
                   <span id="admin-map-empty-text">No incident locations are currently available.</span>
                 </div>
               </div>
 
               <!-- Compact Marker Info Panel -->
               <div id="admin-map-marker-panel"
-                class="hidden absolute top-3 right-3 z-20 w-72 sm:w-80 bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card space-y-2.5">
+                class="hidden absolute top-3 right-3 z-20 w-72 sm:w-80 bg-white rounded-lg p-4 border border-slate-200 shadow-subtle space-y-2.5">
                 <div class="flex items-start justify-between gap-2">
                   <div>
                     <span id="map-panel-type"
@@ -725,7 +725,7 @@
                   </button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-2 text-xs border-t border-b border-[#EEEEEE] py-2">
+                <div class="grid grid-cols-2 gap-2 text-xs border-t border-b border-slate-200 py-2">
                   <div>
                     <span class="text-[10px] text-[#777777] block">Category</span>
                     <span id="map-panel-category" class="font-bold text-[#202020]">-</span>
@@ -746,7 +746,7 @@
                 </div>
 
                 <button id="map-panel-action-btn" type="button" onclick="window.GeoSafeAdmin.handleMapPanelReview()"
-                  class="w-full h-9 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
+                  class="w-full h-9 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
                   Review Details
                 </button>
               </div>
@@ -755,8 +755,8 @@
 
           <!-- Right Column: System Activity Feed (4 cols on desktop) -->
           <div
-            class="lg:col-span-4 bg-white rounded-2xl p-5 border border-[#EEEEEE] shadow-card flex flex-col justify-between h-[600px]">
-            <div class="flex items-center justify-between pb-3 border-b border-[#EEEEEE] flex-shrink-0">
+            class="lg:col-span-4 bg-white rounded-lg p-5 border border-slate-200 shadow-subtle flex flex-col justify-between h-[600px]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
               <div>
                 <h3 class="text-sm font-bold text-[#202020]">System Activity Feed</h3>
                 <p class="text-xs text-[#777777]">Actual operational events from MySQL.</p>
@@ -782,22 +782,22 @@
       <!-- ================================================================ -->
       <section id="section-reports" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-base font-bold text-[#202020]">Disaster Reports &amp; Rescue Requests</h2>
               <p class="text-xs text-[#777777]">Review, verify, dispatch responders, and manage incident operations.</p>
             </div>
             <button type="button" onclick="window.GeoSafeAdmin.loadReportsList()"
-              class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+              class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
               Refresh Records
             </button>
           </div>
 
           <!-- Filter Toolbar with Uniform Heights (36px / h-9) -->
-          <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-[#EEEEEE]">
+          <div class="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-200">
             <!-- Status Pills -->
-            <div class="inline-flex rounded-xl bg-[#FFF9E8]/70 p-1 border border-[#EEEEEE] text-xs font-bold">
+            <div class="inline-flex rounded-md bg-slate-50 p-1 border border-slate-200 text-xs font-bold">
               <button type="button" data-report-filter="all"
                 class="report-filter-btn px-3 py-1 rounded-lg bg-[#202020] text-[#FFF9E8]">All</button>
               <button type="button" data-report-filter="pending"
@@ -809,12 +809,12 @@
               <button type="button" data-report-filter="rejected"
                 class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Rejected</button>
               <button type="button" data-report-filter="resolved"
-                class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Resolved</button>
+                class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Closed / History</button>
             </div>
 
             <!-- Type Selector -->
             <select id="reports-type-select"
-              class="h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-semibold text-[#202020]">
+              class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020]">
               <option value="all">All Categories</option>
               <option value="incident">Incidents Only</option>
               <option value="rescue">Rescues Only</option>
@@ -823,14 +823,14 @@
             <!-- Search Input -->
             <div class="flex-1 min-w-[220px]">
               <input id="reports-search-input" type="text" placeholder="Search reference, keyword, location..."
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/30 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
             </div>
           </div>
 
           <!-- Reports Data Table -->
-          <div class="overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle">
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left">
-              <thead class="bg-[#FFF9E8]/70">
+              <thead class="bg-slate-50">
                 <tr>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Reference</th>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Type &amp; Category</th>
@@ -857,9 +857,9 @@
             <span id="reports-pagination-info" class="text-xs text-[#777777] font-medium">Page 1 of 1 (0 items)</span>
             <div class="flex items-center gap-2">
               <button id="reports-prev-btn" type="button" onclick="window.GeoSafeAdmin.navigateReportsPage(-1)"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
               <button id="reports-next-btn" type="button" onclick="window.GeoSafeAdmin.navigateReportsPage(1)"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
             </div>
           </div>
         </div>
@@ -873,25 +873,25 @@
 
         <!-- 4 Summary Counter Cards -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Total Responders</span>
             <span id="stat-resp-total" class="text-2xl font-bold text-[#202020] mt-1 block">0</span>
           </div>
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">On Duty</span>
             <span id="stat-resp-onduty" class="text-2xl font-bold text-emerald-600 mt-1 block">0</span>
           </div>
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Off Duty</span>
             <span id="stat-resp-offduty" class="text-2xl font-bold text-[#777777] mt-1 block">0</span>
           </div>
-          <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
+          <div class="bg-white rounded-lg p-4 border border-slate-200 shadow-subtle">
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Active Dispatches</span>
             <span id="stat-resp-active" class="text-2xl font-bold text-[#D93636] mt-1 block">0</span>
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-base font-bold text-[#202020]">Responder Personnel &amp; Dispatch</h2>
@@ -899,20 +899,20 @@
             </div>
             <div class="flex items-center gap-2">
               <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal()"
-                class="h-9 px-3.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors">
+                class="h-9 px-3.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors">
                 Assign Dispatch
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.loadRespondersList()"
-                class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020]">
+                class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020]">
                 Refresh
               </button>
             </div>
           </div>
 
           <!-- Responders Table -->
-          <div class="overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle">
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left">
-              <thead class="bg-[#FFF9E8]/70">
+              <thead class="bg-slate-50">
                 <tr>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Responder ID</th>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Responder Name</th>
@@ -943,7 +943,7 @@
       <!-- ================================================================ -->
       <section id="section-users" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-base font-bold text-[#202020]">User Account Management</h2>
@@ -951,23 +951,23 @@
             </div>
             <div class="flex items-center gap-2">
               <button id="users-refresh-btn" type="button"
-                class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+                class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
                 Refresh
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.openCreateResidentModal()"
-                class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors">
+                class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
                 Register Resident
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.openCreateResponderModal()"
-                class="h-9 px-3.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
+                class="h-9 px-3.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
                 Register Responder
               </button>
             </div>
           </div>
 
           <!-- Role Tabs, Status Filter & Search Toolbar -->
-          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#EEEEEE]">
-            <div class="inline-flex rounded-xl bg-[#FFF9E8]/70 p-1 border border-[#EEEEEE] text-xs font-bold">
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <div class="inline-flex rounded-md bg-slate-50 p-1 border border-slate-200 text-xs font-bold">
               <button id="users-tab-residents" type="button"
                 class="user-role-tab-btn px-4 py-1.5 rounded-lg bg-[#202020] text-[#FFF9E8]">Residents</button>
               <button id="users-tab-responders" type="button"
@@ -977,19 +977,15 @@
             <div class="flex flex-wrap items-center gap-2.5 flex-1 justify-end">
               <!-- Location Verification Filter Dropdown (Residents) -->
               <select id="users-location-filter-select"
-                class="h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                 <option value="all">All Location Statuses</option>
                 <option value="verified">Verified</option>
-                <option value="outside_boundary">Outside Boundary</option>
                 <option value="pending_review">Pending Review</option>
-                <option value="gps_denied">GPS Denied</option>
-                <option value="gps_unavailable">GPS Unavailable</option>
-                <option value="retry_required">Retry Required</option>
               </select>
 
               <!-- Account Status Filter Dropdown -->
               <select id="users-status-select"
-                class="h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                 <option value="all">All Statuses</option>
                 <option value="active">Active</option>
                 <option value="suspended">Suspended</option>
@@ -999,34 +995,34 @@
               <!-- Search Input -->
               <div class="w-full sm:w-64 max-w-xs">
                 <input id="users-search-input" type="text" placeholder="Search User ID, name, email..."
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/30 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
               </div>
             </div>
           </div>
 
           <!-- Users Table Container with Fixed Scroll Constraint -->
           <div
-            class="max-h-[calc(100vh-340px)] min-h-[360px] overflow-y-auto overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle custom-scrollbar">
+            class="max-h-[calc(100vh-340px)] min-h-[360px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle custom-scrollbar">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left border-collapse">
-              <thead class="bg-[#FFF9E8] sticky top-0 z-10 shadow-xs">
+              <thead class="bg-slate-50 sticky top-0 z-10 shadow-xs">
                 <tr>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     User ID</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Full Name</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Email Address</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Role</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Account Status</th>
                   <th id="users-th-location-verification"
-                    class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                    class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Location Verification</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8]">
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
                     Registration Date</th>
                   <th
-                    class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-[#FFF9E8] text-right">
+                    class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50 text-right">
                     Actions</th>
                 </tr>
               </thead>
@@ -1047,9 +1043,9 @@
             <span id="users-pagination-info" class="text-xs text-[#777777] font-medium">Page 1 of 1 (0 users)</span>
             <div class="flex items-center gap-2">
               <button id="users-prev-btn" type="button"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
               <button id="users-next-btn" type="button"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
             </div>
           </div>
         </div>
@@ -1062,7 +1058,7 @@
       <section id="section-alerts" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
         <!-- Broadcast Alert Creation Form -->
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div>
             <h2 class="text-base font-bold text-[#202020]">Broadcast Alerts</h2>
             <p class="text-xs text-[#777777]">Publish emergency announcements and safety advisories to Residents and
@@ -1072,7 +1068,7 @@
           <form id="emergency-broadcast-form" onsubmit="window.GeoSafeAdmin.handleBroadcastSubmit(event)"
             class="space-y-4">
             <div id="broadcast-form-error"
-              class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
+              class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1081,7 +1077,7 @@
                   class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Alert Title *</label>
                 <input id="broadcast-title-input" type="text" required
                   placeholder="e.g. Flood Warning: High Lake Water Level"
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
               </div>
               <div>
                 <div class="flex items-center justify-between mb-1">
@@ -1091,7 +1087,7 @@
                     class="text-[10px] font-bold text-[#8A6800] hover:text-[#202020]">+ Add</button>
                 </div>
                 <select id="broadcast-advisory-type-select" required
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="">Loading categories...</option>
                 </select>
               </div>
@@ -1099,7 +1095,7 @@
                 <label for="broadcast-urgency-select"
                   class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Urgency Level *</label>
                 <select id="broadcast-urgency-select" required
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="">Select urgency level...</option>
                   <option value="Informational">Informational</option>
                   <option value="Advisory">Advisory</option>
@@ -1114,7 +1110,7 @@
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Alert Message / Instructions *</label>
               <textarea id="broadcast-message-input" required rows="3"
                 placeholder="Provide emergency instructions, evacuation center locations, and safety guidelines..."
-                class="w-full p-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]"></textarea>
+                class="w-full p-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]"></textarea>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1123,13 +1119,13 @@
                   class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Affected Location (Optional)</label>
                 <input id="broadcast-affected-location-input" type="text"
                   placeholder="e.g. Entire Barangay Bayanan, Purok 3, Riverside Area"
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
               </div>
               <div>
                 <label for="broadcast-scope-select"
                   class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Target Audience *</label>
                 <select id="broadcast-scope-select" required
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="Everyone">Everyone (Residents &amp; Responders)</option>
                   <option value="Residents">Residents</option>
                   <option value="Responders">Responders</option>
@@ -1140,39 +1136,45 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
               <div>
                 <label for="broadcast-expiration-select"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Expiration Date and Time *</label>
+                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Expiration Duration *</label>
                 <select id="broadcast-expiration-select" required
                   onchange="window.GeoSafeAdmin.handleExpirationDurationChange()"
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
-                  <option value="30">30 minutes</option>
-                  <option value="60">1 hour</option>
-                  <option value="120">2 hours</option>
-                  <option value="240" selected>4 hours</option>
-                  <option value="480">8 hours</option>
-                  <option value="720">12 hours</option>
-                  <option value="1440">24 hours</option>
-                  <option value="custom">Custom expiration date and time</option>
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-900">
+                  <option value="1">1 hour</option>
+                  <option value="3">3 hours</option>
+                  <option value="6">6 hours</option>
+                  <option value="12" selected>12 hours</option>
+                  <option value="24">24 hours</option>
+                  <option value="48">48 hours</option>
+                  <option value="custom">Custom duration (hours)</option>
                 </select>
               </div>
               <div id="broadcast-custom-expiration-wrap" class="hidden">
-                <label for="broadcast-custom-expiration-input"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Custom Expiration (Asia/Manila)
-                  *</label>
-                <input id="broadcast-custom-expiration-input" type="datetime-local"
+                <label for="broadcast-custom-hours-input"
+                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Custom Duration (Hours, 1–168) *</label>
+                <input id="broadcast-custom-hours-input" type="number" min="1" max="168" step="1"
+                  placeholder="Enter hours (1–168)"
                   oninput="window.GeoSafeAdmin.updateBroadcastExpirationPreview()"
-                  class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:border-slate-900">
               </div>
             </div>
 
             <div id="broadcast-expiration-preview"
-              class="p-2.5 rounded-xl bg-[#FFF9E8]/70 border border-[#FFE872] text-[11px] text-[#555555] flex items-center justify-between gap-2">
-              <span>Calculated Expiration (Asia/Manila): <strong id="broadcast-expiration-preview-time"
-                  class="text-[#202020]">--</strong></span>
+              class="p-3 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
+                  <polyline points="12 6 12 12 16 14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                </svg>
+                <span class="font-medium text-slate-700">Choose how long this broadcast alert should remain active. It will automatically expire after the selected duration.</span>
+              </div>
+              <span class="text-[11px] text-slate-500 gs-tabular">Est. Expiration: <strong id="broadcast-expiration-preview-time"
+                  class="text-slate-900">--</strong></span>
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-1">
               <button type="submit" id="broadcast-form-submit-btn"
-                class="h-9 px-5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                class="h-9 px-5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 Review &amp; Publish Broadcast
               </button>
             </div>
@@ -1180,14 +1182,14 @@
         </div>
 
         <!-- Broadcast Management Table -->
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-bold text-[#202020]">Broadcast Management</h3>
               <p class="text-xs text-[#777777]">Active, expired, and historical broadcast alerts.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <div class="inline-flex rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] p-0.5" role="tablist">
+              <div class="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5" role="tablist">
                 <button type="button" data-broadcast-tab="Active"
                   onclick="window.GeoSafeAdmin.setBroadcastManagementTab('Active')"
                   class="broadcast-tab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-[#F5B900] text-[#202020]">Active
@@ -1203,15 +1205,15 @@
               </div>
               <input type="hidden" id="admin-broadcasts-status-filter" value="Active">
               <button type="button" onclick="window.GeoSafeAdmin.loadBroadcastsList()"
-                class="h-8 px-3 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020]">
+                class="h-8 px-3 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020]">
                 Refresh
               </button>
             </div>
           </div>
 
-          <div class="overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle">
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left">
-              <thead class="bg-[#FFF9E8]/70">
+              <thead class="bg-slate-50">
                 <tr>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Alert Title</th>
                   <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase">Category</th>
@@ -1241,128 +1243,191 @@
       <!-- ================================================================ -->
       <!-- SECTION 6: REPORTS & ANALYTICS                                   -->
       <!-- ================================================================ -->
-      <section id="section-analytics" class="space-y-6 hidden min-w-0 max-w-full" hidden>
+      <section id="section-analytics" class="space-y-3 hidden min-w-0 max-w-full" hidden>
 
-        <!-- Analytics Filter Toolbar Card -->
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 class="text-base font-bold text-[#202020]">Reports &amp; Analytics</h2>
-              <p class="text-xs text-[#777777]">Aggregated statistical summaries and historical disaster analysis from
-                MySQL.</p>
-            </div>
-            <button type="button" onclick="window.GeoSafeAdmin.downloadAnalyticsCsv()"
-              class="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl bg-[#202020] hover:bg-[#333333] text-[#FFF9E8] text-xs font-bold shadow-subtle transition-colors">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                </path>
-              </svg>
-              <span>Export to CSV</span>
-            </button>
-          </div>
+        <!-- Unified EOC Incident Count Workspace: Header Toolbar + Primary Daily Chart -->
+        <div class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
 
-          <div
-            class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3 bg-[#FFF9E8]/50 p-3.5 rounded-2xl border border-[#EEEEEE]">
-            <div>
-              <label for="analytics-period-select"
-                class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Time Period</label>
-              <select id="analytics-period-select"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020]">
-                <option value="all">All Available Records</option>
-                <option value="today">Today</option>
-                <option value="7d">Last 7 Days</option>
-                <option value="30d">Last 30 Days</option>
-                <option value="this_month">This Month</option>
-                <option value="last_month">Last Month</option>
-                <option value="this_year">This Year</option>
-                <option value="custom">Custom Date Range</option>
-              </select>
-            </div>
-
-            <div id="analytics-custom-date-container" class="hidden sm:col-span-2 grid grid-cols-2 gap-2">
+          <!-- Compact Single-Row EOC Toolbar -->
+          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <!-- Left: Back + Title + Date Range Selector -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" onclick="window.GeoSafeAdmin.navigateTo('dashboard')"
+                class="inline-flex items-center justify-center w-7 h-7 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-[#0f172a] transition-colors"
+                title="Back to Dashboard" aria-label="Back to Dashboard">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+              </button>
+              <h2 class="text-[15px] font-bold text-[#0f172a] tracking-tight">Incident Count</h2>
+              <span class="hidden sm:inline-block h-4 w-px bg-slate-300 mx-0.5"></span>
               <div>
-                <label for="analytics-date-from"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">From</label>
-                <input id="analytics-date-from" type="date"
-                  class="w-full h-9 px-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
-              </div>
-              <div>
-                <label for="analytics-date-to"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">To</label>
-                <input id="analytics-date-to" type="date"
-                  class="w-full h-9 px-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                <label for="analytics-period-select" class="sr-only">Date Filter</label>
+                <select id="analytics-period-select"
+                  class="h-7 pl-2 pr-6 rounded-[3px] border border-slate-300 bg-white text-xs font-semibold text-[#0f172a] hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-[#0A58CA] focus:border-[#0A58CA]">
+                  <option value="today">Today</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="this_month" selected>This Month</option>
+                  <option value="last_month">Last Month</option>
+                  <option value="this_year">This Year</option>
+                  <option value="all">All Available Records</option>
+                  <option value="custom">Custom Date Range</option>
+                </select>
               </div>
             </div>
 
-            <div class="flex items-end">
-              <button type="button" onclick="window.GeoSafeAdmin.loadAnalyticsData()"
-                class="w-full h-9 px-3.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
-                Apply Filter
+            <!-- Right: Schedule, Print, Email, Export Actions -->
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button type="button" onclick="window.GeoSafeAdmin.scheduleAnalyticsReport()"
+                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <span>Schedule</span>
+              </button>
+              <button type="button" onclick="window.GeoSafeAdmin.printAnalyticsReport()"
+                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                </svg>
+                <span>Print</span>
+              </button>
+              <button type="button" onclick="window.GeoSafeAdmin.emailAnalyticsSummary()"
+                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                <span>Email</span>
+              </button>
+              <button type="button" onclick="window.GeoSafeAdmin.downloadAnalyticsCsv()"
+                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-[#0f172a] bg-[#0f172a] hover:bg-[#1e293b] text-xs font-medium text-white transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <span>Export</span>
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Two-Column Layout: 4 Stacked Summary Cards (Left) + Disaster Reports Doughnut Chart (Right) -->
-        <div id="analytics-stats-chart-layout">
-          <div id="analytics-stats-column">
-            <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
-              <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Total Incidents</span>
-              <span id="analytics-total-reports" class="text-2xl font-bold text-[#202020] mt-1 block">0</span>
+          <!-- Custom Date Range Bar (shown when Custom Date Range is selected) -->
+          <div id="analytics-custom-date-container"
+            class="hidden px-4 py-2 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center gap-2.5">
+            <div class="flex items-center gap-1.5">
+              <label for="analytics-date-from" class="text-[11px] font-semibold text-slate-600 uppercase">From</label>
+              <input id="analytics-date-from" type="date"
+                class="h-7 px-2 rounded-[3px] border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
-            <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
-              <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Total Rescues</span>
-              <span id="analytics-total-rescues" class="text-2xl font-bold text-[#D93636] mt-1 block">0</span>
+            <div class="flex items-center gap-1.5">
+              <label for="analytics-date-to" class="text-[11px] font-semibold text-slate-600 uppercase">To</label>
+              <input id="analytics-date-to" type="date"
+                class="h-7 px-2 rounded-[3px] border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
-            <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
-              <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Total Operations</span>
-              <span id="analytics-total-events" class="text-2xl font-bold text-[#202020] mt-1 block">0</span>
-            </div>
-            <div class="bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card">
-              <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">Active Dispatches</span>
-              <span id="analytics-active-assignments" class="text-2xl font-bold text-[#8A6800] mt-1 block">0</span>
-            </div>
+            <button type="button" onclick="window.GeoSafeAdmin.loadAnalyticsData()"
+              class="h-7 px-3 rounded-[3px] bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-semibold transition-colors">
+              Apply
+            </button>
           </div>
 
-          <!-- Disaster Reports Distribution Doughnut Chart (Filtered) -->
+          <!-- Primary Chart Surface: Incidents by Day -->
+          <div id="analytics-daily-chart-card" class="px-4 pt-3.5 pb-4">
+            <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 pb-2.5 border-b border-slate-200">
+              <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                <h3 class="text-sm font-bold text-[#0f172a]">Incidents by Day</h3>
+                <p class="text-xs text-slate-500">Number of incident reports per day for the selected period</p>
+              </div>
+              <span id="analytics-daily-range-label"
+                class="text-xs font-medium text-slate-600 tabular-nums"></span>
+            </div>
+
+            <div class="relative pt-3 overflow-x-auto">
+              <div id="analytics-daily-bar-chart" class="w-full min-w-[560px]"></div>
+              <div id="analytics-daily-empty"
+                class="hidden py-10 text-center text-xs text-slate-500">
+                No incident reports recorded for the selected date range.
+              </div>
+              <div id="analytics-daily-tooltip"
+                class="hidden pointer-events-none fixed z-50 px-2.5 py-1 rounded-[3px] bg-[#0f172a] text-white text-xs font-medium shadow-md whitespace-nowrap">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compact 4-Column Operational Metrics Strip -->
+        <div class="bg-white border border-slate-300 rounded-[3px] grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+          <div class="px-4 py-3">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Incidents</span>
+            <span id="analytics-total-reports" class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
+          </div>
+          <div class="px-4 py-3">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Rescues</span>
+            <span id="analytics-total-rescues" class="text-xl font-bold text-[#b91c1c] tabular-nums mt-0.5 block">0</span>
+          </div>
+          <div class="px-4 py-3">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Operations</span>
+            <span id="analytics-total-events" class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
+          </div>
+          <div class="px-4 py-3">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Dispatches</span>
+            <span id="analytics-active-assignments" class="text-xl font-bold text-[#0A58CA] tabular-nums mt-0.5 block">0</span>
+          </div>
+        </div>
+
+        <!-- Secondary Breakdowns: Category Doughnut + Operational Tables -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <!-- Disaster Reports Distribution Doughnut Chart -->
           <div id="analytics-category-doughnut-card"
-            class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card w-full min-w-0 flex flex-col">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#EEEEEE]">
+            class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-2">
               <div>
-                <h3 class="text-sm sm:text-base font-bold text-[#202020]">Reports by Disaster Category</h3>
-                <p class="text-xs text-[#777777]">Total Incident Reports</p>
+                <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Reports by Disaster Category</h3>
               </div>
               <span id="analytics-category-total-badge"
-                class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] self-start sm:self-auto">
+                class="inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
                 0 Total Reports
               </span>
             </div>
-            <div id="analytics-category-doughnut" class="pt-4 flex-1 flex items-center justify-center w-full"></div>
-          </div>
-        </div>
-
-        <!-- Breakdown Cards Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-white rounded-2xl p-5 border border-[#EEEEEE] shadow-card space-y-3">
-            <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Incident Category Breakdown</h3>
-            <div id="analytics-categories-list" class="space-y-2 text-xs"></div>
-            <div id="analytics-categories-empty" class="hidden p-4 text-center text-xs text-[#777777]">No categorized
-              incidents recorded.</div>
+            <div id="analytics-category-doughnut" class="p-4 flex-1 flex items-center justify-center w-full"></div>
           </div>
 
-          <div class="bg-white rounded-2xl p-5 border border-[#EEEEEE] shadow-card space-y-3">
-            <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Incident Status Distribution</h3>
-            <div id="analytics-statuses-list" class="space-y-2 text-xs"></div>
-            <div id="analytics-statuses-empty" class="hidden p-4 text-center text-xs text-[#777777]">No status records
-              recorded.</div>
+          <!-- Incident Category Breakdown -->
+          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
+              <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Incident Category Breakdown</h3>
+            </div>
+            <div class="p-4 flex-1">
+              <div id="analytics-categories-list" class="text-xs"></div>
+              <div id="analytics-categories-empty" class="hidden py-6 text-center text-xs text-slate-500">No categorized
+                incidents recorded.</div>
+            </div>
           </div>
 
-          <div class="bg-white rounded-2xl p-5 border border-[#EEEEEE] shadow-card space-y-3">
-            <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Top Incident Locations</h3>
-            <div id="analytics-locations-list" class="space-y-2 text-xs"></div>
-            <div id="analytics-locations-empty" class="hidden p-4 text-center text-xs text-[#777777]">No location data
-              recorded.</div>
+          <!-- Incident Status Distribution -->
+          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
+              <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Incident Status Distribution</h3>
+            </div>
+            <div class="p-4 flex-1">
+              <div id="analytics-statuses-list" class="text-xs"></div>
+              <div id="analytics-statuses-empty" class="hidden py-6 text-center text-xs text-slate-500">No status records
+                recorded.</div>
+            </div>
+          </div>
+
+          <!-- Top Incident Locations -->
+          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
+              <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Top Incident Locations</h3>
+            </div>
+            <div class="p-4 flex-1">
+              <div id="analytics-locations-list" class="text-xs"></div>
+              <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location data
+                recorded.</div>
+            </div>
           </div>
         </div>
 
@@ -1376,14 +1441,14 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
           <!-- General Configuration Form (system_settings) -->
-          <div class="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+          <div class="lg:col-span-2 bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
             <div>
               <h2 class="text-base font-bold text-[#202020]">System Configuration</h2>
               <p class="text-xs text-[#777777]">Configurable operational parameters stored in MySQL system_settings
                 table.</p>
             </div>
 
-            <div id="settings-save-feedback" class="hidden p-2.5 rounded-xl text-xs font-semibold"></div>
+            <div id="settings-save-feedback" class="hidden p-2.5 rounded-md text-xs font-semibold"></div>
 
             <div id="system-settings-list" class="space-y-3"></div>
 
@@ -1393,22 +1458,22 @@
 
           <!-- System & Database Health -->
           <div class="space-y-6">
-            <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-3">
+            <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-3">
               <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Database &amp; Server Health</h3>
               <div class="space-y-2 text-xs">
-                <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
                   <span class="text-[#777777]">PostgreSQL Server</span>
                   <span id="health-db-status" class="font-bold text-emerald-600">Operational</span>
                 </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
                   <span class="text-[#777777]">Database Latency</span>
                   <span id="health-db-latency" class="font-mono text-[#202020]">-</span>
                 </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
                   <span class="text-[#777777]">Server Uptime</span>
                   <span id="health-server-uptime" class="font-bold text-[#202020]">-</span>
                 </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-[#EEEEEE]">
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
                   <span class="text-[#777777]">Environment</span>
                   <span id="health-environment" class="font-bold text-[#202020]">-</span>
                 </div>
@@ -1420,14 +1485,14 @@
             </div>
 
             <!-- Security Stats -->
-            <div class="bg-white rounded-2xl p-5 border border-[#EEEEEE] shadow-card space-y-3">
+            <div class="bg-white rounded-lg p-5 border border-slate-200 shadow-subtle space-y-3">
               <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Security Activity (24h)</h3>
               <div class="grid grid-cols-2 gap-3 text-center">
-                <div class="bg-[#FFF1F1] border border-[#FFC2C2] rounded-xl p-3">
+                <div class="bg-[#FFF1F1] border border-[#FFC2C2] rounded-md p-3">
                   <span class="text-[10px] font-bold text-[#D93636] uppercase block">Failed Logins</span>
                   <span id="security-stat-failed" class="text-xl font-bold text-[#D93636] block mt-1">0</span>
                 </div>
-                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <div class="bg-emerald-50 border border-emerald-200 rounded-md p-3">
                   <span class="text-[10px] font-bold text-emerald-700 uppercase block">Successful Logins</span>
                   <span id="security-stat-success" class="text-xl font-bold text-emerald-700 block mt-1">0</span>
                 </div>
@@ -1438,12 +1503,12 @@
         </div>
 
         <!-- Recent Security Events / Error Logs -->
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-3">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-3">
           <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Recent Security &amp; Authentication
             Events</h3>
-          <div class="overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle">
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left text-xs">
-              <thead class="bg-[#FFF9E8]/70">
+              <thead class="bg-slate-50">
                 <tr>
                   <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Event Type</th>
                   <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Attempted Email</th>
@@ -1466,7 +1531,7 @@
       <!-- ================================================================ -->
       <section id="section-audit" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
+        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-base font-bold text-[#202020]">System Audit Logs</h2>
@@ -1474,31 +1539,31 @@
                 authentication events.</p>
             </div>
             <button type="button" onclick="window.GeoSafeAdmin.loadAuditLogs()"
-              class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+              class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
               Refresh Logs
             </button>
           </div>
 
           <!-- Audit Filters (Consistent 36px / h-9 Heights) -->
           <div
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#FFF9E8]/50 p-3.5 rounded-2xl border border-[#EEEEEE]">
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
             <div>
               <label for="audit-filter-date-from" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">From
                 Date</label>
               <input id="audit-filter-date-from" type="date"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020]">
             </div>
             <div>
               <label for="audit-filter-date-to" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">To
                 Date</label>
               <input id="audit-filter-date-to" type="date"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020]">
             </div>
             <div>
               <label for="audit-filter-role"
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Role</label>
               <select id="audit-filter-role"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020]">
                 <option value="all">All Roles</option>
                 <option value="admin">Administrator</option>
                 <option value="responder">Responder</option>
@@ -1509,7 +1574,7 @@
               <label for="audit-filter-result"
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Result</label>
               <select id="audit-filter-result"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020]">
                 <option value="all">All Results</option>
                 <option value="Success">Success</option>
                 <option value="Failure">Failure</option>
@@ -1520,34 +1585,34 @@
               <label for="audit-filter-user"
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">User</label>
               <input id="audit-filter-user" type="text" placeholder="Email or name..."
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020]">
             </div>
             <div>
               <label for="audit-filter-activity"
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Activity</label>
               <input id="audit-filter-activity" type="text" placeholder="e.g. login, review..."
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020]">
             </div>
             <div>
               <label for="audit-filter-search" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Keyword
                 / IP</label>
               <input id="audit-filter-search" type="text" placeholder="Search module or IP..."
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]">
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020]">
             </div>
             <div class="flex items-end gap-2">
               <button id="audit-apply-filters-btn" type="button"
-                class="flex-1 h-9 px-3.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
+                class="flex-1 h-9 px-3.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle">
                 Apply
               </button>
               <button id="audit-reset-filters-btn" type="button"
-                class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#555555] transition-colors">
+                class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#555555] transition-colors">
                 Reset
               </button>
             </div>
           </div>
 
           <!-- Read-Only Audit Table -->
-          <div class="overflow-x-auto border border-[#EEEEEE] rounded-2xl bg-white shadow-subtle">
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
             <table id="admin-audit-table" class="w-full min-w-[920px] table-fixed divide-y divide-[#EEEEEE] text-left" style="table-layout: fixed;">
               <colgroup>
                 <col style="width: 19%;">
@@ -1558,7 +1623,7 @@
                 <col style="width: 10%;">
                 <col style="width: 9%;">
               </colgroup>
-              <thead class="bg-[#FFF9E8]/70">
+              <thead class="bg-slate-50">
                 <tr>
                   <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Date &amp; Time</th>
                   <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">User</th>
@@ -1587,9 +1652,9 @@
             <span id="audit-pagination-info" class="text-xs text-[#777777] font-medium">Page 1 of 1 (0 records)</span>
             <div class="flex items-center gap-2">
               <button id="audit-prev-btn" type="button"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Previous</button>
               <button id="audit-next-btn" type="button"
-                class="h-9 px-3.5 rounded-xl border border-[#EEEEEE] bg-white hover:bg-[#FFF9E8] disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
+                class="h-9 px-3.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 text-xs font-bold text-[#202020]">Next</button>
             </div>
           </div>
         </div>
@@ -1601,23 +1666,32 @@
       <!-- ================================================================ -->
       <section id="section-messages" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
-        <div class="bg-white rounded-2xl p-5 sm:p-6 border border-[#EEEEEE] shadow-card space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 class="text-base font-bold text-[#202020]">Rescue Conversation Oversight</h2>
-              <p class="text-xs text-[#777777]">Read-only administrative oversight of private Resident–Responder rescue
-                communications. Access is recorded in audit logs.</p>
+        <div class="bg-white rounded-none lg:rounded-lg p-3.5 sm:p-5 lg:p-6 border-0 lg:border border-slate-200 shadow-none lg:shadow-subtle space-y-3 sm:space-y-4 flex-1 flex flex-col min-h-0">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-shrink-0">
+            <div class="flex items-start sm:items-center gap-2.5">
+              <button type="button" onclick="window.GeoSafeAdmin.navigateTo('dashboard')"
+                class="lg:hidden p-1.5 rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex-shrink-0 mt-0.5 sm:mt-0"
+                aria-label="Exit Messages" title="Back to Dashboard">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+              </button>
+              <div>
+                <h2 class="text-sm sm:text-base font-bold text-slate-900">Rescue Conversation Oversight</h2>
+                <p class="text-[11px] sm:text-xs text-slate-500">Read-only administrative oversight of private Resident–Responder rescue
+                  communications. Access is recorded in audit logs.</p>
+              </div>
             </div>
             <button type="button" onclick="window.GeoSafeAdmin.loadAdminConversationsList()"
-              class="h-9 px-3.5 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] self-start sm:self-auto">
+              class="h-8 sm:h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-800 self-start sm:self-auto flex-shrink-0">
               Refresh Conversations
             </button>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4" style="min-height: 480px;">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 flex-1 min-h-0">
             <!-- Left: Conversations List -->
-            <div class="lg:col-span-5 border border-[#EEEEEE] rounded-2xl bg-white flex flex-col overflow-hidden">
-              <div class="px-4 py-3 border-b border-[#EEEEEE] bg-[#FFF9E8]/70 flex items-center justify-between">
+            <div class="lg:col-span-5 border border-slate-200 rounded-lg bg-white flex flex-col overflow-hidden">
+              <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                 <span class="text-[11px] font-bold text-[#777777] uppercase">Rescue Conversations</span>
                 <span id="admin-conv-count-badge" class="text-[11px] font-bold text-[#202020]">0 records</span>
               </div>
@@ -1635,7 +1709,7 @@
             </div>
 
             <!-- Right: Read-Only Message Transcript -->
-            <div class="lg:col-span-7 border border-[#EEEEEE] rounded-2xl bg-white flex flex-col overflow-hidden">
+            <div class="lg:col-span-7 border border-slate-200 rounded-lg bg-white flex flex-col overflow-hidden">
               <div id="admin-conv-detail-placeholder"
                 class="flex-1 flex flex-col items-center justify-center p-8 text-center">
                 <p class="text-xs font-bold text-[#202020]">Select a conversation to inspect</p>
@@ -1646,11 +1720,11 @@
 
               <div id="admin-conv-detail-active" class="hidden flex-1 flex flex-col min-h-0">
                 <div
-                  class="px-4 py-3 border-b border-[#EEEEEE] bg-[#FFFDF7] flex flex-wrap items-center justify-between gap-2">
+                  class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div class="flex items-center gap-2 flex-wrap">
                       <span id="admin-conv-hdr-ref"
-                        class="font-mono text-xs font-bold text-[#8A6800] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872]">—</span>
+                        class="font-mono text-xs font-bold text-[#8A6800] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872]">—</span>
                       <span id="admin-conv-hdr-type" class="text-xs font-bold text-[#202020]">—</span>
                       <span id="admin-conv-hdr-status"></span>
                     </div>
@@ -1658,10 +1732,10 @@
                   </div>
                 </div>
 
-                <div id="admin-conv-messages-body" class="flex-1 p-4 space-y-2.5 overflow-y-auto bg-[#FFFDF7]/40"
+                <div id="admin-conv-messages-body" class="flex-1 p-4 space-y-2.5 overflow-y-auto bg-slate-50/40"
                   style="max-height: 360px; min-height: 260px;"></div>
 
-                <div class="px-4 py-2.5 border-t border-[#EEEEEE] bg-slate-50 text-[11px] text-slate-600 font-medium">
+                <div class="px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-600 font-medium">
                   Read-only oversight view — Administrators cannot send messages as a Resident or Responder.
                 </div>
               </div>
@@ -1683,20 +1757,20 @@
   <div id="admin-report-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
     <div
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-4xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-4xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4">
       <!-- Modal Top Header -->
-      <div class="flex items-start justify-between gap-3 border-b border-[#EEEEEE] pb-3">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
           <div class="flex items-center gap-2">
             <span id="modal-report-type"
-              class="text-[10px] font-bold uppercase tracking-wider text-[#8A6800] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872]">Incident
+              class="text-[10px] font-bold uppercase tracking-wider text-[#8A6800] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872]">Incident
               Report</span>
             <span id="modal-report-ref" class="font-mono text-xs font-bold text-[#202020]">INC-2026-000000</span>
           </div>
           <h2 id="modal-report-title" class="text-base font-bold text-[#202020] mt-1">-</h2>
         </div>
         <button type="button" onclick="window.GeoSafeAdmin.closeReportDetailModal()"
-          class="h-8 px-3 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-[#FFF9E8] transition-colors">
+          class="h-8 px-3 rounded-md border border-slate-200 text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-slate-100 transition-colors">
           Close
         </button>
       </div>
@@ -1708,7 +1782,7 @@
       <div id="admin-report-modal-body" class="hidden space-y-4">
         <!-- Section A: Metadata Summary Grid -->
         <div
-          class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#FFF9E8]/60 p-3.5 rounded-2xl border border-[#EEEEEE] text-xs">
+          class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs">
           <div>
             <span class="text-[10px] text-[#777777] font-bold uppercase block">Category / Type</span>
             <span id="modal-report-category" class="font-bold text-[#202020] block truncate">-</span>
@@ -1723,19 +1797,30 @@
           </div>
         </div>
 
+        <!-- Closure Metadata Banner (Displayed when incident is closed/resolved) -->
+        <div id="modal-report-closure-info"
+          class="hidden p-3.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Incident Closed</span>
+            <span id="modal-closure-at" class="text-[11px] font-medium text-emerald-800 gs-tabular">-</span>
+          </div>
+          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closed By:</strong> <span id="modal-closure-by">-</span></p>
+          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closure Reason:</strong> <span id="modal-closure-reason">-</span></p>
+        </div>
+
         <!-- Section B: Description & Category Details -->
-        <div class="p-3.5 rounded-2xl border border-[#EEEEEE] space-y-2">
+        <div class="p-3.5 rounded-lg border border-slate-200 space-y-2">
           <div class="flex items-center justify-between">
             <h3 class="text-[11px] font-bold text-[#777777] uppercase tracking-wider">Incident Description</h3>
             <span id="modal-report-incident-badge"
-              class="text-[10px] font-semibold text-[#8A6800] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872]">Verified
+              class="text-[10px] font-semibold text-[#8A6800] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872]">Verified
               Format</span>
           </div>
           <p id="modal-report-description" class="text-xs text-[#202020] leading-relaxed whitespace-pre-line">-</p>
 
           <!-- Conditional Category-Specific Fields (People count, vulnerable, landmark) -->
           <div id="modal-category-details"
-            class="hidden mt-2 pt-2 border-t border-[#EEEEEE] grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#FBFBFA] p-2.5 rounded-xl text-xs">
+            class="hidden mt-2 pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#FBFBFA] p-2.5 rounded-md text-xs">
             <div>
               <span class="text-[10px] text-[#777777] font-bold uppercase block">Persons Involved</span>
               <span id="modal-cat-people" class="font-bold text-[#202020]">-</span>
@@ -1754,7 +1839,7 @@
         <!-- Section C & D: Location / Map & Reporter Profile -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <!-- Location Details & Interactive Map -->
-          <div class="p-3.5 rounded-2xl border border-[#EEEEEE] space-y-2 text-xs flex flex-col justify-between h-full">
+          <div class="p-3.5 rounded-lg border border-slate-200 space-y-2 text-xs flex flex-col justify-between h-full">
             <div class="space-y-1">
               <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Incident Location</span>
               <p id="modal-report-location" class="font-bold text-[#202020] text-xs">-</p>
@@ -1766,9 +1851,9 @@
 
             <!-- Leaflet Interactive Map Container -->
             <div id="modal-report-map-container" class="mt-2 w-full">
-              <div id="modal-report-map" class="h-44 w-full rounded-xl border border-[#EEEEEE] z-10"></div>
+              <div id="modal-report-map" class="h-44 w-full rounded-md border border-slate-200 z-10"></div>
               <div id="modal-report-map-fallback"
-                class="hidden h-44 w-full rounded-xl border border-[#EEEEEE] bg-[#F7F7F7] flex items-center justify-center text-xs text-[#777777]">
+                class="hidden h-44 w-full rounded-md border border-slate-200 bg-[#F7F7F7] flex items-center justify-center text-xs text-[#777777]">
                 No GPS coordinates available for map view.
               </div>
             </div>
@@ -1776,13 +1861,13 @@
 
           <!-- Reporter Profile -->
           <div
-            class="p-3.5 rounded-2xl border border-[#EEEEEE] space-y-2.5 text-xs h-full flex flex-col justify-between">
+            class="p-3.5 rounded-lg border border-slate-200 space-y-2.5 text-xs h-full flex flex-col justify-between">
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Reporting
                   Citizen</span>
                 <span id="modal-reporter-id"
-                  class="font-mono text-[10px] font-bold text-[#202020] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872]">USR-00000</span>
+                  class="font-mono text-[10px] font-bold text-[#202020] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872]">USR-00000</span>
               </div>
               <div class="flex items-center justify-between gap-2">
                 <p id="modal-reporter-name" class="font-bold text-[#202020] text-sm">-</p>
@@ -1790,7 +1875,7 @@
               </div>
             </div>
             <div
-              class="space-y-1.5 text-[11px] text-[#555555] border-t border-[#EEEEEE] pt-2.5 flex-1 flex flex-col justify-center">
+              class="space-y-1.5 text-[11px] text-[#555555] border-t border-slate-200 pt-2.5 flex-1 flex flex-col justify-center">
               <p><span class="text-[#777777]">Contact:</span> <span id="modal-reporter-phone"
                   class="font-semibold text-[#202020]">-</span></p>
               <p><span class="text-[#777777]">Email:</span> <span id="modal-reporter-email"
@@ -1804,30 +1889,30 @@
         <!-- Section E & F: Two-Column Photo Evidence (Left) & Administrative Review (Right) -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
           <!-- Left Column: Photo Evidence -->
-          <div class="p-4 rounded-2xl border border-[#EEEEEE] space-y-2.5 h-full flex flex-col">
+          <div class="p-4 rounded-lg border border-slate-200 space-y-2.5 h-full flex flex-col">
             <div class="flex items-center justify-between gap-2">
               <h3 class="text-[11px] font-bold text-[#777777] uppercase tracking-wider">Photo Evidence</h3>
               <span id="modal-report-attachment-count"
-                class="text-[10px] text-[#777777] font-semibold bg-[#F7F7F7] px-2 py-0.5 rounded-full border border-[#EEEEEE]">0
+                class="text-[10px] text-[#777777] font-semibold bg-[#F7F7F7] px-2 py-0.5 rounded-full border border-slate-200">0
                 files</span>
             </div>
             <div id="modal-report-attachments" class="flex-1"></div>
           </div>
 
           <!-- Right Column: Administrative Review & Dispatch Controls -->
-          <div class="p-4 rounded-2xl bg-[#FFF9E8]/70 border border-[#FFE872] space-y-3 h-full flex flex-col">
+          <div class="p-4 rounded-lg bg-slate-50 border border-[#FFE872] space-y-3 h-full flex flex-col">
             <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Administrative Review &amp; Dispatch
             </h3>
 
             <div id="review-form-error"
-              class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
+              class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
             </div>
 
             <div>
               <label for="review-responder-select"
                 class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Assign Responder</label>
               <select id="review-responder-select"
-                class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></select>
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></select>
               <p id="review-responder-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#8A6800]">Assignment
                 accepted – responder locked.</p>
             </div>
@@ -1837,7 +1922,7 @@
                 Notes / Reason</label>
               <textarea id="review-reason-input" rows="3"
                 placeholder="Enter administrative review notes or instructions..."
-                class="w-full flex-1 p-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></textarea>
+                class="w-full flex-1 p-2.5 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></textarea>
               <p id="review-notes-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#777777]">Operation
                 completed – review notes locked.</p>
             </div>
@@ -1845,23 +1930,90 @@
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 mt-auto">
               <button type="button" id="review-verify-btn"
                 onclick="window.GeoSafeAdmin.submitReportReviewAction('verify')"
-                class="flex-1 h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                class="flex-1 h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 Verify Report
               </button>
               <button type="button" id="review-reject-btn"
                 onclick="window.GeoSafeAdmin.submitReportReviewAction('reject')"
-                class="flex-1 h-9 px-4 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] hover:bg-[#FFC2C2]/40 text-[#D93636] text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                class="flex-1 h-9 px-4 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] hover:bg-[#FFC2C2]/40 text-[#D93636] text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 Reject / Dismiss
               </button>
             </div>
+            <button type="button" id="review-close-incident-btn"
+              onclick="window.GeoSafeAdmin.openCloseIncidentModal()"
+              class="hidden w-full h-9 px-4 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              Close Incident
+            </button>
           </div>
         </div>
 
         <!-- Section G: Status History -->
-        <div class="p-3.5 rounded-2xl border border-[#EEEEEE] space-y-2">
+        <div class="p-3.5 rounded-lg border border-slate-200 space-y-2">
           <h3 class="text-[11px] font-bold text-[#777777] uppercase">Status History</h3>
           <div id="modal-report-history" class="space-y-2"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 1B: CLOSE VERIFIED INCIDENT CONFIRMATION -->
+  <div id="admin-close-incident-modal"
+    class="hidden fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-modal max-w-md w-full p-5 space-y-4">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+        <div>
+          <span id="close-incident-modal-ref" class="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 gs-tabular">INC-2026-000000</span>
+          <h3 class="text-sm font-bold text-slate-900 mt-1.5">Close Verified Incident</h3>
+          <p id="close-incident-modal-title" class="text-xs text-slate-500 mt-0.5 truncate">-</p>
+        </div>
+        <button type="button" onclick="window.GeoSafeAdmin.closeCloseIncidentModal()"
+          class="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Closing this incident removes it from active Resident and Responder maps and marks it as resolved while preserving all report history, coordinates, photos, and audit logs.
+      </p>
+
+      <div id="close-incident-modal-error"
+        class="hidden p-2.5 rounded-md bg-red-50 border border-red-200 text-xs font-semibold text-red-700"></div>
+
+      <div class="space-y-3">
+        <div>
+          <label for="close-incident-preset-select" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Closure Reason <span class="text-red-600">*</span>
+          </label>
+          <select id="close-incident-preset-select"
+            onchange="window.GeoSafeAdmin.handleCloseIncidentPresetChange()"
+            class="w-full h-9 px-3 rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:border-slate-900">
+            <option value="">-- Select a closure reason --</option>
+            <option value="Floodwater has subsided.">Floodwater has subsided.</option>
+            <option value="Fire has been extinguished.">Fire has been extinguished.</option>
+            <option value="Road is now passable.">Road is now passable.</option>
+            <option value="Reported hazard is no longer present.">Reported hazard is no longer present.</option>
+            <option value="Other">Other (specify below)</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="close-incident-reason-input" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+            Closure Details / Explanation <span id="close-incident-reason-req" class="text-red-600 hidden">*</span>
+          </label>
+          <textarea id="close-incident-reason-input" rows="3" maxlength="500"
+            placeholder="Provide details or explanation for closing this incident..."
+            class="w-full p-2.5 rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:border-slate-900"></textarea>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+        <button type="button" onclick="window.GeoSafeAdmin.closeCloseIncidentModal()"
+          class="gs-btn-secondary">Cancel</button>
+        <button type="button" id="close-incident-confirm-btn"
+          onclick="window.GeoSafeAdmin.confirmCloseIncident()"
+          class="gs-btn-primary">Confirm Close Incident</button>
       </div>
     </div>
   </div>
@@ -1870,45 +2022,45 @@
   <div id="admin-attachment-preview-modal"
     class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
     onclick="if (event.target === this) window.GeoSafeAdmin.closeAttachmentPreviewModal()">
-    <div class="bg-white rounded-2xl border border-[#EEEEEE] max-w-4xl w-full p-4 space-y-3 shadow-card">
-      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#EEEEEE]">
+    <div class="bg-white rounded-lg border border-slate-200 max-w-4xl w-full p-4 space-y-3 shadow-subtle">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
         <div class="flex items-center gap-2 min-w-0">
           <h3 id="attachment-preview-title" class="text-xs font-bold text-[#202020] truncate">Photo Evidence Preview
           </h3>
           <span id="attachment-preview-counter"
-            class="hidden px-2 py-0.5 rounded-full bg-[#F7F7F7] border border-[#EEEEEE] text-[10px] font-bold text-[#555555] shrink-0">1
+            class="hidden px-2 py-0.5 rounded-full bg-[#F7F7F7] border border-slate-200 text-[10px] font-bold text-[#555555] shrink-0">1
             / 1</span>
         </div>
         <div class="flex items-center gap-1.5 flex-wrap">
           <div id="attachment-preview-zoom-controls" class="flex items-center gap-1 mr-1">
             <button type="button" onclick="window.GeoSafeAdmin.adjustAttachmentZoom(-0.5)" title="Zoom Out"
-              class="h-7 w-7 rounded-lg border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">-</button>
+              class="h-7 w-7 rounded-lg border border-slate-200 text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">-</button>
             <button type="button" id="attachment-preview-zoom-label" onclick="window.GeoSafeAdmin.resetAttachmentZoom()"
               title="Reset Zoom"
-              class="h-7 px-2 rounded-lg border border-[#EEEEEE] text-[11px] font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">100%</button>
+              class="h-7 px-2 rounded-lg border border-slate-200 text-[11px] font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">100%</button>
             <button type="button" onclick="window.GeoSafeAdmin.adjustAttachmentZoom(0.5)" title="Zoom In"
-              class="h-7 w-7 rounded-lg border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">+</button>
+              class="h-7 w-7 rounded-lg border border-slate-200 text-xs font-bold text-[#555555] hover:text-[#202020] hover:bg-[#F7F7F7]">+</button>
           </div>
           <a id="attachment-preview-download" href="#" target="_blank" rel="noopener noreferrer"
-            class="h-7 px-3 rounded-lg bg-[#FFF9E8] border border-[#FFE872] text-[11px] font-bold text-[#8A6800] hover:bg-[#F5B900] hover:text-[#202020] transition-colors flex items-center">
+            class="h-7 px-3 rounded-lg bg-slate-50 border border-[#FFE872] text-[11px] font-bold text-[#8A6800] hover:bg-[#F5B900] hover:text-[#202020] transition-colors flex items-center">
             Open Full Size
           </a>
           <button type="button" onclick="window.GeoSafeAdmin.closeAttachmentPreviewModal()"
-            class="h-7 px-3 rounded-lg border border-[#EEEEEE] text-[11px] font-bold text-[#555555] hover:text-[#202020]">
+            class="h-7 px-3 rounded-lg border border-slate-200 text-[11px] font-bold text-[#555555] hover:text-[#202020]">
             Close
           </button>
         </div>
       </div>
       <div class="relative flex items-center justify-center">
         <button type="button" id="attachment-preview-prev" onclick="window.GeoSafeAdmin.navigateAttachmentPreview(-1)"
-          class="hidden absolute left-2 z-10 h-9 w-9 rounded-full bg-white/90 border border-[#EEEEEE] text-sm font-bold text-[#202020] shadow-subtle hover:bg-[#F5B900] transition-colors flex items-center justify-center"
+          class="hidden absolute left-2 z-10 h-9 w-9 rounded-full bg-white/90 border border-slate-200 text-sm font-bold text-[#202020] shadow-subtle hover:bg-[#F5B900] transition-colors flex items-center justify-center"
           aria-label="Previous photo">&lt;</button>
         <div id="attachment-preview-content"
-          class="w-full flex items-center justify-center max-h-[72vh] min-h-[240px] overflow-auto rounded-xl bg-[#FFFDF7] border border-[#EEEEEE] p-2">
+          class="w-full flex items-center justify-center max-h-[72vh] min-h-[240px] overflow-auto rounded-md bg-slate-50 border border-slate-200 p-2">
           <!-- Image or Video rendered here -->
         </div>
         <button type="button" id="attachment-preview-next" onclick="window.GeoSafeAdmin.navigateAttachmentPreview(1)"
-          class="hidden absolute right-2 z-10 h-9 w-9 rounded-full bg-white/90 border border-[#EEEEEE] text-sm font-bold text-[#202020] shadow-subtle hover:bg-[#F5B900] transition-colors flex items-center justify-center"
+          class="hidden absolute right-2 z-10 h-9 w-9 rounded-full bg-white/90 border border-slate-200 text-sm font-bold text-[#202020] shadow-subtle hover:bg-[#F5B900] transition-colors flex items-center justify-center"
           aria-label="Next photo">&gt;</button>
       </div>
     </div>
@@ -1917,11 +2069,11 @@
   <!-- MODAL 2A: RESIDENT LOCATION VERIFICATION REVIEW -->
   <div id="admin-location-review-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-lg w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-start justify-between gap-2 border-b border-[#EEEEEE] pb-3">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-lg w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-start justify-between gap-2 border-b border-slate-200 pb-3">
         <div>
           <span id="loc-modal-user-code"
-            class="font-mono text-[10px] font-bold text-[#202020] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872] inline-block mb-1">RSDNT-0000</span>
+            class="font-mono text-[10px] font-bold text-[#202020] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872] inline-block mb-1">RSDNT-0000</span>
           <h3 class="text-sm font-bold text-[#202020]">Resident Location Verification Review</h3>
           <p id="loc-modal-name" class="text-xs font-bold text-[#555555] mt-0.5">-</p>
           <p id="loc-modal-email" class="text-[11px] text-[#777777]">-</p>
@@ -1929,7 +2081,7 @@
         <div id="loc-modal-current-badge"></div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2.5 bg-[#FFFDF7] border border-[#EEEEEE] rounded-2xl p-3 text-xs">
+      <div class="grid grid-cols-2 gap-2.5 bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
         <div>
           <span class="block text-[10px] font-bold text-[#777777] uppercase">Verification Method</span>
           <span id="loc-modal-method" class="font-bold text-[#202020]">-</span>
@@ -1958,22 +2110,22 @@
         </label>
         <textarea id="loc-modal-reason" rows="3" required
           placeholder="Document residency verification notes (e.g., Barangay ID / proof of address presented)..."
-          class="w-full px-3 py-2 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]"></textarea>
+          class="w-full px-3 py-2 rounded-md border border-slate-200 bg-slate-50 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]"></textarea>
       </div>
 
-      <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+      <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200">
         <button type="button" onclick="window.GeoSafeAdmin.closeLocationReviewModal()"
-          class="h-9 px-4 rounded-xl bg-white border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#555555]">
+          class="h-9 px-4 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#555555]">
           Cancel
         </button>
         <button type="button" id="loc-modal-reject-btn"
           onclick="window.GeoSafeAdmin.submitLocationVerificationDecision('reject')"
-          class="h-9 px-4 rounded-xl bg-[#D93636] hover:bg-[#B82828] text-white text-xs font-bold shadow-subtle">
+          class="h-9 px-4 rounded-md bg-[#D93636] hover:bg-[#B82828] text-white text-xs font-bold shadow-subtle">
           Reject Verification
         </button>
         <button type="button" id="loc-modal-approve-btn"
           onclick="window.GeoSafeAdmin.submitLocationVerificationDecision('approve')"
-          class="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-subtle">
+          class="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-subtle">
           Approve Verification
         </button>
       </div>
@@ -1984,11 +2136,11 @@
   <div id="admin-user-status-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
     <form onsubmit="window.GeoSafeAdmin.submitUserStatusUpdate(event)"
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-md w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-start justify-between gap-2 border-b border-[#EEEEEE] pb-3">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-start justify-between gap-2 border-b border-slate-200 pb-3">
         <div>
           <span id="user-modal-id"
-            class="font-mono text-[10px] font-bold text-[#202020] bg-[#FFF9E8] px-2 py-0.5 rounded border border-[#FFE872] inline-block mb-1">USR-00000</span>
+            class="font-mono text-[10px] font-bold text-[#202020] bg-slate-50 px-2 py-0.5 rounded border border-[#FFE872] inline-block mb-1">USR-00000</span>
           <h3 class="text-sm font-bold text-[#202020]">Manage Account Status</h3>
           <p id="user-modal-name" class="text-xs font-bold text-[#555555] mt-0.5">-</p>
           <p id="user-modal-email" class="text-[11px] text-[#777777]">-</p>
@@ -1997,13 +2149,13 @@
       </div>
 
       <div id="user-modal-error"
-        class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
+        class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
 
       <div>
         <label for="user-modal-status-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Account
           Status</label>
         <select id="user-modal-status-select"
-          class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-bold text-[#202020]">
+          class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020]">
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
           <option value="deactivated">Deactivated</option>
@@ -2014,14 +2166,14 @@
         <label for="user-modal-reason" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Reason
           (Required for Suspend or Deactivate)</label>
         <textarea id="user-modal-reason" rows="2" placeholder="Provide administrative reason for status change..."
-          class="w-full p-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs text-[#202020]"></textarea>
+          class="w-full p-2.5 rounded-md border border-slate-200 bg-white text-xs text-[#202020]"></textarea>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" onclick="window.GeoSafeAdmin.closeUserStatusModal()"
-          class="h-9 px-4 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555]">Cancel</button>
+          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555]">Cancel</button>
         <button type="submit"
-          class="h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Update
+          class="h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Update
           Status</button>
       </div>
     </form>
@@ -2031,8 +2183,8 @@
   <div id="admin-create-responder-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
     <form id="admin-create-responder-form" onsubmit="window.GeoSafeAdmin.submitCreateResponder(event)"
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-xl w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-center justify-between border-b border-[#EEEEEE] pb-3">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-xl w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
           <h3 class="text-sm font-bold text-[#202020]">New Responder Account</h3>
           <p class="text-[11px] text-[#777777]">Provision an authorized Barangay Bayanan Responder.</p>
@@ -2042,56 +2194,56 @@
       </div>
 
       <div id="create-responder-error"
-        class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
+        class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
 
       <!-- Section 1: Personal Information -->
       <div class="space-y-2">
-        <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider border-b border-[#EEEEEE] pb-1">Personal
+        <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider border-b border-slate-200 pb-1">Personal
           Information</h4>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
             <label for="resp-first-name" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">First Name
               *</label>
             <input id="resp-first-name" type="text" required placeholder="e.g. Juan"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
           <div>
             <label for="resp-middle-name" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Middle Name
               (Optional)</label>
             <input id="resp-middle-name" type="text" placeholder="e.g. Santos"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
           <div>
             <label for="resp-last-name" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Last Name
               *</label>
             <input id="resp-last-name" type="text" required placeholder="e.g. Dela Cruz"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
           <div>
             <label for="resp-phone" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Contact Number
               *</label>
             <input id="resp-phone" type="text" required placeholder="0917 000 0000"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
           <div class="sm:col-span-2">
             <label for="resp-email" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Email Address
               *</label>
             <input id="resp-email" type="email" required placeholder="responder@geosafe.ph"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
         </div>
       </div>
 
       <!-- Section 2: Responder Information -->
       <div class="space-y-2 pt-1">
-        <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider border-b border-[#EEEEEE] pb-1">Responder
+        <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider border-b border-slate-200 pb-1">Responder
           Information</h4>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <!-- Fixed Organization Display (Single Fixed Org for Barangay Bayanan) -->
           <div class="sm:col-span-2">
             <label class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Responder Unit</label>
             <div
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/70 text-xs font-bold text-[#202020] flex items-center select-none shadow-subtle">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020] flex items-center select-none shadow-subtle">
               <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-2"></span>
               Barangay Bayanan Emergency Response Team
             </div>
@@ -2103,7 +2255,7 @@
             <label for="resp-designation" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Designation
               / Position *</label>
             <select id="resp-designation" required onchange="window.GeoSafeAdmin.handleResponderDesignationChange()"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-bold text-[#202020] focus:outline-none focus:border-[#F5B900]">
               <option value="Responder / Rescue Personnel" selected>Responder / Rescue Personnel</option>
               <option value="Team Leader">Team Leader</option>
               <option value="Fire Safety Personnel">Fire Safety Personnel</option>
@@ -2120,7 +2272,7 @@
             <label for="resp-service-id" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Organization
               ID / Service ID (Optional)</label>
             <input id="resp-service-id" type="text" placeholder="e.g. BBYN-2026-001"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
 
           <!-- Custom Designation (Revealed when Other is selected) -->
@@ -2128,17 +2280,17 @@
             <label for="resp-custom-designation"
               class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Specify Designation / Position *</label>
             <input id="resp-custom-designation" type="text" placeholder="e.g. Logistics &amp; Transport Specialist"
-              class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+              class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
           </div>
         </div>
       </div>
 
       <!-- Footer Buttons -->
-      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#EEEEEE]">
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
         <button type="button" onclick="window.GeoSafeAdmin.closeCreateResponderModal()"
-          class="h-9 px-4 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555] hover:bg-[#FFF9E8]">Cancel</button>
+          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555] hover:bg-slate-100">Cancel</button>
         <button type="submit" id="resp-submit-btn"
-          class="h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors">Create
+          class="h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors">Create
           Responder</button>
       </div>
     </form>
@@ -2147,8 +2299,8 @@
   <!-- MODAL 3B: RESPONDER CREATED CREDENTIALS CONFIRMATION -->
   <div id="admin-responder-created-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-md w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-center justify-between border-b border-[#EEEEEE] pb-3">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div class="flex items-center gap-2.5">
           <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2164,7 +2316,7 @@
           class="text-xs font-bold text-[#777777] hover:text-[#202020]">Close</button>
       </div>
 
-      <div class="bg-[#FFF9E8] rounded-2xl p-4 border border-[#FFE872] space-y-2 text-xs">
+      <div class="bg-slate-50 rounded-lg p-4 border border-[#FFE872] space-y-2 text-xs">
         <div class="flex justify-between">
           <span class="text-[#777777]">Responder ID:</span>
           <span id="created-resp-id" class="font-bold text-[#202020]">RSPDR-XXXX</span>
@@ -2196,18 +2348,18 @@
         <label class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Temporary Password</label>
         <div class="flex items-center gap-2">
           <input id="created-resp-temp-pass" type="text" readonly
-            class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-gray-50 font-mono text-xs text-[#202020] font-bold select-all">
+            class="w-full h-9 px-3 rounded-md border border-slate-200 bg-gray-50 font-mono text-xs text-[#202020] font-bold select-all">
           <button type="button" onclick="window.GeoSafeAdmin.copyTemporaryPassword()"
-            class="h-9 px-3 rounded-xl bg-[#202020] text-[#FFF9E8] hover:bg-black text-xs font-bold shrink-0">Copy</button>
+            class="h-9 px-3 rounded-md bg-[#202020] text-[#FFF9E8] hover:bg-black text-xs font-bold shrink-0">Copy</button>
         </div>
         <p class="text-[11px] text-[#777777] mt-1.5 leading-relaxed">
           The responder will be required to change this temporary password upon first login.
         </p>
       </div>
 
-      <div class="flex justify-end pt-2 border-t border-[#EEEEEE]">
+      <div class="flex justify-end pt-2 border-t border-slate-200">
         <button type="button" onclick="window.GeoSafeAdmin.closeResponderCreatedModal()"
-          class="h-9 px-5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Done</button>
+          class="h-9 px-5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Done</button>
       </div>
     </div>
   </div>
@@ -2216,8 +2368,8 @@
   <div id="admin-create-resident-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
     <form id="admin-create-resident-form" onsubmit="window.GeoSafeAdmin.submitCreateResident(event)"
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-md w-full p-5 sm:p-6 space-y-3.5">
-      <div class="flex items-center justify-between border-b border-[#EEEEEE] pb-3">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-3.5">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
           <h3 class="text-sm font-bold text-[#202020]">Register Resident Account</h3>
           <p class="text-[11px] text-[#777777]">Add an authorized resident account for Barangay Bayanan.</p>
@@ -2227,20 +2379,20 @@
       </div>
 
       <div id="create-resident-error"
-        class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
+        class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
 
       <div class="grid grid-cols-2 gap-2.5">
         <div>
           <label for="resident-first-name" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">First Name
             *</label>
           <input id="resident-first-name" type="text" required
-            class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+            class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
         </div>
         <div>
           <label for="resident-last-name" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Last Name
             *</label>
           <input id="resident-last-name" type="text" required
-            class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+            class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
         </div>
       </div>
 
@@ -2248,14 +2400,14 @@
         <label for="resident-email" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Email Address
           *</label>
         <input id="resident-email" type="email" required
-          class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+          class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
       </div>
 
       <div>
         <label for="resident-password" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Initial
           Password *</label>
         <input id="resident-password" type="password" required minlength="8"
-          class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+          class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
       </div>
 
       <div class="grid grid-cols-2 gap-2.5">
@@ -2263,21 +2415,21 @@
           <label for="resident-phone" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Contact
             Number</label>
           <input id="resident-phone" type="text"
-            class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+            class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
         </div>
         <div>
           <label for="resident-address" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Purok /
             Address</label>
           <input id="resident-address" type="text" placeholder="e.g. Purok 3, Bayanan"
-            class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]">
+            class="w-full h-9 px-3 rounded-md border border-slate-200 text-xs text-[#202020]">
         </div>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" onclick="window.GeoSafeAdmin.closeCreateResidentModal()"
-          class="h-9 px-4 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555]">Cancel</button>
+          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555]">Cancel</button>
         <button type="submit"
-          class="h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Register
+          class="h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Register
           Resident</button>
       </div>
     </form>
@@ -2287,8 +2439,8 @@
   <div id="admin-assign-responder-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
     <form onsubmit="window.GeoSafeAdmin.submitAssignResponder(event)"
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-md w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-center justify-between border-b border-[#EEEEEE] pb-3">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
           <h3 class="text-sm font-bold text-[#202020]">Dispatch Responder</h3>
           <p class="text-[11px] text-[#777777]">Assign an active unit to an open incident or rescue operation.</p>
@@ -2296,20 +2448,20 @@
       </div>
 
       <div id="assign-responder-error"
-        class="hidden p-2.5 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
+        class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
 
       <div>
         <label for="assign-target-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Target
           Operation *</label>
         <select id="assign-target-select" required
-          class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-[#FFF9E8]/50 text-xs font-bold text-[#202020]"></select>
+          class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020]"></select>
       </div>
 
       <div>
         <label for="assign-responder-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Eligible
           On-Duty Responder *</label>
         <select id="assign-responder-select" required
-          class="w-full h-9 px-3 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020]"></select>
+          class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020]"></select>
       </div>
 
       <div id="assign-proximity-panel" class="space-y-1.5">
@@ -2325,14 +2477,14 @@
           class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Dispatch Instructions</label>
         <textarea id="assign-instructions-input" rows="2"
           placeholder="e.g. Deploy with rubber boat to Purok 1 Lakeshore..."
-          class="w-full p-2.5 rounded-xl border border-[#EEEEEE] text-xs text-[#202020]"></textarea>
+          class="w-full p-2.5 rounded-md border border-slate-200 text-xs text-[#202020]"></textarea>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" onclick="window.GeoSafeAdmin.closeAssignResponderModal()"
-          class="h-9 px-4 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555]">Cancel</button>
+          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555]">Cancel</button>
         <button type="submit"
-          class="h-9 px-4 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Dispatch
+          class="h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Dispatch
           Responder</button>
       </div>
     </form>
@@ -2341,10 +2493,10 @@
   <!-- MODAL 6: EMERGENCY BROADCAST CONFIRMATION -->
   <div id="admin-broadcast-confirm-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl border border-[#FFC2C2] shadow-card max-w-md w-full p-5 sm:p-6 space-y-4">
+    <div class="bg-white rounded-lg border border-[#FFC2C2] shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-4">
       <div class="flex items-center gap-3">
         <div
-          class="w-10 h-10 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center font-bold">
+          class="w-10 h-10 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center font-bold">
           <svg class="w-5 h-5 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
@@ -2357,7 +2509,7 @@
         </div>
       </div>
 
-      <div class="bg-[#FFF9E8]/70 border border-[#FFE872] p-3.5 rounded-2xl space-y-2 text-xs">
+      <div class="bg-slate-50 border border-[#FFE872] p-3.5 rounded-lg space-y-2 text-xs">
         <div class="grid grid-cols-2 gap-2">
           <div>
             <span class="text-[10px] text-[#777777] font-bold uppercase block mb-1">Alert Category</span>
@@ -2368,23 +2520,23 @@
             <div id="confirm-broadcast-urgency" class="font-bold text-[#202020]">-</div>
           </div>
         </div>
-        <div class="pt-1 border-t border-[#EEEEEE]">
+        <div class="pt-1 border-t border-slate-200">
           <span class="text-[10px] text-[#777777] font-bold uppercase block">Title</span>
           <p id="confirm-broadcast-title" class="font-bold text-[#202020]">-</p>
         </div>
-        <div class="pt-1 border-t border-[#EEEEEE]">
+        <div class="pt-1 border-t border-slate-200">
           <span class="text-[10px] text-[#777777] font-bold uppercase block">Target Audience</span>
           <span id="confirm-broadcast-scope" class="font-bold text-[#202020]">-</span>
         </div>
-        <div class="pt-1 border-t border-[#EEEEEE]">
+        <div class="pt-1 border-t border-slate-200">
           <span class="text-[10px] text-[#777777] font-bold uppercase block">Affected Location</span>
           <span id="confirm-broadcast-location" class="font-bold text-[#202020]">-</span>
         </div>
-        <div class="pt-1 border-t border-[#EEEEEE]">
+        <div class="pt-1 border-t border-slate-200">
           <span class="text-[10px] text-[#777777] font-bold uppercase block">Expires At (Asia/Manila)</span>
           <span id="confirm-broadcast-expires" class="font-bold text-[#202020]">-</span>
         </div>
-        <div class="pt-1 border-t border-[#EEEEEE]">
+        <div class="pt-1 border-t border-slate-200">
           <span class="text-[10px] text-[#777777] font-bold uppercase block">Message</span>
           <p id="confirm-broadcast-message" class="text-[#202020] whitespace-pre-line line-clamp-3">-</p>
         </div>
@@ -2393,10 +2545,10 @@
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" id="confirm-broadcast-cancel-btn"
           onclick="window.GeoSafeAdmin.closeBroadcastConfirmModal()"
-          class="h-9 px-4 rounded-xl border border-[#EEEEEE] text-xs font-bold text-[#555555]">Back to Edit</button>
+          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555]">Back to Edit</button>
         <button type="button" id="confirm-broadcast-submit-btn"
           onclick="window.GeoSafeAdmin.executeBroadcastTransmission()"
-          class="h-9 px-4 rounded-xl bg-[#D93636] hover:bg-[#B32626] text-white text-xs font-bold shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirm
+          class="h-9 px-4 rounded-md bg-[#D93636] hover:bg-[#B32626] text-white text-xs font-bold shadow-subtle transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Confirm
           &amp; Publish</button>
       </div>
     </div>
@@ -2406,8 +2558,8 @@
   <div id="admin-broadcast-detail-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
     <div
-      class="bg-white rounded-2xl border border-[#EEEEEE] shadow-card max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-start justify-between gap-3 pb-3 border-b border-[#EEEEEE]">
+      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-200">
         <div class="space-y-1.5 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span id="admin-bdtl-category"></span>
@@ -2417,7 +2569,7 @@
           <h3 id="admin-bdtl-title" class="text-base font-extrabold text-[#202020] leading-snug">-</h3>
         </div>
         <button type="button" onclick="window.GeoSafeAdmin.closeBroadcastDetailModal()"
-          class="p-1.5 rounded-xl text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          class="p-1.5 rounded-md text-[#777777] hover:text-[#202020] hover:bg-slate-100">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -2425,7 +2577,7 @@
       </div>
       <div class="space-y-3 text-xs">
         <p id="admin-bdtl-message" class="text-[#202020] whitespace-pre-line leading-relaxed">-</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-2xl bg-[#FFFDF7] border border-[#EEEEEE]">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200">
           <div>
             <span class="text-[10px] font-bold text-[#777777] uppercase block">Target Audience</span>
             <span id="admin-bdtl-audience" class="font-semibold text-[#202020]">-</span>
@@ -2454,14 +2606,14 @@
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
         <button type="button" onclick="window.GeoSafeAdmin.closeBroadcastDetailModal()"
-          class="px-4 py-2 rounded-xl bg-[#202020] text-white text-xs font-bold">Close</button>
+          class="px-4 py-2 rounded-md bg-[#202020] text-white text-xs font-bold">Close</button>
       </div>
     </div>
   </div>
 
   <!-- Toast Notification Banner -->
   <div id="admin-toast-banner"
-    class="hidden fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-2xl border shadow-card text-xs font-semibold flex items-center justify-between gap-3">
+    class="hidden fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-lg border shadow-subtle text-xs font-semibold flex items-center justify-between gap-3">
     <span id="admin-toast-text"></span>
   </div>
 
@@ -2470,11 +2622,11 @@
   <!-- ====================================================================== -->
   <div id="admin-profile-modal"
     class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl max-w-md w-full p-6 border border-[#EEEEEE] shadow-modal space-y-4">
-      <div class="flex items-center justify-between pb-3.5 border-b border-[#EEEEEE]">
+    <div class="bg-white rounded-lg max-w-md w-full p-6 border border-slate-200 shadow-modal space-y-4">
+      <div class="flex items-center justify-between pb-3.5 border-b border-slate-200">
         <div class="flex items-center gap-2.5">
           <div
-            class="w-8 h-8 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center font-bold text-xs">
+            class="w-8 h-8 rounded-md bg-slate-50 border border-[#FFE872] text-[#8A6800] flex items-center justify-center font-bold text-xs">
             ADM
           </div>
           <div>
@@ -2483,7 +2635,7 @@
           </div>
         </div>
         <button onclick="window.GeoSafeAdmin.closeAdminProfileModal()"
-          class="p-1.5 rounded-xl text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] transition-colors"
+          class="p-1.5 rounded-md text-[#777777] hover:text-[#202020] hover:bg-slate-100 transition-colors"
           aria-label="Close Profile">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -2492,7 +2644,7 @@
       </div>
 
       <div class="space-y-3 text-xs">
-        <div class="p-3.5 rounded-2xl bg-[#FBFBFA] border border-[#EEEEEE] flex items-center gap-3">
+        <div class="p-3.5 rounded-lg bg-[#FBFBFA] border border-slate-200 flex items-center gap-3">
           <div id="admin-modal-avatar"
             class="w-12 h-12 rounded-full bg-[#FFF3D0] border border-[#FFD54F] text-[#202020] font-bold text-sm flex items-center justify-center flex-shrink-0 shadow-subtle">
             A
@@ -2501,16 +2653,16 @@
             <span id="admin-modal-name" class="font-bold text-[#202020] block truncate">Administrator</span>
             <span id="admin-modal-email" class="text-[11px] text-[#777777] block truncate">—</span>
             <span id="admin-modal-user-id"
-              class="inline-block mt-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">—</span>
+              class="inline-block mt-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-50 text-[#8A6800] border border-[#FFE872]">—</span>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
-          <div class="p-2.5 rounded-xl bg-[#FBFBFA] border border-[#EEEEEE]">
+          <div class="p-2.5 rounded-md bg-[#FBFBFA] border border-slate-200">
             <span class="text-[10px] font-bold text-[#777777] uppercase block">Role</span>
             <span id="admin-modal-role" class="text-xs font-bold text-[#202020] mt-0.5 block">Administrator</span>
           </div>
-          <div class="p-2.5 rounded-xl bg-[#FBFBFA] border border-[#EEEEEE]">
+          <div class="p-2.5 rounded-md bg-[#FBFBFA] border border-slate-200">
             <span class="text-[10px] font-bold text-[#777777] uppercase block">Account Status</span>
             <span class="text-xs font-bold text-emerald-600 mt-0.5 inline-flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
@@ -2518,16 +2670,16 @@
           </div>
         </div>
 
-        <div class="p-2.5 rounded-xl bg-[#FBFBFA] border border-[#EEEEEE]">
+        <div class="p-2.5 rounded-md bg-[#FBFBFA] border border-slate-200">
           <span class="text-[10px] font-bold text-[#777777] uppercase block">System Privileges</span>
           <p class="text-[11px] text-[#555555] mt-1 leading-relaxed">Full system governance, responder dispatch
             oversight, emergency broadcasts, and audit log inspection.</p>
         </div>
       </div>
 
-      <div class="pt-3 border-t border-[#EEEEEE] flex items-center justify-end gap-2">
+      <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
         <button onclick="window.GeoSafeAdmin.closeAdminProfileModal()"
-          class="px-4 py-2 rounded-xl bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#202020] text-xs font-bold transition-colors">
+          class="px-4 py-2 rounded-md bg-slate-50 hover:bg-[#FFF3D0] text-[#202020] text-xs font-bold transition-colors">
           Close
         </button>
       </div>

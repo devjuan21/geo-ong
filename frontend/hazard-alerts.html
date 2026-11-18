@@ -12,7 +12,7 @@
 </head>
 
 <body
-  class="bg-[#FFFDF7] text-[#202020] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden resident-layout">
+  class="bg-slate-50 text-[#202020] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden resident-layout">
 
   <!-- Top Navigation Bar (Desktop, Tablet & Mobile Header) -->
   <div id="geosafe-nav-container"></div>
@@ -25,16 +25,16 @@
       <div class="flex items-center gap-2.5 shrink-0">
         <h1 class="text-lg sm:text-xl font-extrabold text-[#202020] tracking-tight whitespace-nowrap">Hazard Alerts</h1>
         <span id="alerts-total-badge"
-          class="text-[10px] font-bold text-[#8A6800] bg-[#FFF9E8] border border-[#FFE872] px-2.5 py-0.5 rounded-full whitespace-nowrap">0
+          class="text-[10px] font-bold text-[#8A6800] bg-slate-50 border border-[#FFE872] px-2.5 py-0.5 rounded-full whitespace-nowrap">0
           Active</span>
       </div>
       <div class="flex items-center sm:justify-end gap-2 flex-nowrap overflow-x-auto min-w-0 pb-0.5 sm:pb-0">
         <select id="alerts-filter-type" onchange="applyAlertsFilterAndSort()"
-          class="h-8 px-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
+          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
           <option value="All">All Categories</option>
         </select>
         <select id="alerts-filter-status" onchange="loadHazardAlerts()"
-          class="h-8 px-2.5 rounded-xl border border-[#EEEEEE] bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
+          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
           <option value="active">Active Alerts</option>
           <option value="all">Alert History (All)</option>
         </select>
@@ -50,22 +50,22 @@
 
     <!-- Error State -->
     <div id="alerts-error"
-      class="hidden p-4 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] flex items-center justify-between gap-3">
+      class="hidden p-4 rounded-lg bg-[#FFF1F1] border border-[#FFC2C2] flex items-center justify-between gap-3">
       <div class="min-w-0">
         <strong class="text-xs font-bold text-[#D93636] block">Alert feed unavailable</strong>
         <p id="alerts-error-text" class="text-[11px] text-[#D93636]">Please verify network connectivity.</p>
       </div>
       <button type="button" onclick="loadHazardAlerts()"
-        class="px-3 py-1.5 bg-[#D93636] hover:bg-[#B82828] text-white rounded-xl text-xs font-bold flex-shrink-0">
+        class="px-3 py-1.5 bg-[#D93636] hover:bg-[#B82828] text-white rounded-md text-xs font-bold flex-shrink-0">
         Retry
       </button>
     </div>
 
     <!-- Compact Empty State -->
     <div id="alerts-empty"
-      class="hidden p-4 rounded-2xl bg-white border border-[#EEEEEE] shadow-subtle flex items-center gap-3">
+      class="hidden p-4 rounded-lg bg-white border border-slate-200 shadow-subtle flex items-center gap-3">
       <div
-        class="w-8 h-8 rounded-xl bg-emerald-50 text-[#278653] border border-emerald-200 flex items-center justify-center flex-shrink-0">
+        class="w-8 h-8 rounded-md bg-emerald-50 text-[#278653] border border-emerald-200 flex items-center justify-center flex-shrink-0">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -87,8 +87,8 @@
   <div id="advisory-detail-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
     <div
-      class="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-card border border-[#EEEEEE] space-y-4 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-start justify-between gap-3 pb-3 border-b border-[#EEEEEE]">
+      class="bg-white rounded-lg max-w-lg w-full p-5 sm:p-6 shadow-subtle border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-200">
         <div class="space-y-1.5 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span id="modal-adv-badge"></span>
@@ -98,7 +98,7 @@
           <h2 id="modal-adv-title" class="text-base font-extrabold text-[#202020] leading-snug">-</h2>
         </div>
         <button type="button" onclick="closeAdvisoryDetailModal()"
-          class="p-1.5 rounded-xl text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8]">
+          class="p-1.5 rounded-md text-[#777777] hover:text-[#202020] hover:bg-slate-100">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -106,7 +106,7 @@
       </div>
       <div class="space-y-3 text-xs">
         <p id="modal-adv-message" class="text-[#202020] whitespace-pre-line leading-relaxed">-</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-2xl bg-[#FFFDF7] border border-[#EEEEEE]">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200">
           <div id="modal-adv-area-wrap">
             <span class="text-[10px] font-bold text-[#777777] uppercase block">Affected Location</span>
             <span id="modal-adv-area" class="font-semibold text-[#202020]">-</span>
@@ -131,10 +131,10 @@
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
         <a href="evacuation-routes.html"
-          class="px-4 py-2 rounded-xl bg-[#FFF9E8] hover:bg-[#F5B900] border border-[#FFE872] text-xs font-bold text-[#202020]">Evacuation
+          class="px-4 py-2 rounded-md bg-slate-50 hover:bg-[#F5B900] border border-[#FFE872] text-xs font-bold text-[#202020]">Evacuation
           Routes</a>
         <button type="button" onclick="closeAdvisoryDetailModal()"
-          class="px-4 py-2 rounded-xl bg-[#202020] text-white text-xs font-bold">Close</button>
+          class="px-4 py-2 rounded-md bg-[#202020] text-white text-xs font-bold">Close</button>
       </div>
     </div>
   </div>

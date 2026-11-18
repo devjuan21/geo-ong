@@ -1721,10 +1721,33 @@ async function handleResponderAssignmentUpdate(req, res) {
     // Enforce mandatory completion summary, photo evidence, and single-completion guard
     const isCompleting = statusLower === 'completed' || statusLower === 'resolved';
     if (isCompleting) {
+      let latestAssignmentStatus = '';
+      if (targetKind === 'rescue') {
+        const [latestAssignRows] = await conn.query(
+          `SELECT assignment_status
+           FROM rescue_assignments
+           WHERE rescue_id = ?
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1`,
+          [rescueRow.id]
+        );
+        latestAssignmentStatus = String(latestAssignRows[0]?.assignment_status || '');
+      } else {
+        const [latestIncAssignRows] = await conn.query(
+          `SELECT assignment_status
+           FROM incident_assignments
+           WHERE report_id = ?
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1`,
+          [reportRow.id]
+        );
+        latestAssignmentStatus = String(latestIncAssignRows[0]?.assignment_status || '');
+      }
+
       const alreadyCompleted =
         targetKind === 'rescue'
-          ? String(rescueRow.status || '') === 'Completed' || String(assignmentRow.assignment_status || '') === 'Completed'
-          : String(reportRow.status || '').toLowerCase() === 'resolved' || String(assignmentRow.assignment_status || '') === 'Completed';
+          ? String(rescueRow.status || '') === 'Completed' || latestAssignmentStatus === 'Completed'
+          : String(reportRow.status || '').toLowerCase() === 'resolved' || latestAssignmentStatus === 'Completed';
       if (alreadyCompleted) {
         await conn.rollback();
         return res.status(409).json({ error: 'This assignment has already been completed.' });

@@ -75,10 +75,10 @@ window.switchAuthTab = function (mode) {
     loginForm?.classList.add('hidden');
     registerForm?.classList.remove('hidden');
     if (tabRegister) {
-      tabRegister.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle';
+      tabRegister.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle';
     }
     if (tabLogin) {
-      tabLogin.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
+      tabLogin.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
     if (titleEl) titleEl.textContent = 'Create Resident Account';
     if (subEl) subEl.textContent = '';
@@ -90,10 +90,10 @@ window.switchAuthTab = function (mode) {
     registerForm?.classList.add('hidden');
     loginForm?.classList.remove('hidden');
     if (tabLogin) {
-      tabLogin.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle';
+      tabLogin.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle';
     }
     if (tabRegister) {
-      tabRegister.className = 'py-2 px-3 rounded-xl text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
+      tabRegister.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
     if (titleEl) titleEl.textContent = 'Login';
     if (subEl) subEl.textContent = '';

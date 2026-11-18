@@ -222,7 +222,7 @@
     const textEl = document.getElementById('admin-toast-text');
     if (!banner || !textEl) return;
 
-    banner.className = 'fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-2xl border shadow-card text-xs font-semibold flex items-center justify-between gap-3 transition-all';
+    banner.className = 'fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-lg border shadow-subtle text-xs font-semibold flex items-center justify-between gap-3 transition-all';
     if (type === 'error') {
       banner.classList.add('bg-[#FFF1F1]', 'border-[#FFC2C2]', 'text-[#D93636]');
     } else {
@@ -248,7 +248,7 @@
       return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-blue-50 text-[#3478C7] border border-blue-200">${label}</span>`;
     }
     if (bucket === 'verified') {
-      return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${label}</span>`;
+      return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">${label}</span>`;
     }
     if (bucket === 'resolved') {
       return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">${label}</span>`;
@@ -408,12 +408,13 @@
     document.querySelectorAll('.admin-sidebar-btn').forEach((btn) => {
       const isMatch = btn.getAttribute('data-admin-nav') === target;
       btn.className = isMatch
-        ? 'admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold bg-[#F5B900] text-[#202020] shadow-subtle transition-all'
-        : 'admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#555555] hover:bg-[#FFF9E8] hover:text-[#202020] transition-all';
+        ? 'admin-sidebar-btn w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-semibold bg-slate-900 text-white transition-colors'
+        : 'admin-sidebar-btn w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors';
     });
 
     // Close mobile drawer if open
     closeMobileDrawer();
+    document.body.classList.toggle('gs-admin-messages-mobile', target === 'messages');
 
     if (target === 'dashboard') {
       loadDashboardOverview();
@@ -931,7 +932,7 @@
 
     items.forEach((item) => {
       const row = document.createElement('div');
-      row.className = 'flex items-center justify-between p-2.5 rounded-xl border border-[#EEEEEE] hover:bg-[#FFF9E8]/30 text-xs transition-colors';
+      row.className = 'flex items-center justify-between p-2.5 rounded-md border border-slate-200 hover:bg-slate-50 text-xs transition-colors';
       row.innerHTML = `
         <div class="flex items-center gap-3">
           <div class="w-2 h-2 rounded-full bg-[#F5B900]"></div>
@@ -977,7 +978,7 @@
 
     slice.forEach((r) => {
       const tr = document.createElement('tr');
-      tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
+      tr.className = 'hover:bg-slate-50 transition-colors';
       tr.innerHTML = `
         <td class="px-4 py-3 font-mono text-xs font-bold text-[#202020]">
           ${escapeHtml(r.referenceNumber)}
@@ -996,7 +997,7 @@
           ${formatShortDate(r.submittedAt || r.createdAt)}
         </td>
         <td class="px-4 py-3 text-xs text-right">
-          <button type="button" onclick="window.GeoSafeAdmin.openReportDetailModal('${r.recordType}', ${r.id})" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors">
+          <button type="button" onclick="window.GeoSafeAdmin.openReportDetailModal('${r.recordType}', ${r.id})" class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
             Review
           </button>
         </td>
@@ -1245,12 +1246,12 @@
     }
 
     if (isVideo) {
-      contentEl.innerHTML = `<video controls autoplay class="max-h-[68vh] w-full rounded-xl bg-black">
+      contentEl.innerHTML = `<video controls autoplay class="max-h-[68vh] w-full rounded-md bg-black">
         <source src="${escapeHtml(fileUrl)}">
         Your browser does not support the video tag.
       </video>`;
     } else {
-      contentEl.innerHTML = `<img id="attachment-preview-image" src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="object-contain rounded-xl transition-all duration-150" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'p-8 text-center text-xs text-[#777777]\\'>Photo evidence is unavailable or could not be loaded.</div>';">`;
+      contentEl.innerHTML = `<img id="attachment-preview-image" src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="object-contain rounded-md transition-all duration-150" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'p-8 text-center text-xs text-[#777777]\\'>Photo evidence is unavailable or could not be loaded.</div>';">`;
       updateAttachmentZoomUI();
     }
   }
@@ -1469,7 +1470,7 @@
 
         if (items.length === 0) {
           const empty = document.createElement('div');
-          empty.className = 'rounded-xl border border-dashed border-[#EEEEEE] bg-[#FBFBFA] p-2.5 text-center text-[11px] text-[#777777]';
+          empty.className = 'rounded-md border border-dashed border-slate-200 bg-[#FBFBFA] p-2.5 text-center text-[11px] text-[#777777]';
           empty.textContent = emptyText;
           wrap.appendChild(empty);
           return wrap;
@@ -1487,7 +1488,7 @@
 
           const card = document.createElement('div');
           card.style.width = '128px';
-          card.className = 'group relative rounded-xl overflow-hidden border border-[#EEEEEE] bg-[#FFFDF7] cursor-pointer hover:border-[#F5B900] transition-colors shadow-subtle flex-shrink-0';
+          card.className = 'group relative rounded-md overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer hover:border-[#F5B900] transition-colors shadow-subtle flex-shrink-0';
           card.title = 'Click to view full size';
           card.onclick = () => openAttachmentPreviewModal(idx, items);
 
@@ -1499,14 +1500,14 @@
                 </span>
                 <span class="truncate max-w-full text-[10px]">${escapeHtml(fileName)}</span>
               </div>
-              <div class="px-1.5 py-1 border-t border-[#EEEEEE] bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
+              <div class="px-1.5 py-1 border-t border-slate-200 bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
             `;
           } else {
             card.innerHTML = `
               <div class="w-full overflow-hidden bg-[#F7F7F7] flex items-center justify-center" style="height:80px;">
                 <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="w-full h-full object-cover transition-transform group-hover:scale-[1.03]" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<div class=\\'p-2 text-[10px] text-center text-[#777777] flex items-center justify-center h-full\\'>Photo unavailable</div>';">
               </div>
-              <div class="px-1.5 py-1 border-t border-[#EEEEEE] bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
+              <div class="px-1.5 py-1 border-t border-slate-200 bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
             `;
           }
           grid.appendChild(card);
@@ -1586,6 +1587,29 @@
       }
       if (rejectBtn) rejectBtn.disabled = isNotesLocked || isAlreadyVerified;
 
+      const closureInfoEl = document.getElementById('modal-report-closure-info');
+      const closeIncidentBtn = document.getElementById('review-close-incident-btn');
+      const isClosableIncident =
+        recordType === 'incident' &&
+        ['verified', 'dispatched', 'responding', 'on_site', 'in_progress'].includes(rawStLower);
+      if (closeIncidentBtn) {
+        closeIncidentBtn.classList.toggle('hidden', !isClosableIncident);
+        closeIncidentBtn.disabled = !isClosableIncident;
+      }
+      if (closureInfoEl) {
+        if (recordType === 'incident' && rawStLower === 'resolved') {
+          closureInfoEl.classList.remove('hidden');
+          const byEl = document.getElementById('modal-closure-by');
+          const atEl = document.getElementById('modal-closure-at');
+          const reasonEl = document.getElementById('modal-closure-reason');
+          if (byEl) byEl.textContent = data.closedByName || 'Administrator';
+          if (atEl) atEl.textContent = data.resolvedAt ? formatDateTime(data.resolvedAt) : 'Recorded';
+          if (reasonEl) reasonEl.textContent = data.closureReason || data.savedReviewNotes || 'Closed by Administrator';
+        } else {
+          closureInfoEl.classList.add('hidden');
+        }
+      }
+
       // Section H: Status History (newest first, no nested scrollbar, Show More for lengthy histories)
       const histEl = document.getElementById('modal-report-history');
       histEl.innerHTML = '';
@@ -1600,7 +1624,7 @@
           const visible = showAllHistory ? history : history.slice(0, initialLimit);
           visible.forEach((h) => {
             const item = document.createElement('div');
-            item.className = 'text-xs border-b border-[#EEEEEE] pb-2 last:border-b-0';
+            item.className = 'text-xs border-b border-slate-200 pb-2 last:border-b-0';
             const actor = h.actorName || h.changedByName || h.changed_by_name || 'System';
             const role = h.changedByRole || h.changed_by_role || '';
             const notes = h.notes || h.remarks || '';
@@ -1643,6 +1667,126 @@
     const modal = document.getElementById('admin-report-modal');
     if (modal) modal.classList.add('hidden');
     state.reports.activeDetail = null;
+  }
+
+  let isClosingIncident = false;
+
+  function openCloseIncidentModal() {
+    const detail = state.reports.activeDetail;
+    if (!detail || detail.recordType !== 'incident') return;
+    const modal = document.getElementById('admin-close-incident-modal');
+    if (!modal) return;
+
+    const refEl = document.getElementById('close-incident-modal-ref');
+    const titleEl = document.getElementById('close-incident-modal-title');
+    const presetEl = document.getElementById('close-incident-preset-select');
+    const reasonEl = document.getElementById('close-incident-reason-input');
+    const reqStarEl = document.getElementById('close-incident-reason-req');
+    const errEl = document.getElementById('close-incident-modal-error');
+
+    if (refEl) refEl.textContent = detail.referenceNumber || `INC-${detail.id}`;
+    if (titleEl) titleEl.textContent = detail.title || detail.category || 'Verified Incident';
+    if (presetEl) presetEl.value = '';
+    if (reasonEl) reasonEl.value = '';
+    if (reqStarEl) reqStarEl.classList.add('hidden');
+    if (errEl) errEl.classList.add('hidden');
+    modal.classList.remove('hidden');
+  }
+
+  function closeCloseIncidentModal() {
+    document.getElementById('admin-close-incident-modal')?.classList.add('hidden');
+  }
+
+  function handleCloseIncidentPresetChange() {
+    const presetEl = document.getElementById('close-incident-preset-select');
+    const reasonEl = document.getElementById('close-incident-reason-input');
+    const reqStarEl = document.getElementById('close-incident-reason-req');
+    const errEl = document.getElementById('close-incident-modal-error');
+    if (errEl) errEl.classList.add('hidden');
+    if (!presetEl || !reasonEl) return;
+
+    const val = presetEl.value;
+    if (val === 'Other') {
+      reasonEl.value = '';
+      reasonEl.focus();
+      if (reqStarEl) reqStarEl.classList.remove('hidden');
+    } else if (val) {
+      reasonEl.value = val;
+      if (reqStarEl) reqStarEl.classList.add('hidden');
+    } else {
+      reasonEl.value = '';
+      if (reqStarEl) reqStarEl.classList.add('hidden');
+    }
+  }
+
+  async function confirmCloseIncident() {
+    const detail = state.reports.activeDetail;
+    if (!detail || detail.recordType !== 'incident' || isClosingIncident) return;
+
+    const presetEl = document.getElementById('close-incident-preset-select');
+    const reasonEl = document.getElementById('close-incident-reason-input');
+    const errEl = document.getElementById('close-incident-modal-error');
+    const confirmBtn = document.getElementById('close-incident-confirm-btn');
+
+    if (errEl) errEl.classList.add('hidden');
+
+    const presetVal = presetEl ? presetEl.value : '';
+    const typedVal = reasonEl ? reasonEl.value.trim() : '';
+    const finalReason = presetVal === 'Other' ? typedVal : (typedVal || presetVal);
+
+    if (!finalReason || finalReason.toLowerCase() === 'other') {
+      const msg = presetVal === 'Other'
+        ? 'Please write an explanation for closing this incident.'
+        : 'Please select or enter a closure reason.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      if (window.GeoSafeToast?.flagInvalidField) {
+        window.GeoSafeToast.flagInvalidField(presetVal === 'Other' ? reasonEl : (presetEl || reasonEl), msg);
+      }
+      return;
+    }
+
+    isClosingIncident = true;
+    const prevText = confirmBtn ? confirmBtn.textContent : 'Confirm Close Incident';
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Closing...';
+    }
+
+    try {
+      const res = await window.geoSafeStore.request(
+        `/admin/reports/incident/${encodeURIComponent(detail.id)}/close`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ reason: finalReason }),
+        }
+      );
+      closeCloseIncidentModal();
+      window.GeoSafeToast?.show?.({
+        message: res?.message || `Incident ${detail.referenceNumber || ''} closed successfully.`,
+        type: 'success',
+      });
+      await Promise.all([
+        loadReportsList(),
+        loadDashboardOverview(),
+        openReportDetailModal('incident', detail.id),
+      ]);
+    } catch (err) {
+      const msg = err?.message || 'Unable to close incident report.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      window.GeoSafeToast?.show?.({ message: msg, type: 'error' });
+    } finally {
+      isClosingIncident = false;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = prevText;
+      }
+    }
   }
 
   let isReviewSubmitting = false;
@@ -1776,7 +1920,7 @@
 
       state.responders.items.forEach((r) => {
         const tr = document.createElement('tr');
-        tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
+        tr.className = 'hover:bg-slate-50 transition-colors';
         const status = r.availabilityStatus === 'Unavailable' ? 'On Break' : (r.availabilityStatus || 'Off Duty');
         const dutyBadgeMap = {
           'On Duty': '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">On Duty</span>',
@@ -1796,7 +1940,7 @@
           <td class="px-4 py-3 text-xs">${dutyBadge}</td>
           <td class="px-4 py-3 text-xs font-bold text-[#202020]">${r.activeAssignmentsCount}</td>
           <td class="px-4 py-3 text-xs text-right">
-            <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal('incident', null, ${r.id})" class="px-3 py-1.5 rounded-xl bg-[#F5B900] hover:bg-[#E5AC00] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+            <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal('incident', null, ${r.id})" class="px-3 py-1.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
               Dispatch
             </button>
           </td>
@@ -1859,7 +2003,7 @@
       if (candidates.length === 0) {
         respSelect.innerHTML = '<option value="">No eligible On-Duty responders available</option>';
         if (listEl) {
-          listEl.innerHTML = '<p class="text-[11px] text-[#D93636] font-semibold p-2 rounded-xl bg-[#FFF1F1] border border-[#FFC2C2]">No eligible On-Duty responders are currently available for dispatch.</p>';
+          listEl.innerHTML = '<p class="text-[11px] text-[#D93636] font-semibold p-2 rounded-md bg-[#FFF1F1] border border-[#FFC2C2]">No eligible On-Duty responders are currently available for dispatch.</p>';
         }
         return;
       }
@@ -1904,7 +2048,7 @@
           const gpsBadge = !c.hasValidGps
             ? '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">No GPS</span>'
             : (c.isStale
-              ? '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">Stale GPS</span>'
+              ? '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">Stale GPS</span>'
               : '<span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">Live GPS</span>');
 
           const straightText = c.straightLineMeters !== null
@@ -1918,7 +2062,7 @@
 
           return `
             <button type="button" data-rec-resp-id="${c.id}"
-              class="w-full text-left p-2 rounded-xl border transition-colors ${isSelected ? 'border-[#F5B900] bg-[#FFF9E8]/70' : 'border-[#EEEEEE] bg-[#FFFDF7] hover:border-[#F5B900]/70'}">
+              class="w-full text-left p-2 rounded-md border transition-colors ${isSelected ? 'border-[#F5B900] bg-slate-50' : 'border-slate-200 bg-slate-50 hover:border-[#F5B900]/70'}">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs font-bold text-[#202020] truncate">${idx === 0 && c.hasValidGps ? 'Nearest • ' : ''}${escapeHtml(c.fullName)}</span>
                 ${gpsBadge}
@@ -1934,7 +2078,7 @@
             respSelect.value = btn.getAttribute('data-rec-resp-id');
             listEl.querySelectorAll('[data-rec-resp-id]').forEach((b) => {
               const active = b.getAttribute('data-rec-resp-id') === respSelect.value;
-              b.className = `w-full text-left p-2 rounded-xl border transition-colors ${active ? 'border-[#F5B900] bg-[#FFF9E8]/70' : 'border-[#EEEEEE] bg-[#FFFDF7] hover:border-[#F5B900]/70'}`;
+              b.className = `w-full text-left p-2 rounded-md border transition-colors ${active ? 'border-[#F5B900] bg-slate-50' : 'border-slate-200 bg-slate-50 hover:border-[#F5B900]/70'}`;
             });
           });
         });
@@ -2188,23 +2332,15 @@
 
     uniqueUsers.forEach((u) => {
       const tr = document.createElement('tr');
-      tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
+      tr.className = 'hover:bg-slate-50 transition-colors';
       const userRole = u.role || u.roleName || 'Resident';
       const roleUnit = u.badgeNumber ? `${userRole} (${u.badgeNumber})` : userRole;
       const displayId = u.userCode || u.userId || u.user_code || (u.id ? `USR-${String(u.id).padStart(5, '0')}` : '—');
-      const locMethodLabel = u.locationVerificationMethod === 'gps'
-        ? 'GPS'
-        : u.locationVerificationMethod === 'manual_admin'
-        ? 'Admin Review'
-        : '';
-      const locMetaText = [
-        locMethodLabel,
-        u.locationAccuracyMeters ? `(+/-${Math.round(u.locationAccuracyMeters)}m)` : ''
-      ].filter(Boolean).join(' ');
+      const locMethodLabel = u.locationVerificationMethod === 'manual_admin' ? 'Admin Review' : '';
 
       tr.innerHTML = `
         <td class="px-4 py-3 text-xs font-mono font-bold text-[#202020] whitespace-nowrap">
-          <span class="bg-[#FFF9E8] px-2 py-0.5 rounded-md border border-[#FFE872] text-[11px] font-bold">${escapeHtml(displayId)}</span>
+          <span class="bg-slate-50 px-2 py-0.5 rounded-md border border-[#FFE872] text-[11px] font-bold">${escapeHtml(displayId)}</span>
         </td>
         <td class="px-4 py-3 text-xs font-bold text-[#202020] whitespace-nowrap">
           ${escapeHtml(u.name)}
@@ -2223,7 +2359,7 @@
         <td class="px-4 py-3 text-xs whitespace-nowrap">
           <div class="flex flex-col items-start gap-0.5">
             ${getLocationVerificationBadgeHtml(u.locationVerificationStatus)}
-            ${locMetaText ? `<span class="text-[10px] text-[#777777]">${escapeHtml(locMetaText)}</span>` : ''}
+            ${locMethodLabel ? `<span class="text-[10px] text-[#777777]">${escapeHtml(locMethodLabel)}</span>` : ''}
           </div>
         </td>
         ` : ''}
@@ -2231,7 +2367,7 @@
           ${formatShortDate(u.registeredAt)}
         </td>
         <td class="px-4 py-3 text-xs text-right whitespace-nowrap space-x-1.5">
-          <button type="button" onclick="window.GeoSafeAdmin.openUserStatusModal(${u.id}, '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', '${u.status}', '${escapeHtml(displayId)}')" class="px-3 py-1.5 rounded-xl border border-[#EEEEEE] hover:bg-[#FFF9E8] text-xs font-bold text-[#202020] transition-colors">
+          <button type="button" onclick="window.GeoSafeAdmin.openUserStatusModal(${u.id}, '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', '${u.status}', '${escapeHtml(displayId)}')" class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
             Manage Status
           </button>
         </td>
@@ -2663,51 +2799,50 @@
     return mins > 0 ? `${hours}h ${mins}m left` : `${hours}h left`;
   }
 
-  function updateBroadcastExpirationPreview() {
+  function getSelectedBroadcastHours() {
     const selectEl = document.getElementById('broadcast-expiration-select');
-    const customInput = document.getElementById('broadcast-custom-expiration-input');
-    const previewEl = document.getElementById('broadcast-expiration-preview-time');
-    if (!selectEl || !previewEl) return;
+    const customInput = document.getElementById('broadcast-custom-hours-input');
+    if (!selectEl) return { valid: true, hours: 12, isCustom: false };
 
     const val = selectEl.value;
     if (val === 'custom') {
-      const parsed = parseManilaLocalInput(customInput ? customInput.value : '');
-      if (!parsed) {
-        previewEl.textContent = 'Select a custom date & time';
-        return;
+      const raw = customInput ? customInput.value.trim() : '';
+      const num = Number(raw);
+      if (!raw || !Number.isFinite(num) || !Number.isInteger(num) || num < 1 || num > 168) {
+        return { valid: false, hours: null, isCustom: true };
       }
-      if (parsed.getTime() <= Date.now()) {
-        previewEl.textContent = `${formatManilaDateTime(parsed)} (Must be in the future)`;
-        return;
-      }
-      previewEl.textContent = `${formatManilaDateTime(parsed)} (Asia/Manila)`;
-      return;
+      return { valid: true, hours: num, isCustom: true };
     }
+    const num = Number(val);
+    if (!Number.isFinite(num) || !Number.isInteger(num) || num < 1 || num > 168) {
+      return { valid: false, hours: null, isCustom: false };
+    }
+    return { valid: true, hours: num, isCustom: false };
+  }
 
-    const minutes = Number(val);
-    if (!Number.isFinite(minutes) || minutes <= 0) {
-      previewEl.textContent = '--';
+  function updateBroadcastExpirationPreview() {
+    const previewEl = document.getElementById('broadcast-expiration-preview-time');
+    if (!previewEl) return;
+    const sel = getSelectedBroadcastHours();
+    if (!sel.valid) {
+      previewEl.textContent = sel.isCustom ? 'Enter 1–168 hours' : '--';
       return;
     }
-    const target = new Date(Date.now() + minutes * 60000);
-    previewEl.textContent = `${formatManilaDateTime(target)} (Asia/Manila)`;
+    const target = new Date(Date.now() + sel.hours * 60 * 60 * 1000);
+    const label = `${sel.hours} ${sel.hours === 1 ? 'hour' : 'hours'}`;
+    previewEl.textContent = `${label} (~${formatManilaDateTime(target)} Asia/Manila)`;
   }
 
   function handleExpirationDurationChange() {
     const selectEl = document.getElementById('broadcast-expiration-select');
     const customWrap = document.getElementById('broadcast-custom-expiration-wrap');
-    const customInput = document.getElementById('broadcast-custom-expiration-input');
-    if (!selectEl || !customWrap) return;
-
-    const isCustom = selectEl.value === 'custom';
-    customWrap.classList.toggle('hidden', !isCustom);
-    if (customInput) {
-      customInput.required = isCustom;
-      if (isCustom) {
-        customInput.min = toManilaDatetimeLocalValue(new Date(Date.now() + 60000));
-        if (!customInput.value) {
-          customInput.value = toManilaDatetimeLocalValue(new Date(Date.now() + 60 * 60000));
-        }
+    const customInput = document.getElementById('broadcast-custom-hours-input');
+    if (selectEl && customWrap) {
+      const isCustom = selectEl.value === 'custom';
+      customWrap.classList.toggle('hidden', !isCustom);
+      if (customInput) {
+        customInput.required = isCustom;
+        if (!isCustom) customInput.value = '';
       }
     }
     updateBroadcastExpirationPreview();
@@ -2740,9 +2875,6 @@
     const scope = document.getElementById('broadcast-scope-select').value;
     const affectedLocation = (document.getElementById('broadcast-affected-location-input')?.value || '').trim();
     const message = document.getElementById('broadcast-message-input').value.trim();
-    const expirationSelect = document.getElementById('broadcast-expiration-select');
-    const customExpInput = document.getElementById('broadcast-custom-expiration-input');
-    const expirationChoice = expirationSelect ? expirationSelect.value : '240';
 
     if (!title || !message) {
       if (errEl) {
@@ -2768,41 +2900,21 @@
       return;
     }
 
-    let expirationDurationMinutes = null;
-    let customExpiresAt = null;
-    let expirationPreviewText = '';
-
-    if (expirationChoice === 'custom') {
-      const parsedCustom = parseManilaLocalInput(customExpInput ? customExpInput.value : '');
-      if (!parsedCustom) {
-        if (errEl) {
-          errEl.textContent = 'Please select a valid custom expiration date and time.';
-          errEl.classList.remove('hidden');
-        }
-        return;
+    const selDuration = getSelectedBroadcastHours();
+    if (!selDuration.valid) {
+      const msg = 'Please select or enter a valid expiration duration between 1 and 168 hours.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
       }
-      if (parsedCustom.getTime() <= Date.now()) {
-        if (errEl) {
-          errEl.textContent = 'Custom expiration date and time must be later than the current time.';
-          errEl.classList.remove('hidden');
-        }
-        return;
-      }
-      customExpiresAt = parsedCustom.toISOString();
-      expirationPreviewText = `${formatManilaDateTime(parsedCustom)} (Asia/Manila)`;
-    } else {
-      const mins = Number(expirationChoice);
-      if (!Number.isFinite(mins) || mins <= 0) {
-        if (errEl) {
-          errEl.textContent = 'Please select a valid expiration duration.';
-          errEl.classList.remove('hidden');
-        }
-        return;
-      }
-      expirationDurationMinutes = mins;
-      const estimatedDate = new Date(Date.now() + mins * 60000);
-      expirationPreviewText = `${formatManilaDateTime(estimatedDate)} (Asia/Manila)`;
+      return;
     }
+
+    const durationHours = selDuration.hours;
+    const durationMinutes = durationHours * 60;
+    const durationLabel = `${durationHours} ${durationHours === 1 ? 'hour' : 'hours'}`;
+    const estimatedDate = new Date(Date.now() + durationMinutes * 60000);
+    const expirationPreviewText = `${durationLabel} (~${formatManilaDateTime(estimatedDate)} Asia/Manila)`;
 
     state.broadcasts.pendingBroadcast = {
       categoryId: Number(categoryId),
@@ -2813,8 +2925,8 @@
       scope,
       affectedLocation,
       message,
-      expirationDurationMinutes,
-      customExpiresAt,
+      expirationDurationHours: durationHours,
+      expirationDurationMinutes: durationMinutes,
     };
 
     const advisoryPreviewEl = document.getElementById('confirm-broadcast-advisory-type');
@@ -2870,12 +2982,9 @@
         location_coverage: 'Entire Barangay Bayanan',
         location_address: pending.affectedLocation || null,
         message: pending.message,
+        expiration_duration_hours: pending.expirationDurationHours,
+        expiration_duration_minutes: pending.expirationDurationMinutes,
       };
-      if (pending.expirationDurationMinutes) {
-        payload.expiration_duration_minutes = pending.expirationDurationMinutes;
-      } else if (pending.customExpiresAt) {
-        payload.expires_at = pending.customExpiresAt;
-      }
 
       const result = await apiRequest('/broadcasts', {
         method: 'POST',
@@ -3024,7 +3133,10 @@
     }
 
     document.getElementById('admin-bdtl-published').textContent = formatManilaDateTime(b.broadcastedAt);
-    document.getElementById('admin-bdtl-expires').textContent = b.expiresAt ? formatManilaDateTime(b.expiresAt) : 'No expiration';
+    const expText = b.expiresAt
+      ? (b.expirationDurationLabel ? `${formatManilaDateTime(b.expiresAt)} (${b.expirationDurationLabel})` : formatManilaDateTime(b.expiresAt))
+      : 'No expiration';
+    document.getElementById('admin-bdtl-expires').textContent = expText;
     document.getElementById('admin-bdtl-author').textContent = b.authorizedBy || 'Administrator';
     document.getElementById('admin-bdtl-ref').textContent = b.referenceNumber || `BRD-${b.id}`;
 
@@ -3062,7 +3174,7 @@
 
       filteredItems.forEach((b) => {
         const tr = document.createElement('tr');
-        tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
+        tr.className = 'hover:bg-slate-50 transition-colors';
         const catLabel = b.categoryName || b.advisoryType || 'Other';
         const advisoryBadge = window.GeoSafeAdvisories
           ? window.GeoSafeAdvisories.renderBadge(catLabel, { badgeColor: b.badgeColor })
@@ -3098,7 +3210,7 @@
           <td class="px-4 py-3 text-xs whitespace-nowrap">${statusBadge}</td>
           <td class="px-4 py-3 text-xs text-right whitespace-nowrap">
             <div class="inline-flex items-center gap-1.5">
-              <button type="button" onclick="window.GeoSafeAdmin.openBroadcastDetailModal(${b.id})" class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF9E8] border border-[#EEEEEE] text-[11px] font-bold text-[#202020] transition-colors">View</button>
+              <button type="button" onclick="window.GeoSafeAdmin.openBroadcastDetailModal(${b.id})" class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-bold text-[#202020] transition-colors">View</button>
               ${cancelBtnHtml}
             </div>
           </td>
@@ -3166,10 +3278,10 @@
     if (options.error) {
       if (badgeEl) badgeEl.textContent = 'Error';
       container.innerHTML = `
-        <div class="p-6 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-center space-y-2">
+        <div class="p-6 rounded-lg bg-[#FFF1F1] border border-[#FFC2C2] text-center space-y-2">
           <p class="text-xs font-bold text-[#D93636]">Unable to load disaster category distribution.</p>
           <p class="text-[11px] text-[#B82828]">${escapeHtml(options.error)}</p>
-          ${options.onRetry ? `<button type="button" onclick="${escapeHtml(options.onRetry)}" class="px-3 py-1.5 rounded-xl bg-white border border-[#FFC2C2] text-[#D93636] text-xs font-bold hover:bg-[#FFF9E8]">Retry</button>` : ''}
+          ${options.onRetry ? `<button type="button" onclick="${escapeHtml(options.onRetry)}" class="px-3 py-1.5 rounded-md bg-white border border-[#FFC2C2] text-[#D93636] text-xs font-bold hover:bg-slate-100">Retry</button>` : ''}
         </div>
       `;
       return;
@@ -3189,7 +3301,7 @@
       const emptyLegendItems = allCats.map((c, idx) => {
         const color = getCategoryChartColor(c.name, idx);
         return `
-          <div class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] opacity-60">
+          <div class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-md border border-slate-200 bg-slate-50 opacity-60">
             <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${color};"></span>
             <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(c.name)}</span>
           </div>
@@ -3309,7 +3421,7 @@
       const segIdx = segIndexByName.has(c.name) ? segIndexByName.get(c.name) : -1;
       return `
         <div
-          class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-[#EEEEEE] bg-[#FFFDF7] ${isZero ? 'opacity-60' : 'cursor-pointer hover:bg-[#FFF9E8]/70'}"
+          class="gs-doughnut-legend-item flex items-center gap-2.5 px-3 py-1.5 rounded-md border border-slate-200 bg-slate-50 ${isZero ? 'opacity-60' : 'cursor-pointer hover:bg-slate-50'}"
           ${segIdx >= 0 ? `data-legend-seg-idx="${segIdx}"` : ''}
         >
           <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${color};"></span>
@@ -3530,6 +3642,9 @@
         { onRetry: 'window.GeoSafeAdmin.loadAnalyticsData()' }
       );
 
+      // Daily Incident Count Bar Chart
+      renderDailyIncidentsBarChart(data.dailyTrends || [], period, dateFrom, dateTo);
+
       // Categories
       const catList = document.getElementById('analytics-categories-list');
       const catEmpty = document.getElementById('analytics-categories-empty');
@@ -3539,8 +3654,8 @@
         if (catEmpty) catEmpty.classList.toggle('hidden', cats.length > 0);
         cats.forEach((c) => {
           const item = document.createElement('div');
-          item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(c.name)}</span><span class="font-bold text-[#8A6800]">${c.count}</span>`;
+          item.className = 'flex items-center justify-between py-2 border-b border-slate-100 last:border-b-0';
+          item.innerHTML = `<span class="font-medium text-[#0f172a]">${escapeHtml(c.name)}</span><span class="font-bold text-[#0f172a] tabular-nums">${c.count}</span>`;
           catList.appendChild(item);
         });
       }
@@ -3554,8 +3669,8 @@
         if (statEmpty) statEmpty.classList.toggle('hidden', stats.length > 0);
         stats.forEach((st) => {
           const item = document.createElement('div');
-          item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(st.status)}</span><span class="font-bold text-[#202020]">${st.count}</span>`;
+          item.className = 'flex items-center justify-between py-2 border-b border-slate-100 last:border-b-0';
+          item.innerHTML = `<span class="font-medium text-[#0f172a]">${escapeHtml(st.status)}</span><span class="font-bold text-[#0f172a] tabular-nums">${st.count}</span>`;
           statList.appendChild(item);
         });
       }
@@ -3569,19 +3684,181 @@
         if (locEmpty) locEmpty.classList.toggle('hidden', locs.length > 0);
         locs.forEach((l) => {
           const item = document.createElement('div');
-          item.className = 'flex items-center justify-between p-2 rounded-xl border border-[#EEEEEE]';
-          item.innerHTML = `<span class="font-bold text-[#202020]">${escapeHtml(l.location_name)}</span><span class="font-bold text-[#202020]">${l.count}</span>`;
+          item.className = 'flex items-center justify-between py-2 border-b border-slate-100 last:border-b-0';
+          item.innerHTML = `<span class="font-medium text-[#0f172a]">${escapeHtml(l.location_name)}</span><span class="font-bold text-[#0f172a] tabular-nums">${l.count}</span>`;
           locList.appendChild(item);
         });
       }
     } catch (err) {
       console.error('[Admin] loadAnalyticsData failed:', err.message);
+      renderDailyIncidentsBarChart([], period, dateFrom, dateTo);
       renderCategoryDoughnutChart(
         'analytics-category-doughnut',
         'analytics-category-total-badge',
         null,
         { error: err.message, onRetry: 'window.GeoSafeAdmin.loadAnalyticsData()' }
       );
+    }
+  }
+
+  function formatDailyChartDateLabel(ymd, includeYear = false) {
+    if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return String(ymd || '');
+    const [y, m, d] = ymd.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const opts = includeYear
+      ? { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' }
+      : { month: 'short', day: '2-digit', timeZone: 'UTC' };
+    return dt.toLocaleDateString('en-US', opts);
+  }
+
+  function renderDailyIncidentsBarChart(dailyTrends, period, dateFrom, dateTo) {
+    const chartEl = document.getElementById('analytics-daily-bar-chart');
+    const emptyEl = document.getElementById('analytics-daily-empty');
+    const tooltipEl = document.getElementById('analytics-daily-tooltip');
+    const rangeLabelEl = document.getElementById('analytics-daily-range-label');
+    if (!chartEl) return;
+
+    const rows = Array.isArray(dailyTrends) ? dailyTrends : [];
+
+    if (rangeLabelEl) {
+      if (rows.length > 0) {
+        rangeLabelEl.textContent = `${formatDailyChartDateLabel(rows[0].date, true)} – ${formatDailyChartDateLabel(rows[rows.length - 1].date, true)}`;
+      } else if (period === 'custom' && dateFrom && dateTo) {
+        rangeLabelEl.textContent = `${formatDailyChartDateLabel(dateFrom, true)} – ${formatDailyChartDateLabel(dateTo, true)}`;
+      } else {
+        rangeLabelEl.textContent = '';
+      }
+    }
+
+    if (rows.length === 0) {
+      chartEl.innerHTML = '';
+      chartEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      if (tooltipEl) tooltipEl.classList.add('hidden');
+      return;
+    }
+
+    chartEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    const maxCount = Math.max(1, ...rows.map((r) => Number(r.count || 0)));
+    const niceStep = (() => {
+      const raw = maxCount / 4;
+      if (raw <= 1) return 1;
+      if (raw <= 2) return 2;
+      if (raw <= 5) return 5;
+      const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+      const norm = raw / mag;
+      if (norm <= 1) return 1 * mag;
+      if (norm <= 2) return 2 * mag;
+      if (norm <= 5) return 5 * mag;
+      return 10 * mag;
+    })();
+    const yMax = Math.max(niceStep * 4, Math.ceil(maxCount / niceStep) * niceStep);
+    const yTicks = [];
+    for (let v = 0; v <= yMax; v += niceStep) {
+      yTicks.push(v);
+    }
+
+    const svgWidth = 920;
+    const svgHeight = 290;
+    const padLeft = 56;
+    const padRight = 18;
+    const padTop = 22;
+    const padBottom = 48;
+    const plotW = svgWidth - padLeft - padRight;
+    const plotH = svgHeight - padTop - padBottom;
+
+    const slotW = plotW / rows.length;
+    const barW = Math.max(8, Math.min(30, slotW * 0.52));
+    const labelStep = rows.length > 18 ? Math.ceil(rows.length / 12) : 1;
+
+    const gridLinesSvg = yTicks.map((tick) => {
+      const y = padTop + plotH - (tick / yMax) * plotH;
+      return `
+        <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${svgWidth - padRight}" y2="${y.toFixed(1)}"
+          stroke="${tick === 0 ? '#94a3b8' : '#e2e8f0'}" stroke-width="1" />
+        <text x="${padLeft - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end"
+          fill="#64748b" font-size="11" font-weight="500">${tick}</text>
+      `;
+    }).join('');
+
+    const yAxisLineSvg = `<line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${padTop + plotH}" stroke="#94a3b8" stroke-width="1" />`;
+    const yAxisTitleSvg = `
+      <text x="15" y="${(padTop + plotH / 2).toFixed(1)}" text-anchor="middle"
+        fill="#334155" font-size="11" font-weight="600"
+        transform="rotate(-90 15 ${(padTop + plotH / 2).toFixed(1)})">Number of Reports</text>
+    `;
+    const xAxisTitleSvg = `
+      <text x="${(padLeft + plotW / 2).toFixed(1)}" y="${svgHeight - 8}" text-anchor="middle"
+        fill="#334155" font-size="11" font-weight="600">Date</text>
+    `;
+
+    const barsSvg = rows.map((row, idx) => {
+      const count = Number(row.count || 0);
+      const barH = yMax > 0 ? (count / yMax) * plotH : 0;
+      const centerX = padLeft + idx * slotW + slotW / 2;
+      const barX = centerX - barW / 2;
+      const barY = padTop + plotH - barH;
+      const shortDate = formatDailyChartDateLabel(row.date, false);
+      const fullDate = formatDailyChartDateLabel(row.date, true);
+      const showTickLabel = idx % labelStep === 0 || idx === rows.length - 1;
+      const showValueLabel = rows.length <= 31 && count > 0;
+
+      return `
+        <g class="analytics-daily-bar-group cursor-pointer" tabindex="0"
+          data-date="${escapeHtml(fullDate)}" data-count="${count}"
+          aria-label="${escapeHtml(fullDate)}: ${count} incident report${count === 1 ? '' : 's'}">
+          <rect x="${(padLeft + idx * slotW).toFixed(1)}" y="${padTop}" width="${slotW.toFixed(1)}" height="${plotH}"
+            fill="transparent" />
+          ${barH > 0 ? `
+            <rect x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(2, barH).toFixed(1)}"
+              rx="2" fill="#0A58CA" class="transition-colors duration-150 hover:fill-[#084298]" />
+          ` : ''}
+          ${showValueLabel ? `
+            <text x="${centerX.toFixed(1)}" y="${Math.max(padTop - 5, barY - 6).toFixed(1)}" text-anchor="middle"
+              fill="#0f172a" font-size="11" font-weight="600">${count}</text>
+          ` : ''}
+          ${showTickLabel ? `
+            <text x="${centerX.toFixed(1)}" y="${padTop + plotH + 16}" text-anchor="middle"
+              fill="#475569" font-size="11" font-weight="500">${escapeHtml(shortDate)}</text>
+          ` : ''}
+        </g>
+      `;
+    }).join('');
+
+    chartEl.innerHTML = `
+      <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-auto select-none" role="img"
+        aria-label="Incidents by Day bar chart">
+        ${gridLinesSvg}
+        ${yAxisLineSvg}
+        ${yAxisTitleSvg}
+        ${xAxisTitleSvg}
+        ${barsSvg}
+      </svg>
+    `;
+
+    if (tooltipEl) {
+      const showTooltip = (group, clientX, clientY) => {
+        const d = group.getAttribute('data-date') || '';
+        const c = Number(group.getAttribute('data-count') || 0);
+        tooltipEl.textContent = `${d}: ${c} incident report${c === 1 ? '' : 's'}`;
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.left = `${clientX + 12}px`;
+        tooltipEl.style.top = `${Math.max(12, clientY - 36)}px`;
+      };
+      const hideTooltip = () => tooltipEl.classList.add('hidden');
+
+      chartEl.querySelectorAll('.analytics-daily-bar-group').forEach((group) => {
+        group.addEventListener('mouseenter', (e) => showTooltip(group, e.clientX, e.clientY));
+        group.addEventListener('mousemove', (e) => showTooltip(group, e.clientX, e.clientY));
+        group.addEventListener('mouseleave', hideTooltip);
+        group.addEventListener('focus', () => {
+          const rect = group.getBoundingClientRect();
+          showTooltip(group, rect.left + rect.width / 2, rect.top + 20);
+        });
+        group.addEventListener('blur', hideTooltip);
+      });
     }
   }
 
@@ -3593,6 +3870,32 @@
 
     const params = new URLSearchParams({ period, from: dateFrom, to: dateTo });
     window.location.href = `/api/admin/analytics/export?${params.toString()}`;
+  }
+
+  function printAnalyticsReport() {
+    window.print();
+  }
+
+  function emailAnalyticsSummary() {
+    const data = state.analytics?.data || {};
+    const sum = data.summary || {};
+    const periodSelect = document.getElementById('analytics-period-select');
+    const periodLabel = periodSelect ? periodSelect.options[periodSelect.selectedIndex]?.text || periodSelect.value : 'Selected Period';
+    const subject = encodeURIComponent(`GeoSafe Incident Count Summary (${periodLabel})`);
+    const body = encodeURIComponent(
+      `GeoSafe Incident Count Report (${periodLabel})\n` +
+      `Total Incidents: ${Number(sum.totalReports || 0).toLocaleString()}\n` +
+      `Total Rescues: ${Number(sum.totalRescues || 0).toLocaleString()}\n` +
+      `Total Operations: ${Number(sum.totalEvents || 0).toLocaleString()}\n` +
+      `Active Dispatches: ${Number(sum.activeAssignments || 0).toLocaleString()}\n`
+    );
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }
+
+  function scheduleAnalyticsReport() {
+    if (typeof showToast === 'function') {
+      showToast('Use Print or Export to save this report; automated email scheduling is configured via System Settings.', 'info');
+    }
   }
 
   // ============================================================================
@@ -3627,7 +3930,7 @@
       // Editable settings from system_settings
       (data.settings || []).forEach((st) => {
         const box = document.createElement('div');
-        box.className = 'p-3.5 rounded-2xl border border-[#EEEEEE] space-y-2';
+        box.className = 'p-3.5 rounded-lg border border-slate-200 space-y-2';
         box.innerHTML = `
           <div class="flex items-center justify-between">
             <span class="text-xs font-bold text-[#202020]">${escapeHtml(st.setting_key)}</span>
@@ -3635,8 +3938,8 @@
           </div>
           <p class="text-[11px] text-[#777777]">${escapeHtml(st.description || 'System setting')}</p>
           <div class="flex items-center gap-2">
-            <input id="setting-input-${st.id}" type="text" value="${escapeHtml(st.setting_value || '')}" class="flex-1 px-3 py-1.5 rounded-xl border border-[#EEEEEE] text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
-            <button type="button" onclick="window.GeoSafeAdmin.saveSetting('${st.setting_key}', document.getElementById('setting-input-${st.id}').value)" class="px-3 py-1.5 rounded-xl bg-[#202020] hover:bg-[#333333] text-[#FFF9E8] text-xs font-bold transition-colors">
+            <input id="setting-input-${st.id}" type="text" value="${escapeHtml(st.setting_value || '')}" class="flex-1 px-3 py-1.5 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+            <button type="button" onclick="window.GeoSafeAdmin.saveSetting('${st.setting_key}', document.getElementById('setting-input-${st.id}').value)" class="px-3 py-1.5 rounded-md bg-[#202020] hover:bg-[#333333] text-[#FFF9E8] text-xs font-bold transition-colors">
               Save
             </button>
           </div>
@@ -3653,7 +3956,7 @@
         if (secEmpty) secEmpty.classList.toggle('hidden', events.length > 0);
         events.forEach((ev) => {
           const tr = document.createElement('tr');
-          tr.className = 'hover:bg-[#FFF9E8]/40';
+          tr.className = 'hover:bg-slate-50';
           tr.innerHTML = `
             <td class="px-3 py-2 font-bold text-[#202020]">${escapeHtml(ev.event_type)}</td>
             <td class="px-3 py-2 text-[#555555]">${escapeHtml(ev.attempted_email || '-')}</td>
@@ -3682,12 +3985,12 @@
       });
       showBannerMessage(res.message || 'Setting updated.');
       if (feedback) {
-        feedback.className = 'p-2.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 block';
+        feedback.className = 'p-2.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 block';
         feedback.textContent = res.message || 'Saved successfully.';
       }
     } catch (err) {
       if (feedback) {
-        feedback.className = 'p-2.5 rounded-xl text-xs font-semibold bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] block';
+        feedback.className = 'p-2.5 rounded-md text-xs font-semibold bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] block';
         feedback.textContent = err.message;
       }
     }
@@ -3731,7 +4034,7 @@
 
       state.audit.items.forEach((log) => {
         const tr = document.createElement('tr');
-        tr.className = 'hover:bg-[#FFF9E8]/40 transition-colors';
+        tr.className = 'hover:bg-slate-50 transition-colors';
         const isSuccess = String(log.result || '').toUpperCase() === 'SUCCESS';
         const resultBadge = isSuccess
           ? '<span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">Success</span>'
@@ -3919,13 +4222,17 @@
       });
     }
 
-    // Analytics Custom Date Toggle
+    // Analytics Custom Date Toggle & Instant Filter Refresh
     const analyticsPeriodSelect = document.getElementById('analytics-period-select');
     if (analyticsPeriodSelect) {
       analyticsPeriodSelect.addEventListener('change', (e) => {
+        const isCustom = e.target.value === 'custom';
         const customContainer = document.getElementById('analytics-custom-date-container');
         if (customContainer) {
-          customContainer.classList.toggle('hidden', e.target.value !== 'custom');
+          customContainer.classList.toggle('hidden', !isCustom);
+        }
+        if (!isCustom) {
+          loadAnalyticsData();
         }
       });
     }
@@ -4250,11 +4557,11 @@
           return `
             <button type="button" onclick="window.GeoSafeAdmin.selectAdminConversation(${c.id})"
               class="w-full p-3.5 text-left transition-colors flex items-start justify-between gap-2.5 ${
-                isSelected ? 'bg-[#FFF9E8] border-l-4 border-l-[#F5B900]' : 'hover:bg-[#FFFDF7]'
+                isSelected ? 'bg-slate-50 border-l-4 border-l-[#F5B900]' : 'hover:bg-slate-50'
               }">
               <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtml(
+                  <span class="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-50 text-[#8A6800] border border-[#FFE872]">${escapeHtml(
                     c.rescueReference
                   )}</span>
                   <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(
@@ -4335,10 +4642,10 @@
         .map((m) => {
           const isResponder = m.senderRole === 'Responder';
           return `
-            <div class="p-3 rounded-xl border ${
+            <div class="p-3 rounded-md border ${
               isResponder
-                ? 'bg-[#FFF9E8]/70 border-[#FFE872]'
-                : 'bg-white border-[#EEEEEE]'
+                ? 'bg-slate-50 border-[#FFE872]'
+                : 'bg-white border-slate-200'
             } text-xs space-y-1">
               <div class="flex items-center justify-between gap-2 text-[10px] text-[#777777]">
                 <span class="font-bold text-[#202020]">${escapeHtml(m.senderName)} <span class="text-[#8A6800]">(${escapeHtml(
@@ -4393,6 +4700,10 @@
     resetAttachmentZoom,
     closeAttachmentPreviewModal,
     submitReportReviewAction,
+    openCloseIncidentModal,
+    closeCloseIncidentModal,
+    handleCloseIncidentPresetChange,
+    confirmCloseIncident,
     loadRespondersList,
     openAssignResponderModal,
     closeAssignResponderModal,
@@ -4428,6 +4739,9 @@
     promptNewBroadcastCategory,
     loadAnalyticsData,
     downloadAnalyticsCsv,
+    printAnalyticsReport,
+    emailAnalyticsSummary,
+    scheduleAnalyticsReport,
     loadSystemSettings,
     saveSetting,
     loadAuditLogs,

@@ -612,6 +612,7 @@ class GeoSafeStore {
       'conversation:typing',
       'messages:unread-update',
       'messages:access-updated',
+      'conversation:archive-updated',
       'admin:conversation-activity',
       'messages:incoming-notification',
       'responder:location-updated',
@@ -707,90 +708,106 @@ class GeoSafeStore {
   }
 
   async syncMissedRealtimeUpdates() {
+    if (this._reconnectSyncPromise) {
+      return this._reconnectSyncPromise;
+    }
+    this._reconnectSyncPromise = (async () => {
+      try {
+        await Promise.all([
+          this.getNotifications('Unread').catch(() => []),
+          this.getHazardAlerts().catch(() => [])
+        ]);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('geosafe:realtime-update', {
+              detail: { event: 'reconnect-sync', data: {} }
+            })
+          );
+        }
+      } catch (_) {}
+    })();
     try {
-      await Promise.all([
-        this.getNotifications('Unread').catch(() => []),
-        this.getHazardAlerts().catch(() => [])
-      ]);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('geosafe:realtime-update', {
-            detail: { event: 'reconnect-sync', data: {} }
-          })
-        );
-      }
-    } catch (_) {}
+      return await this._reconnectSyncPromise;
+    } finally {
+      this._reconnectSyncPromise = null;
+    }
   }
 
   async initRealtimeSocket() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
     if (this.socket && this.socket.connected) return this.socket;
+    if (this._socketInitPromise) return this._socketInitPromise;
 
-    const loaded = await this.loadSocketIoScript();
-    if (!loaded || typeof window.io !== 'function') return null;
+    this._socketInitPromise = (async () => {
+      const loaded = await this.loadSocketIoScript();
+      if (!loaded || typeof window.io !== 'function') return null;
 
-    if (this.socket) {
-      try {
-        if (!this.socket.connected) this.socket.connect();
-        return this.socket;
-      } catch (_) {}
-    }
+      if (this.socket) {
+        try {
+          if (!this.socket.connected) this.socket.connect();
+          return this.socket;
+        } catch (_) {}
+      }
 
-    const socket = window.io({
-      withCredentials: true,
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: Infinity
-    });
-
-    this.socket = socket;
-
-    const realtimeEvents = [
-      'new-hazard-alert',
-      'alert-broadcast',
-      'hazard-alert-expired',
-      'alert-expired',
-      'hazard-alert-cancelled',
-      'alert-cancelled',
-      'new-incident-report',
-      'new-report',
-      'public-report-verified',
-      'incident-resolved',
-      'report-verification-result',
-      'admin-sync',
-      'new-rescue-request',
-      'rescue-assignment-updated',
-      'rescue-status-updated',
-      'status-update',
-      'administrator-announcement',
-      'conversation:new-message',
-      'conversation:messages-read',
-      'conversation:typing',
-      'messages:unread-update',
-      'messages:access-updated',
-      'admin:conversation-activity',
-      'messages:incoming-notification',
-      'responder:location-updated',
-      'responder:location-offline'
-    ];
-
-    realtimeEvents.forEach((evt) => {
-      socket.on(evt, (payload) => {
-        this._handleRealtimeEvent(evt, payload || {});
+      const socket = window.io({
+        withCredentials: true,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: Infinity
       });
-    });
 
-    socket.on('reconnect', () => {
-      this.syncMissedRealtimeUpdates();
-    });
+      this.socket = socket;
 
-    if (socket.io && typeof socket.io.on === 'function') {
-      socket.io.on('reconnect', () => {
-        this.syncMissedRealtimeUpdates();
+      const realtimeEvents = [
+        'new-hazard-alert',
+        'alert-broadcast',
+        'hazard-alert-expired',
+        'alert-expired',
+        'hazard-alert-cancelled',
+        'alert-cancelled',
+        'new-incident-report',
+        'new-report',
+        'public-report-verified',
+        'incident-resolved',
+        'report-verification-result',
+        'admin-sync',
+        'new-rescue-request',
+        'rescue-assignment-updated',
+        'rescue-status-updated',
+        'status-update',
+        'administrator-announcement',
+        'conversation:new-message',
+        'conversation:messages-read',
+        'conversation:typing',
+        'messages:unread-update',
+        'messages:access-updated',
+        'conversation:archive-updated',
+        'admin:conversation-activity',
+        'messages:incoming-notification',
+        'responder:location-updated',
+        'responder:location-offline'
+      ];
+
+      realtimeEvents.forEach((evt) => {
+        socket.on(evt, (payload) => {
+          this._handleRealtimeEvent(evt, payload || {});
+        });
       });
-    }
 
-    return socket;
+      if (socket.io && typeof socket.io.on === 'function') {
+        socket.io.on('reconnect', () => {
+          this.syncMissedRealtimeUpdates();
+        });
+      }
+
+      return socket;
+    })();
+
+    try {
+      return await this._socketInitPromise;
+    } finally {
+      this._socketInitPromise = null;
+    }
   }
 
   disconnectRealtimeSocket() {

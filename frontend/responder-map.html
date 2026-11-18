@@ -22,7 +22,7 @@
     }
   </style>
 </head>
-<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden">
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col font-sans overflow-x-hidden">
 
   <!-- Top Operational Header Bar -->
   <div id="geosafe-responder-nav-container"></div>
@@ -31,23 +31,23 @@
   <main class="flex-1 flex flex-col w-full resp-map-shell overflow-hidden">
 
     <!-- Compact Top Filter & GPS Status Bar (Docked cleanly below header, zero map overlap) -->
-    <div class="bg-white/95 backdrop-blur-md border-b border-[#EEEEEE] px-3 sm:px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 z-20 flex-shrink-0">
+    <div class="bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 sm:px-4 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 z-20 flex-shrink-0">
       <!-- Filter Pills -->
       <div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5 sm:pb-0">
         <button id="map-filter-all" type="button" onclick="filterMapMarkers('All')"
-          class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0">
+          class="px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0">
           All Targets
         </button>
         <button id="map-filter-rescue" type="button" onclick="filterMapMarkers('Rescue')"
-          class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          class="px-3 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] flex-shrink-0">
           Rescues
         </button>
         <button id="map-filter-incident" type="button" onclick="filterMapMarkers('Incident')"
-          class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          class="px-3 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] flex-shrink-0">
           Incidents
         </button>
         <button id="map-filter-shelter" type="button" onclick="filterMapMarkers('Shelter')"
-          class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0">
+          class="px-3 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] flex-shrink-0">
           Shelters
         </button>
       </div>
@@ -55,7 +55,7 @@
       <!-- Compact GPS Status Indicator -->
       <div class="flex items-center justify-between sm:justify-end gap-2 flex-shrink-0">
         <span id="gps-status-indicator"
-          class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full border border-[#EEEEEE] truncate">
+          class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 truncate">
           GPS: Acquiring...
         </span>
       </div>
@@ -66,7 +66,7 @@
       <div id="responder-operational-map" class="absolute inset-0 w-full h-full z-10"></div>
 
       <!-- Tile Loading Error Banner -->
-      <div id="map-tile-error-banner" class="hidden absolute top-3 left-3 right-3 sm:left-auto sm:right-3 sm:w-80 z-30 p-3 rounded-2xl bg-amber-50/95 backdrop-blur-md border border-amber-200 shadow-card text-xs text-amber-900 flex items-start gap-2">
+      <div id="map-tile-error-banner" class="hidden absolute top-3 left-3 right-3 sm:left-auto sm:right-3 sm:w-80 z-30 p-3 rounded-lg bg-amber-50/95 backdrop-blur-md border border-amber-200 shadow-subtle text-xs text-amber-900 flex items-start gap-2">
         <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
         <div>
           <strong class="block font-bold">Map tiles failed to load</strong>
@@ -75,18 +75,18 @@
       </div>
 
       <!-- Backend Data Error Banner -->
-      <div id="map-data-error-banner" class="hidden absolute top-3 left-3 right-3 sm:right-auto sm:max-w-sm z-30 p-3 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] shadow-card text-xs text-[#D93636] flex items-center justify-between gap-3">
+      <div id="map-data-error-banner" class="hidden absolute top-3 left-3 right-3 sm:right-auto sm:max-w-sm z-30 p-3 rounded-lg bg-[#FFF1F1] border border-[#FFC2C2] shadow-subtle text-xs text-[#D93636] flex items-center justify-between gap-3">
         <div class="min-w-0">
           <strong class="block font-bold">Unable to load operational records</strong>
           <span id="map-data-error-text" class="text-[11px] text-[#B82828] block truncate">Database or API request failed.</span>
         </div>
-        <button type="button" onclick="loadMapData()" class="px-2.5 py-1 rounded-xl bg-white border border-[#FFC2C2] text-[#D93636] font-bold text-[11px] hover:bg-[#FFF9E8] flex-shrink-0">
+        <button type="button" onclick="loadMapData()" class="px-2.5 py-1 rounded-md bg-white border border-[#FFC2C2] text-[#D93636] font-bold text-[11px] hover:bg-slate-100 flex-shrink-0">
           Retry
         </button>
       </div>
 
       <!-- Empty Operational Targets Pill (non-blocking, keeps map interactive) -->
-      <div id="map-empty-state-pill" class="hidden absolute bottom-3 left-3 z-20 px-3.5 py-2 rounded-2xl bg-white/95 backdrop-blur-md border border-[#EEEEEE] shadow-card text-xs font-semibold text-[#555555] flex items-center gap-2 pointer-events-none">
+      <div id="map-empty-state-pill" class="hidden absolute bottom-3 left-3 z-20 px-3.5 py-2 rounded-lg bg-white/95 backdrop-blur-md border border-slate-200 shadow-subtle text-xs font-semibold text-[#555555] flex items-center gap-2 pointer-events-none">
         <span class="w-2 h-2 rounded-full bg-[#F5B900] flex-shrink-0"></span>
         <span id="map-empty-state-text">No active operational targets.</span>
       </div>
@@ -94,23 +94,23 @@
       <!-- Separate Recenter & Zoom Controls (Right Edge, clear of header & bottom nav) -->
       <div class="absolute bottom-6 right-3 z-20 flex flex-col items-center gap-2">
         <button id="btn-gps-locate" type="button" onclick="acquireResponderGps(false)"
-          class="w-10 h-10 rounded-2xl bg-white border border-[#EEEEEE] shadow-card hover:bg-[#FFF9E8] transition-all text-[#202020] flex items-center justify-center"
+          class="w-10 h-10 rounded-lg bg-white border border-slate-200 shadow-subtle hover:bg-slate-100 transition-all text-[#202020] flex items-center justify-center"
           title="Recenter on My GPS Location" aria-label="Recenter on My GPS Location">
           <svg class="w-4 h-4 text-[#2563EB]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
         </button>
 
-        <div class="flex flex-col rounded-2xl bg-white border border-[#EEEEEE] shadow-card overflow-hidden">
+        <div class="flex flex-col rounded-lg bg-white border border-slate-200 shadow-subtle overflow-hidden">
           <button type="button" onclick="zoomResponderMap(1)"
-            class="w-10 h-9 hover:bg-[#FFF9E8] text-[#202020] font-bold text-base flex items-center justify-center border-b border-[#EEEEEE] transition-colors"
+            class="w-10 h-9 hover:bg-slate-50 text-slate-900 font-bold text-base flex items-center justify-center border-b border-slate-200 transition-colors"
             title="Zoom In" aria-label="Zoom In">+</button>
           <button type="button" onclick="zoomResponderMap(-1)"
-            class="w-10 h-9 hover:bg-[#FFF9E8] text-[#202020] font-bold text-base flex items-center justify-center transition-colors"
+            class="w-10 h-9 hover:bg-slate-50 text-slate-900 font-bold text-base flex items-center justify-center transition-colors"
             title="Zoom Out" aria-label="Zoom Out">&minus;</button>
         </div>
       </div>
 
       <!-- Floating Bottom Sheet for Selected Target Details & Routing -->
-      <div id="task-bottom-sheet" class="hidden absolute bottom-3 left-3 right-3 sm:left-auto sm:right-16 sm:w-96 z-30 bg-white rounded-2xl p-4 shadow-modal border border-[#EEEEEE] space-y-3 transition-all max-h-[75%] overflow-y-auto">
+      <div id="task-bottom-sheet" class="hidden absolute bottom-3 left-3 right-3 sm:left-auto sm:right-16 sm:w-96 z-30 bg-white rounded-lg p-4 shadow-modal border border-slate-200 space-y-3 transition-all max-h-[75%] overflow-y-auto">
         <!-- Sheet Header -->
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -118,7 +118,7 @@
             <span id="sheet-type-badge" class="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]">Rescue</span>
             <span id="sheet-prio-badge" class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200"></span>
           </div>
-          <button type="button" onclick="closeTaskBottomSheet()" class="p-1 rounded-xl text-[#777777] hover:bg-[#FFF9E8] flex-shrink-0" aria-label="Close details">
+          <button type="button" onclick="closeTaskBottomSheet()" class="p-1 rounded-md text-[#777777] hover:bg-slate-100 flex-shrink-0" aria-label="Close details">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -130,7 +130,7 @@
         </div>
 
         <!-- Routing Metrics Display -->
-        <div id="sheet-route-metrics" class="hidden p-2.5 bg-blue-50/70 rounded-2xl border border-blue-200 text-xs flex items-center justify-between">
+        <div id="sheet-route-metrics" class="hidden p-2.5 bg-blue-50/70 rounded-lg border border-blue-200 text-xs flex items-center justify-between">
           <div>
             <span class="text-[10px] text-blue-800 font-bold block">Estimated Travel</span>
             <span id="sheet-time-value" class="font-bold text-sm text-[#202020]">-- min</span>
@@ -147,18 +147,18 @@
 
         <!-- Navigation & Action Buttons -->
         <div class="space-y-1.5 pt-1">
-          <button id="sheet-btn-route" type="button" onclick="calculateRouteToTask()" class="w-full py-2.5 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+          <button id="sheet-btn-route" type="button" onclick="calculateRouteToTask()" class="w-full py-2.5 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
             <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
             <span>Calculate Field Route</span>
           </button>
 
           <div class="flex items-center gap-2">
-            <button type="button" onclick="openExternalGps()" class="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#202020] font-bold text-xs transition-colors flex items-center justify-center gap-1">
+            <button type="button" onclick="openExternalGps()" class="flex-1 py-2 rounded-md bg-slate-100 hover:bg-slate-200 text-[#202020] font-bold text-xs transition-colors flex items-center justify-center gap-1">
               <svg class="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
               <span>External GPS</span>
             </button>
 
-            <a id="sheet-btn-view" href="responder-assignments.html" class="flex-1 py-2 rounded-xl bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs text-center transition-colors">
+            <a id="sheet-btn-view" href="responder-assignments.html" class="flex-1 py-2 rounded-md bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs text-center transition-colors">
               View Details
             </a>
           </div>

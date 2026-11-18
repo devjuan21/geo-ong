@@ -9,6 +9,7 @@
 
 let incidentMap = null;
 let incidentMarkersGroup = null;
+let shelterMarkersGroup = null;
 const homeGpsMarkerState = { marker: null, accuracyCircle: null };
 let homeGpsTracker = null;
 let hasCenteredHomeGps = false;
@@ -51,6 +52,7 @@ function initIncidentMap() {
       scrollWheelZoom: false
     });
 
+    shelterMarkersGroup = L.layerGroup().addTo(incidentMap);
     incidentMarkersGroup = L.layerGroup().addTo(incidentMap);
 
     const refreshMapSize = () => {
@@ -143,26 +145,28 @@ function renderMapMarkers(reports) {
   const validCoordinates = [];
 
   reports.forEach((report) => {
-    if (report.coordinates && typeof report.coordinates.lat === 'number' && typeof report.coordinates.lng === 'number') {
-      const latLng = [report.coordinates.lat, report.coordinates.lng];
+    const lat = Number(report.coordinates ? report.coordinates.lat : report.latitude);
+    const lng = Number(report.coordinates ? report.coordinates.lng : report.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+      const latLng = [lat, lng];
       validCoordinates.push(latLng);
 
       const markerIcon = GeoSafeMapping.createCustomIcon('incident');
-      const marker = L.marker(latLng, { icon: markerIcon });
+      const marker = L.marker(latLng, { icon: markerIcon, zIndexOffset: 200 });
 
       const popupHtml = `
         <div class="p-2.5 text-xs font-sans max-w-xs">
           <div class="flex items-center justify-between gap-2 mb-1.5">
-            <span class="text-[10px] font-bold text-[#8A6800] bg-[#FFF9E8] px-2 py-0.5 rounded-full border border-[#FFE872] uppercase">${report.incidentType}</span>
-            <span class="text-[10px] text-[#777777] font-semibold">${report.status || 'Verified'}</span>
+            <span class="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 uppercase">${escapeHtmlSafe(report.incidentType)}</span>
+            <span class="text-[10px] text-slate-500 font-semibold">${escapeHtmlSafe(report.status || 'Verified')}</span>
           </div>
-          <h4 class="font-bold text-[#202020] text-xs sm:text-sm mb-1">${report.title}</h4>
-          <p class="text-[11px] text-[#777777] line-clamp-2 mb-2 leading-relaxed">${report.description}</p>
-          <div class="bg-[#FFFDF7] p-2 rounded-xl border border-[#EEEEEE] text-[10px] text-[#777777] space-y-0.5 mb-2.5">
-            <div><strong class="text-[#202020]">Location:</strong> ${report.location}</div>
-            <div><strong class="text-[#202020]">Reported:</strong> ${GeoSafeUI.formatRelative(report.submittedAt)}</div>
+          <h4 class="font-semibold text-slate-900 text-xs sm:text-sm mb-1">${escapeHtmlSafe(report.title)}</h4>
+          <p class="text-[11px] text-slate-600 line-clamp-2 mb-2 leading-relaxed">${escapeHtmlSafe(report.description)}</p>
+          <div class="bg-slate-50 p-2 rounded-md border border-slate-200 text-[10px] text-slate-600 space-y-0.5 mb-2.5">
+            <div><strong class="text-slate-900">Location:</strong> ${escapeHtmlSafe(report.location)}</div>
+            <div><strong class="text-slate-900">Reported:</strong> ${escapeHtmlSafe(GeoSafeUI.formatRelative(report.submittedAt))}</div>
           </div>
-          <button onclick="openIncidentDetailsModal('${report.id}')" class="w-full py-1.5 px-2 bg-[#F5B900] text-[#202020] rounded-xl text-[11px] font-bold hover:bg-[#E5AC00] transition-colors shadow-subtle">
+          <button onclick="openIncidentDetailsModal('${escapeHtmlSafe(report.id)}')" class="w-full py-1.5 px-2 bg-slate-900 text-white rounded-md text-[11px] font-semibold hover:bg-slate-800 transition-colors">
             View Details
           </button>
         </div>
@@ -191,19 +195,19 @@ function renderCommunityReportsList(reports) {
   if (!container) return;
 
   container.innerHTML = reports.slice(0, 5).map((r) => {
-    let statusClass = 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]';
+    let statusClass = 'bg-slate-50 text-[#8A6800] border-[#FFE872]';
     if (r.status === 'Verified') {
       statusClass = 'bg-emerald-50 text-[#278653] border-emerald-200';
     } else if (r.status === 'Responding' || r.status === 'Assigned') {
       statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
     } else if (r.status === 'Resolved') {
-      statusClass = 'bg-[#FFFDF7] text-[#777777] border-[#EEEEEE]';
+      statusClass = 'bg-slate-50 text-[#777777] border-slate-200';
     }
 
     return `
-      <div class="p-3.5 sm:p-4 bg-white rounded-2xl border border-[#EEEEEE] shadow-card hover:border-[#F5B900] transition-all flex items-center justify-between gap-3">
+      <div class="p-3.5 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-subtle hover:border-[#F5B900] transition-all flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
-          <div class="w-9 h-9 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0 shadow-subtle">
+          <div class="w-9 h-9 rounded-md bg-slate-50 border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0 shadow-subtle">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
           </div>
           <div class="min-w-0">
@@ -217,7 +221,7 @@ function renderCommunityReportsList(reports) {
           </div>
         </div>
 
-        <button onclick="openIncidentDetailsModal('${r.id}')" class="px-3 py-1.5 rounded-xl bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#202020] font-bold text-xs flex-shrink-0 border border-[#FFE872] transition-colors">
+        <button onclick="openIncidentDetailsModal('${r.id}')" class="px-3 py-1.5 rounded-md bg-slate-50 hover:bg-[#FFF3D0] text-[#202020] font-bold text-xs flex-shrink-0 border border-[#FFE872] transition-colors">
           View
         </button>
       </div>
@@ -251,7 +255,7 @@ async function loadHazardAlerts() {
 
     if (count === 0) {
       listEl.innerHTML = `
-        <div class="p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] text-xs text-[#777777] font-medium">
+        <div class="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-xs text-[#777777] font-medium">
           No active hazard alerts.
         </div>
       `;
@@ -271,7 +275,7 @@ async function loadHazardAlerts() {
       const desc = escapeHtmlSafe(alert.description || '');
       const timeStr = alert.publishedAt ? GeoSafeUI.formatRelative(alert.publishedAt) : '';
       return `
-        <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] space-y-1.5 min-w-0">
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 min-w-0">
           <div class="flex items-center justify-between gap-2 min-w-0">
             <span class="text-xs font-bold text-[#202020] truncate min-w-0 flex-1">${title}</span>
             ${timeStr ? `<span class="text-[11px] text-[#777777] whitespace-nowrap flex-shrink-0">${escapeHtmlSafe(timeStr)}</span>` : ''}
@@ -342,10 +346,52 @@ function renderNearestEvacuationCenter() {
   metaEl.textContent = `${distText}${statusText}`;
 }
 
+function renderShelterMarkers(centers) {
+  if (!incidentMap || !shelterMarkersGroup) return;
+  shelterMarkersGroup.clearLayers();
+
+  const list = Array.isArray(centers) ? centers : [];
+  list.forEach((center) => {
+    const lat = Number(center.coordinates ? center.coordinates.lat : center.latitude);
+    const lng = Number(center.coordinates ? center.coordinates.lng : center.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return;
+
+    const shelterIcon = GeoSafeMapping.createCustomIcon('evacuation');
+    const marker = L.marker([lat, lng], { icon: shelterIcon, zIndexOffset: 100 });
+
+    const capText = Number.isFinite(Number(center.capacity)) && Number(center.capacity) > 0
+      ? `<div><strong class="text-slate-900">Capacity:</strong> ${Number(center.currentOccupancy || 0)} / ${Number(center.capacity)}</div>`
+      : '';
+    const statusText = center.status || 'Open';
+    const isClosed = String(statusText).toLowerCase().includes('closed') || String(statusText).toLowerCase().includes('full');
+
+    const popupHtml = `
+      <div class="p-2.5 text-xs font-sans max-w-xs">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <span class="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 uppercase">Shelter</span>
+          <span class="text-[10px] font-semibold ${isClosed ? 'text-red-700' : 'text-emerald-700'}">${escapeHtmlSafe(statusText)}</span>
+        </div>
+        <h4 class="font-semibold text-slate-900 text-xs sm:text-sm mb-1">${escapeHtmlSafe(center.name || 'Evacuation Center')}</h4>
+        <div class="bg-slate-50 p-2 rounded-md border border-slate-200 text-[10px] text-slate-600 space-y-0.5 mb-2.5">
+          <div><strong class="text-slate-900">Address:</strong> ${escapeHtmlSafe(center.address || center.location || 'Barangay Bayanan')}</div>
+          ${capText}
+        </div>
+        <a href="evacuation-routes.html" class="block text-center w-full py-1.5 px-2 bg-slate-900 text-white rounded-md text-[11px] font-semibold hover:bg-slate-800 transition-colors">
+          View Evacuation Routes
+        </a>
+      </div>
+    `;
+
+    marker.bindPopup(popupHtml);
+    shelterMarkersGroup.addLayer(marker);
+  });
+}
+
 async function loadEvacuationSummary() {
   try {
     const centers = await window.geoSafeStore.getEvacuationCenters();
     currentLoadedCenters = Array.isArray(centers) ? centers : [];
+    renderShelterMarkers(currentLoadedCenters);
     renderNearestEvacuationCenter();
   } catch (err) {
     console.error('Error loading evacuation centers summary:', err);
@@ -393,10 +439,10 @@ function updateGpsStatusIndicator(tone, text) {
   if (!el) return;
 
   const toneClasses = {
-    loading: 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]',
+    loading: 'bg-slate-50 text-[#8A6800] border-[#FFE872]',
     success: 'bg-emerald-50 text-[#278653] border-emerald-200',
     warning: 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]',
-    neutral: 'bg-slate-100 text-[#555555] border-[#EEEEEE]'
+    neutral: 'bg-slate-100 text-[#555555] border-slate-200'
   };
 
   el.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${toneClasses[tone] || toneClasses.neutral}`;
@@ -550,7 +596,7 @@ window.openAlertsModal = function (focusAlertId = null) {
         ]
       : currentLoadedAlerts;
     content.innerHTML = ordered.map(a => `
-      <div class="p-3 bg-amber-50 rounded-xl border ${focusAlertId && String(a.id) === String(focusAlertId) ? 'border-[#F5B900] ring-1 ring-[#F5B900]' : 'border-amber-200'} text-xs space-y-1">
+      <div class="p-3 bg-amber-50 rounded-md border ${focusAlertId && String(a.id) === String(focusAlertId) ? 'border-[#F5B900] ring-1 ring-[#F5B900]' : 'border-amber-200'} text-xs space-y-1">
         <div class="flex items-center justify-between">
           <span class="font-bold text-amber-950">${escapeHtmlSafe(a.headline || a.title)}</span>
         </div>

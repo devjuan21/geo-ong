@@ -528,6 +528,7 @@ async function getAdminReportsList(req, res) {
               up.phone_number AS reporter_phone,
               COALESCE(resp_ia.name, resp.name) AS assigned_responder_name,
               ver.name AS verified_by_name,
+              cl.name AS closed_by_name,
               ia.id AS assignment_id,
               ia.responder_user_id AS assignment_responder_id,
               ia.assignment_status,
@@ -550,6 +551,7 @@ async function getAdminReportsList(req, res) {
        LEFT JOIN users resp_ia ON resp_ia.id = ia.responder_user_id
        LEFT JOIN users resp ON resp.id = r.assigned_to
        LEFT JOIN users ver ON ver.id = r.verified_by
+       LEFT JOIN users cl ON cl.id = r.closed_by
        ORDER BY r.created_at DESC`
     );
 
@@ -612,6 +614,10 @@ async function getAdminReportsList(req, res) {
           assignedTo: effectiveAssignee,
           assignedResponderName: r.assigned_responder_name || null,
           acceptedAt: r.accepted_at || null,
+          closedBy: r.closed_by || null,
+          closedByName: r.closed_by_name || null,
+          closureReason: r.closure_reason || null,
+          resolvedAt: r.resolved_at || null,
           attachmentCount: Number(r.attachment_count) || 0,
           submittedAt: r.created_at,
           createdAt: r.created_at,
@@ -727,12 +733,14 @@ async function getAdminReportDetail(req, res) {
                 up.barangay AS reporter_barangay,
                 up.verification_status AS reporter_verification_status,
                 resp.name AS assigned_responder_name,
-                ver.name AS verified_by_name
+                ver.name AS verified_by_name,
+                cl.name AS closed_by_name
          FROM reports r
          JOIN users u ON u.id = r.user_id
          LEFT JOIN user_profiles up ON up.user_id = r.user_id
          LEFT JOIN users resp ON resp.id = r.assigned_to
          LEFT JOIN users ver ON ver.id = r.verified_by
+         LEFT JOIN users cl ON cl.id = r.closed_by
          WHERE r.id = ? OR r.reference_number = ?
          LIMIT 1`,
         [lookupNumeric, rawParamId]
@@ -889,6 +897,9 @@ async function getAdminReportDetail(req, res) {
         verifiedByName: r.verified_by_name || null,
         verifiedAt: r.verified_at || null,
         resolvedAt: r.resolved_at || null,
+        closedBy: r.closed_by || null,
+        closedByName: r.closed_by_name || null,
+        closureReason: r.closure_reason || null,
         submittedAt: r.created_at,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -1237,9 +1248,9 @@ async function reviewAdminReport(req, res) {
       const updates = ['status = ?', 'assigned_to = ?'];
       const params = [targetStatus, targetAssignee];
 
-      if (['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(targetStatus)) {
+      if (['verified', 'dispatched', 'responding', 'on_site', 'in_progress'].includes(targetStatus)) {
         updates.push('is_public = 1');
-      } else if (['pending', 'under_review', 'false_alarm', 'dismissed'].includes(targetStatus)) {
+      } else if (['pending', 'under_review', 'false_alarm', 'dismissed', 'resolved'].includes(targetStatus)) {
         updates.push('is_public = 0');
       }
 
@@ -1248,7 +1259,8 @@ async function reviewAdminReport(req, res) {
         params.push(req.user.id);
       }
       if (targetStatus === 'resolved' && current.status !== 'resolved') {
-        updates.push('resolved_at = NOW()');
+        updates.push('resolved_at = NOW()', 'closed_by = ?', 'closure_reason = ?');
+        params.push(req.user.id, trimmedReason);
       }
 
       await conn.query(`UPDATE reports SET ${updates.join(', ')} WHERE id = ?`, [...params, recordId]);
@@ -2864,6 +2876,7 @@ async function getEmergencyBroadcasts(req, res) {
          ebl.recipients_count,
          ebl.authorized_by,
          ebl.broadcasted_at,
+         ebl.expiration_duration_minutes,
          ebl.expires_at,
          ebl.is_active,
          ebl.status,
@@ -2906,6 +2919,12 @@ async function getEmergencyBroadcasts(req, res) {
         recipientsCount: Number(b.recipients_count || 0),
         authorizedBy: [b.author_first_name, b.author_last_name].filter(Boolean).join(' ') || b.author_email || 'Administrator',
         broadcastedAt: b.broadcasted_at,
+        expirationDurationMinutes: b.expiration_duration_minutes ? Number(b.expiration_duration_minutes) : null,
+        expirationDurationLabel: b.expiration_duration_minutes
+          ? (Number(b.expiration_duration_minutes) % 60 === 0
+              ? `${Number(b.expiration_duration_minutes) / 60} ${Number(b.expiration_duration_minutes) / 60 === 1 ? 'hour' : 'hours'}`
+              : `${Number(b.expiration_duration_minutes)} min`)
+          : null,
         expiresAt: b.expires_at,
         expiredAt: b.expired_at || null,
         cancelledAt: b.cancelled_at || null,
@@ -2956,12 +2975,10 @@ async function createEmergencyBroadcast(req, res) {
     targetScope,
     target_zones,
     targetZones,
+    expiration_duration_hours,
+    expirationDurationHours,
     expiration_duration_minutes,
     expirationDurationMinutes,
-    expires_at,
-    expiresAt: bodyExpiresAt,
-    custom_expires_at,
-    customExpiresAt,
     location_coverage,
     locationCoverage: bodyLocationCoverage,
     latitude: bodyLatitude,
@@ -3017,30 +3034,40 @@ async function createEmergencyBroadcast(req, res) {
     resolvedAddress = rawAddr ? rawAddr.slice(0, 255) : `${resolvedLat}, ${resolvedLng}`;
   }
 
-  // Validate server-side expiration timestamp
-  const serverNow = new Date();
-  const rawDuration = expiration_duration_minutes !== undefined ? expiration_duration_minutes : expirationDurationMinutes;
-  const rawCustomExpires = expires_at !== undefined ? expires_at : (bodyExpiresAt !== undefined ? bodyExpiresAt : (custom_expires_at !== undefined ? custom_expires_at : customExpiresAt));
+  // Validate configurable server-side expiration duration (1 hour to 168 hours / 7 days)
+  const MIN_DURATION_HOURS = 1;
+  const MAX_DURATION_HOURS = 168;
+  const rawHours = expiration_duration_hours !== undefined ? expiration_duration_hours : expirationDurationHours;
+  const rawMinutes = expiration_duration_minutes !== undefined ? expiration_duration_minutes : expirationDurationMinutes;
 
-  let resolvedExpiresAt = null;
-  if (rawDuration !== undefined && rawDuration !== null && String(rawDuration).trim() !== '' && String(rawDuration).trim().toLowerCase() !== 'custom') {
-    const minutes = Number(rawDuration);
-    if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 525600) {
-      return res.status(400).json({ error: 'Expiration duration must be a valid positive number of minutes (up to 1 year).' });
+  let resolvedDurationMinutes = null;
+  if (rawHours !== undefined && rawHours !== null && String(rawHours).trim() !== '') {
+    const hoursNum = Number(rawHours);
+    if (!Number.isFinite(hoursNum) || !Number.isInteger(hoursNum) || hoursNum < MIN_DURATION_HOURS || hoursNum > MAX_DURATION_HOURS) {
+      return res.status(400).json({
+        error: `Expiration duration must be a whole number between ${MIN_DURATION_HOURS} and ${MAX_DURATION_HOURS} hours.`,
+      });
     }
-    resolvedExpiresAt = new Date(serverNow.getTime() + Math.round(minutes * 60000));
-  } else if (rawCustomExpires !== undefined && rawCustomExpires !== null && String(rawCustomExpires).trim() !== '') {
-    const parsed = parseManilaOrIsoDate(rawCustomExpires);
-    if (!parsed) {
-      return res.status(400).json({ error: 'Invalid custom expiration date and time format.' });
+    resolvedDurationMinutes = hoursNum * 60;
+  } else if (rawMinutes !== undefined && rawMinutes !== null && String(rawMinutes).trim() !== '') {
+    const minsNum = Number(rawMinutes);
+    if (!Number.isFinite(minsNum) || minsNum < MIN_DURATION_HOURS * 60 || minsNum > MAX_DURATION_HOURS * 60) {
+      return res.status(400).json({
+        error: `Expiration duration must be between ${MIN_DURATION_HOURS} and ${MAX_DURATION_HOURS} hours.`,
+      });
     }
-    if (parsed.getTime() <= serverNow.getTime()) {
-      return res.status(400).json({ error: 'Expiration date and time must be later than the current server time.' });
-    }
-    resolvedExpiresAt = parsed;
+    resolvedDurationMinutes = Math.round(minsNum);
   } else {
-    return res.status(400).json({ error: 'Expiration duration or custom expiration date and time is required.' });
+    return res.status(400).json({
+      error: 'Expiration duration is required.',
+    });
   }
+
+  const serverPublishedAt = new Date();
+  const resolvedExpiresAt = new Date(serverPublishedAt.getTime() + resolvedDurationMinutes * 60000);
+  const resolvedDurationLabel = resolvedDurationMinutes % 60 === 0
+    ? `${resolvedDurationMinutes / 60} ${resolvedDurationMinutes / 60 === 1 ? 'hour' : 'hours'}`
+    : `${resolvedDurationMinutes} min`;
 
   let categoryRow = null;
   if (category_id !== undefined && category_id !== null && String(category_id).trim() !== '') {
@@ -3160,8 +3187,8 @@ async function createEmergencyBroadcast(req, res) {
 
     const [bRes] = await conn.query(
       `INSERT INTO emergency_broadcast_logs 
-         (title, message, category_id, advisory_type, urgency_level, target_scope, target_zones, recipients_count, authorized_by, broadcasted_at, expires_at, is_active, status, location_coverage, latitude, longitude, location_address)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, TRUE, 'Active', ?, ?, ?, ?)`,
+         (title, message, category_id, advisory_type, urgency_level, target_scope, target_zones, recipients_count, authorized_by, broadcasted_at, expiration_duration_minutes, expires_at, is_active, status, location_coverage, latitude, longitude, location_address)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, 'Active', ?, ?, ?, ?)`,
       [
         broadcastTitle,
         broadcastMsg,
@@ -3172,6 +3199,8 @@ async function createEmergencyBroadcast(req, res) {
         zones ? String(zones).trim() : null,
         recipientCount,
         req.user.id,
+        serverPublishedAt.toISOString(),
+        resolvedDurationMinutes,
         resolvedExpiresAt.toISOString(),
         rawCoverage,
         resolvedLat,
@@ -3238,7 +3267,9 @@ async function createEmergencyBroadcast(req, res) {
       recipientsCount: recipientCount,
       actorUserId: req.user.id,
       authorizedById: req.user.id,
-      broadcastedAt: serverNow.toISOString(),
+      broadcastedAt: serverPublishedAt.toISOString(),
+      expirationDurationMinutes: resolvedDurationMinutes,
+      expirationDurationLabel: resolvedDurationLabel,
       expiresAt: resolvedExpiresAt.toISOString(),
       status: 'Active',
       isActive: true,
@@ -3362,41 +3393,103 @@ async function cancelEmergencyBroadcast(req, res) {
 // 8. REPORTS & ANALYTICS (GET /api/admin/analytics & /api/admin/analytics/export)
 // ============================================================================
 
+function getManilaDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    ymd: `${map.year}-${map.month}-${map.day}`,
+  };
+}
+
+function addDaysYmd(ymd, deltaDays) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
-  const now = new Date();
+  const manilaToday = getManilaDateParts(new Date());
   if (period === 'today') {
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    return { clause: `${dateColumn} >= ?`, params: [startOfDay] };
+    return {
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${manilaToday.ymd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
+      startYmd: manilaToday.ymd,
+      endYmd: manilaToday.ymd,
+    };
   }
   if (period === '7d') {
-    return { clause: `${dateColumn} >= ?`, params: [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)] };
+    const startYmd = addDaysYmd(manilaToday.ymd, -6);
+    return {
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
+      startYmd,
+      endYmd: manilaToday.ymd,
+    };
   }
   if (period === '30d') {
-    return { clause: `${dateColumn} >= ?`, params: [new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)] };
+    const startYmd = addDaysYmd(manilaToday.ymd, -29);
+    return {
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
+      startYmd,
+      endYmd: manilaToday.ymd,
+    };
   }
   if (period === 'this_month') {
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    return { clause: `${dateColumn} >= ?`, params: [startOfMonth] };
+    const startYmd = `${manilaToday.year}-${String(manilaToday.month).padStart(2, '0')}-01`;
+    return {
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
+      startYmd,
+      endYmd: manilaToday.ymd,
+    };
   }
   if (period === 'last_month') {
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const prevMonthDate = new Date(Date.UTC(manilaToday.year, manilaToday.month - 2, 1));
+    const lastDayPrevMonth = new Date(Date.UTC(manilaToday.year, manilaToday.month - 1, 0));
+    const startYmd = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, '0')}-01`;
+    const endYmd = `${lastDayPrevMonth.getUTCFullYear()}-${String(lastDayPrevMonth.getUTCMonth() + 1).padStart(2, '0')}-${String(lastDayPrevMonth.getUTCDate()).padStart(2, '0')}`;
     return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} < ?`,
-      params: [startOfLastMonth, startOfThisMonth],
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${startYmd}T00:00:00+08:00`, `${endYmd}T23:59:59.999+08:00`],
+      startYmd,
+      endYmd,
     };
   }
   if (period === 'this_year') {
-    const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-    return { clause: `${dateColumn} >= ?`, params: [startOfYear] };
-  }
-  if (period === 'custom' && from && to) {
+    const startYmd = `${manilaToday.year}-01-01`;
     return {
       clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${from} 00:00:00`, `${to} 23:59:59`],
+      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
+      startYmd,
+      endYmd: manilaToday.ymd,
     };
   }
-  return { clause: '1=1', params: [] };
+  if (period === 'custom' && from && to) {
+    const safeFrom = String(from).slice(0, 10);
+    const safeTo = String(to).slice(0, 10);
+    return {
+      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
+      params: [`${safeFrom}T00:00:00+08:00`, `${safeTo}T23:59:59.999+08:00`],
+      startYmd: safeFrom <= safeTo ? safeFrom : safeTo,
+      endYmd: safeFrom <= safeTo ? safeTo : safeFrom,
+    };
+  }
+  return { clause: '1=1', params: [], startYmd: null, endYmd: null };
 }
 
 /**
@@ -3477,6 +3570,33 @@ async function getAdminAnalytics(req, res) {
       repDateFilter.params
     );
 
+    const [dailyRows] = await pool.query(
+      `SELECT TO_CHAR(r.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS date_key,
+              COUNT(DISTINCT r.id)::int AS count
+       FROM reports r
+       WHERE ${repDateFilter.clause}
+       GROUP BY date_key
+       ORDER BY date_key ASC`,
+      repDateFilter.params
+    );
+
+    const dailyCountMap = new Map(dailyRows.map((row) => [String(row.date_key), Number(row.count || 0)]));
+    let dailyTrends = [];
+    if (dailyRows.length > 0) {
+      const rangeStart = repDateFilter.startYmd || String(dailyRows[0].date_key);
+      const rangeEnd = repDateFilter.endYmd || getManilaDateParts(new Date()).ymd;
+      let cursor = rangeStart;
+      let guard = 0;
+      while (cursor <= rangeEnd && guard < 366) {
+        dailyTrends.push({
+          date: cursor,
+          count: dailyCountMap.get(cursor) || 0,
+        });
+        cursor = addDaysYmd(cursor, 1);
+        guard++;
+      }
+    }
+
     const monthExpr = pool.isPostgres
       ? "TO_CHAR(created_at, 'YYYY-MM')"
       : "DATE_FORMAT(created_at, '%Y-%m')";
@@ -3542,6 +3662,7 @@ async function getAdminAnalytics(req, res) {
       severities: [],
       statuses,
       rescuePriorities: [],
+      dailyTrends,
       monthlyTrends,
       locations,
     });
@@ -4028,6 +4149,154 @@ async function getAdminResponderRecommendations(req, res) {
   }
 }
 
+async function closeAdminIncident(req, res) {
+  const rawParamId = String(req.params.id || '').trim();
+  if (!rawParamId) {
+    return res.status(400).json({ error: 'Invalid incident report ID.' });
+  }
+
+  const parsedInt = parseInt(rawParamId, 10);
+  const isNumeric = Number.isInteger(parsedInt) && String(parsedInt) === rawParamId && parsedInt > 0;
+  const lookupNumeric = isNumeric ? parsedInt : -1;
+
+  const { reason } = req.body || {};
+  const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+  if (!trimmedReason || trimmedReason.toLowerCase() === 'other') {
+    return res.status(400).json({
+      error: 'A closure reason or written explanation is required to close an incident.',
+    });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      'SELECT * FROM reports WHERE id = ? OR reference_number = ? FOR UPDATE',
+      [lookupNumeric, rawParamId]
+    );
+    if (!rows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Incident report not found.' });
+    }
+
+    const current = rows[0];
+    const recordId = current.id;
+    const refNum = current.reference_number || `INC-${recordId}`;
+    const currentStatusLower = String(current.status || '').toLowerCase();
+
+    if (currentStatusLower === 'resolved') {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'This incident report has already been closed.',
+        alreadyClosed: true,
+      });
+    }
+
+    const closableStatuses = ['verified', 'dispatched', 'responding', 'on_site', 'in_progress'];
+    if (!closableStatuses.includes(currentStatusLower)) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: `Only verified, active incident reports can be closed (current status: ${current.status}).`,
+      });
+    }
+
+    const [updatedRows] = await conn.query(
+      `UPDATE reports
+       SET status = 'resolved',
+           is_public = 0,
+           resolved_at = NOW(),
+           closed_by = ?,
+           closure_reason = ?,
+           updated_at = NOW()
+       WHERE id = ?
+       RETURNING resolved_at`,
+      [req.user.id, trimmedReason, recordId]
+    );
+    const resolvedAt = updatedRows[0]?.resolved_at || new Date().toISOString();
+
+    await conn.query(
+      `UPDATE incident_assignments
+       SET assignment_status = 'Completed',
+           completed_at = COALESCE(completed_at, NOW())
+       WHERE report_id = ? AND assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene')`,
+      [recordId]
+    );
+
+    await conn.query(
+      `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+       VALUES (?, ?, 'resolved', ?, ?)`,
+      [recordId, current.status, req.user.id, `Closed by Administrator: ${trimmedReason}`]
+    );
+
+    if (current.user_id && Number(current.user_id) !== Number(req.user.id)) {
+      await insertNotificationForUsers(conn, {
+        title: `Incident Closed (${refNum})`,
+        message: `Your incident report ${refNum} has been officially closed by the Administrator. Reason: ${trimmedReason}`,
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: [current.user_id],
+      });
+    }
+
+    if (
+      current.assigned_to &&
+      Number(current.assigned_to) !== Number(current.user_id) &&
+      Number(current.assigned_to) !== Number(req.user.id)
+    ) {
+      await insertNotificationForUsers(conn, {
+        title: `Incident Closed (${refNum})`,
+        message: `Incident ${refNum} has been officially closed by the Administrator. Reason: ${trimmedReason}`,
+        category: 'Alert',
+        createdBy: req.user.id,
+        userIds: [current.assigned_to],
+      });
+    }
+
+    await writeAuditLog(conn, {
+      userId: req.user.id,
+      action: 'INCIDENT_REPORT_CLOSED',
+      entityType: 'reports',
+      entityId: refNum,
+      oldValues: { status: current.status, is_public: current.is_public },
+      newValues: {
+        status: 'resolved',
+        is_public: false,
+        closed_by: req.user.id,
+        closure_reason: trimmedReason,
+        resolved_at: resolvedAt,
+      },
+      req,
+    });
+
+    await conn.commit();
+
+    emitIncidentResolved({
+      id: recordId,
+      referenceNumber: refNum,
+      residentId: current.user_id,
+      assignedTo: current.assigned_to,
+      actorUserId: req.user.id,
+      reason: trimmedReason,
+    });
+
+    return res.json({
+      message: 'Incident report closed successfully.',
+      status: 'resolved',
+      referenceNumber: refNum,
+      closedBy: req.user.id,
+      closureReason: trimmedReason,
+      resolvedAt,
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => { });
+    console.error('[Admin API] closeAdminIncident failed:', err.message);
+    return res.status(503).json({ error: 'Unable to close incident report.' });
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   getAdminOverview,
   getAdminStats,
@@ -4035,6 +4304,7 @@ module.exports = {
   getAdminReportsList,
   getAdminReportDetail,
   reviewAdminReport,
+  closeAdminIncident,
   getAdminUsers,
   createResponderAccount,
   createResidentAccount,

@@ -142,7 +142,7 @@ function renderAlerts(alerts) {
     const categoryName = alert.categoryName || alert.advisoryType || alert.category || 'Other';
     const badgeHtml = window.GeoSafeAdvisories
       ? window.GeoSafeAdvisories.renderBadge(categoryName, { badgeColor: alert.badgeColor })
-      : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtmlSafe(categoryName)}</span>`;
+      : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-[#8A6800] border border-[#FFE872]">${escapeHtmlSafe(categoryName)}</span>`;
     const urgencyHtml = renderUrgencyBadgeSafe(alert.urgencyLevel);
     const rawArea = String(alert.locationAddress || alert.targetZones || alert.affectedLocation || '').trim();
     const areaText = rawArea ? escapeHtmlSafe(rawArea) : '';
@@ -155,11 +155,11 @@ function renderAlerts(alerts) {
     const isEmergency = Boolean(alert.isEmergency || Number(alert.priority || 5) <= 2);
     const cardAccent = isEmergency && !isMutedStatus
       ? 'border-[#FFC2C2] border-l-4 border-l-[#D93636]'
-      : 'border-[#EEEEEE]';
+      : 'border-slate-200';
 
     return `
       <div onclick="openAdvisoryDetailModal('${escapeHtmlSafe(alert.id)}')" role="button" tabindex="0"
-        class="bg-white rounded-2xl border ${cardAccent} shadow-card hover:border-[#F5B900] transition-all cursor-pointer overflow-hidden">
+        class="bg-white rounded-lg border ${cardAccent} shadow-subtle hover:border-[#F5B900] transition-all cursor-pointer overflow-hidden">
         <div class="p-3.5 sm:p-4 space-y-2.5">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2 flex-wrap">
@@ -181,7 +181,7 @@ function renderAlerts(alerts) {
           </div>
 
           ${instructions.length > 0 ? `
-            <div class="p-2.5 rounded-xl bg-[#FFF9E8] border border-[#FFE872] text-[#202020]">
+            <div class="p-2.5 rounded-md bg-slate-50 border border-[#FFE872] text-[#202020]">
               <ul class="list-disc list-inside space-y-0.5 text-[11px] leading-snug">
                 ${instructions.map(instr => `<li>${escapeHtmlSafe(instr)}</li>`).join('')}
               </ul>

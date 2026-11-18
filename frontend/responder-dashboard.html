@@ -11,153 +11,139 @@
   <!-- Leaflet CSS for Map Preview -->
   <link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css"/>
 </head>
-<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col font-sans">
 
   <!-- Top Operational Header Bar (Desktop & Tablet, plus Mobile Header) -->
   <div id="geosafe-responder-nav-container"></div>
 
   <!-- Main Operational Dashboard Content -->
-  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-[1600px] mx-auto w-full space-y-4 sm:space-y-5 gs-resp-main pb-28">
+  <main class="flex-1 p-3.5 sm:p-5 lg:p-6 max-w-[1600px] mx-auto w-full space-y-4 gs-resp-main pb-28">
 
     <!-- Loading State -->
-    <div id="dash-loading" class="bg-white rounded-2xl border border-[#EEEEEE] p-8 text-center shadow-card">
-      <div class="w-8 h-8 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-      <p class="text-xs text-[#777777] font-medium">Loading operational assignments and emergency response data...</p>
+    <div id="dash-loading" class="bg-white rounded-lg border border-slate-200 p-8 text-center shadow-subtle">
+      <div class="w-7 h-7 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-2.5"></div>
+      <p class="text-xs text-slate-500 font-medium">Loading operational assignments and emergency response data...</p>
     </div>
 
     <!-- Loaded Dashboard Content -->
-    <div id="dash-content" class="hidden space-y-4 sm:space-y-5">
+    <div id="dash-content" class="hidden space-y-4">
 
-      <!-- Streamlined Page Header & Quick Actions Bar -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#202020] border border-[#EEEEEE] shadow-subtle">
-            <span class="w-2 h-2 rounded-full bg-[#278653] animate-pulse"></span>
+      <!-- Command Header & Quick Actions Bar -->
+      <div class="bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3 flex-wrap min-w-0">
+          <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
             <span>Live Dispatch Feed</span>
           </div>
-          <span class="text-xs text-[#777777] hidden sm:inline">•</span>
-          <span id="dash-unit-badge" class="text-xs text-[#777777] font-semibold">Barangay Bayanan Emergency Response</span>
+          <div class="flex items-center gap-1.5 text-xs text-slate-600 min-w-0">
+            <i data-lucide="shield" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0"></i>
+            <span id="dash-unit-badge" class="font-semibold text-slate-800 truncate">Barangay Bayanan Emergency Response</span>
+          </div>
         </div>
 
-        <div class="flex items-center gap-2 self-start sm:self-auto">
-          <a href="responder-assignments.html" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all active:scale-95">
-            <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+        <div class="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+          <a href="responder-assignments.html" class="gs-btn-primary">
+            <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
             <span>All Assignments</span>
           </a>
-          <a href="responder-map.html" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-white hover:bg-[#FFF9E8] border border-[#EEEEEE] hover:border-[#FFE872] text-[#202020] font-bold text-xs shadow-subtle transition-all">
-            <svg class="w-4 h-4 text-[#3478C7]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
+          <a href="responder-map.html" class="gs-btn-secondary">
+            <i data-lucide="map" class="w-3.5 h-3.5 text-slate-600"></i>
             <span>Field Map</span>
           </a>
         </div>
       </div>
 
-      <!-- 1. Compact Statistics Grid (Strictly real counts from database) -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-        <!-- Active Assignments -->
-        <div class="bg-white rounded-2xl p-4 border border-[#FFE872] shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all flex items-center justify-between gap-3 relative overflow-hidden group">
-          <div class="absolute inset-x-0 top-0 h-1 bg-[#F5B900]"></div>
-          <div>
-            <span class="text-[11px] font-bold text-[#777777] block uppercase tracking-wider">Active Tasks</span>
-            <span id="stat-active" class="text-2xl sm:text-3xl font-bold text-[#202020] tracking-tight mt-1 block leading-none">0</span>
+      <!-- 1. Compact Operational Statistics Strip (Strictly real counts from database) -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Assigned Task -->
+        <div class="gs-stat-card">
+          <div class="flex items-center justify-between gap-2">
+            <span class="gs-stat-label">Assigned Task</span>
+            <i data-lucide="activity" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center flex-shrink-0 shadow-subtle group-hover:scale-105 transition-transform">
-            <svg class="w-5 h-5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-          </div>
+          <span id="stat-active" class="gs-stat-value">0</span>
         </div>
 
         <!-- Pending Responses -->
-        <div class="bg-white rounded-2xl p-4 border border-[#FFC2C2] shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all flex items-center justify-between gap-3 relative overflow-hidden group">
-          <div class="absolute inset-x-0 top-0 h-1 bg-[#D93636]"></div>
-          <div>
-            <span class="text-[11px] font-bold text-[#777777] block uppercase tracking-wider">Pending</span>
-            <span id="stat-pending" class="text-2xl sm:text-3xl font-bold text-[#D93636] tracking-tight mt-1 block leading-none">0</span>
+        <div class="gs-stat-card">
+          <div class="flex items-center justify-between gap-2">
+            <span class="gs-stat-label">Pending</span>
+            <i data-lucide="clock" class="w-4 h-4 text-red-600 flex-shrink-0"></i>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-[#FFF1F1] border border-[#FFC2C2] text-[#D93636] flex items-center justify-center flex-shrink-0 shadow-subtle group-hover:scale-105 transition-transform">
-            <svg class="w-5 h-5 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line></svg>
-          </div>
+          <span id="stat-pending" class="gs-stat-value text-red-600">0</span>
         </div>
 
         <!-- In Progress -->
-        <div class="bg-white rounded-2xl p-4 border border-blue-200 shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all flex items-center justify-between gap-3 relative overflow-hidden group">
-          <div class="absolute inset-x-0 top-0 h-1 bg-[#3478C7]"></div>
-          <div>
-            <span class="text-[11px] font-bold text-[#777777] block uppercase tracking-wider">In Progress</span>
-            <span id="stat-progress" class="text-2xl sm:text-3xl font-bold text-[#3478C7] tracking-tight mt-1 block leading-none">0</span>
+        <div class="gs-stat-card">
+          <div class="flex items-center justify-between gap-2">
+            <span class="gs-stat-label">In Progress</span>
+            <i data-lucide="navigation" class="w-4 h-4 text-blue-600 flex-shrink-0"></i>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 text-[#3478C7] flex items-center justify-center flex-shrink-0 shadow-subtle group-hover:scale-105 transition-transform">
-            <svg class="w-5 h-5 text-[#3478C7]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="1" stroke-width="2"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" stroke-width="2"></polygon><circle cx="5.5" cy="18.5" r="2.5" stroke-width="2"></circle><circle cx="18.5" cy="18.5" r="2.5" stroke-width="2"></circle></svg>
-          </div>
+          <span id="stat-progress" class="gs-stat-value text-blue-600">0</span>
         </div>
 
-        <!-- Completed -->
-        <div class="bg-white rounded-2xl p-4 border border-emerald-200 shadow-card hover:shadow-card-hover hover:-translate-y-0.5 transition-all flex items-center justify-between gap-3 relative overflow-hidden group">
-          <div class="absolute inset-x-0 top-0 h-1 bg-[#278653]"></div>
-          <div>
-            <span class="text-[11px] font-bold text-[#777777] block uppercase tracking-wider">Resolved</span>
-            <span id="stat-completed" class="text-2xl sm:text-3xl font-bold text-[#278653] tracking-tight mt-1 block leading-none">0</span>
+        <!-- Resolved -->
+        <div class="gs-stat-card">
+          <div class="flex items-center justify-between gap-2">
+            <span class="gs-stat-label">Resolved</span>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-700 flex-shrink-0"></i>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 text-[#278653] flex items-center justify-center flex-shrink-0 shadow-subtle group-hover:scale-105 transition-transform">
-            <svg class="w-5 h-5 text-[#278653]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          </div>
+          <span id="stat-completed" class="gs-stat-value text-emerald-700">0</span>
         </div>
       </div>
 
-      <!-- 3. Active Assignments & Operational Map Preview Grid -->
+      <!-- 2. Active Assignments & Operational Map Preview Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
 
         <!-- Left (8 Cols): Active Assignments List -->
-        <div class="lg:col-span-8 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <h3 class="font-bold text-sm sm:text-base text-[#202020]">Active Field Assignments</h3>
-            <a href="responder-assignments.html" class="text-xs font-bold text-[#8A6800] hover:text-[#5C4500]">View All &rarr;</a>
+        <div class="lg:col-span-8 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between px-0.5">
+            <div class="flex items-center gap-2">
+              <i data-lucide="list-checks" class="w-4 h-4 text-slate-500"></i>
+              <h3 class="gs-section-title">Active Field Assignments</h3>
+            </div>
+            <a href="responder-assignments.html" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900">
+              <span>View All</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </a>
           </div>
 
           <!-- Assignments Container -->
-          <div id="assignments-container" class="space-y-3 empty:hidden">
+          <div id="assignments-container" class="space-y-2.5 empty:hidden">
             <!-- Dynamically populated via responder-dashboard.js -->
           </div>
 
-          <!-- Empty State (Section 3: Exact required text) -->
-          <div id="assignments-empty" class="hidden flex-1 flex flex-col items-center justify-center bg-white rounded-2xl p-8 border border-[#EEEEEE] shadow-card text-center space-y-2">
-            <div class="w-12 h-12 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] flex items-center justify-center mx-auto shadow-subtle">
-              <svg class="w-6 h-6 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-            </div>
-            <p id="assignments-empty-text" class="font-bold text-sm text-[#202020]">No active assignments.</p>
-            <p class="text-xs text-[#777777] max-w-sm mx-auto leading-relaxed">
+          <!-- Empty State (Exact required text) -->
+          <div id="assignments-empty" class="hidden flex-1 flex flex-col items-center justify-center bg-white rounded-lg p-8 border border-slate-200 shadow-subtle text-center space-y-2">
+            <i data-lucide="inbox" class="w-7 h-7 text-slate-400 mx-auto"></i>
+            <p id="assignments-empty-text" class="font-semibold text-sm text-slate-900">No active assignments.</p>
+            <p class="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
               When the Barangay Bayanan Emergency Operations Center dispatches incident reports or rescue requests to your unit, they will appear here in real time.
             </p>
           </div>
         </div>
 
         <!-- Right (4 Cols): Operational Map Preview & Fast Navigation -->
-        <div class="lg:col-span-4 flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <h3 class="font-bold text-sm sm:text-base text-[#202020]">Operational Map</h3>
-            <a href="responder-map.html" class="text-xs font-bold text-[#8A6800] hover:text-[#5C4500] flex items-center gap-1">
+        <div class="lg:col-span-4 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between px-0.5">
+            <div class="flex items-center gap-2">
+              <i data-lucide="map-pin" class="w-4 h-4 text-slate-500"></i>
+              <h3 class="gs-section-title">Operational Map</h3>
+            </div>
+            <a href="responder-map.html" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900">
               <span>Full Map</span>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
             </a>
           </div>
 
-          <div class="flex-1 flex flex-col justify-between bg-white rounded-2xl p-4 border border-[#EEEEEE] shadow-card space-y-3.5">
+          <div class="flex-1 flex flex-col justify-between bg-white rounded-lg p-3.5 border border-slate-200 shadow-subtle space-y-3">
             <!-- Leaflet Mini Map -->
-            <div class="w-full h-56 rounded-2xl border border-[#EEEEEE] overflow-hidden relative shadow-inner">
+            <div class="w-full h-56 rounded-md border border-slate-200 overflow-hidden relative">
               <div id="dash-map-preview" class="w-full h-full z-10"></div>
             </div>
 
-            <div class="p-3 bg-[#FFFDF7] rounded-2xl border border-[#EEEEEE] text-[11px] text-[#777777] space-y-1.5">
-              <div class="flex items-center justify-between">
-                <span>Field Base:</span>
-                <strong id="dash-map-base" class="text-[#202020]">Barangay Bayanan EOC</strong>
-              </div>
-              <div class="flex items-center justify-between">
-                <span>Assigned Unit:</span>
-                <strong id="dash-map-unit" class="text-[#202020]">—</strong>
-              </div>
-            </div>
-
-            <a href="responder-map.html" class="w-full py-3 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all active:scale-95 flex items-center justify-center gap-2">
-              <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
+            <a href="responder-map.html" class="w-full py-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2">
+              <i data-lucide="compass" class="w-4 h-4 text-amber-400"></i>
               <span>Launch Field Navigation</span>
             </a>
           </div>
@@ -173,6 +159,7 @@
   <div id="geosafe-responder-bottom-nav"></div>
 
   <!-- Scripts -->
+  <script src="./assets/vendor/lucide/lucide.min.js"></script>
   <script src="./assets/vendor/leaflet/leaflet.js"></script>
   <script src="./assets/js/mapping-service.js"></script>
   <script src="./assets/js/mock-data.js"></script>
@@ -180,6 +167,7 @@
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/responder-ui.js"></script>
   <script src="./assets/js/responder-dashboard.js"></script>
+  <script>if (window.lucide) window.lucide.createIcons();</script>
 </body>
 </html>
 

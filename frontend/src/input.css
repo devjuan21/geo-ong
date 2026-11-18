@@ -8,18 +8,18 @@
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    background-color: #FFF9E8;
-    color: #202020;
-    @apply antialiased font-sans min-h-screen flex flex-col selection:bg-accent selection:text-ink-900;
+    background-color: #F8FAFC;
+    color: #0F172A;
+    @apply antialiased font-sans min-h-screen flex flex-col selection:bg-amber-200 selection:text-slate-900;
   }
 
-  /* Override browser autofill background tint to match GeoSafe theme */
+  /* Override browser autofill background tint to match GeoSafe enterprise surface */
   input:-webkit-autofill,
   input:-webkit-autofill:hover, 
   input:-webkit-autofill:focus, 
   input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 1000px #FFFDF7 inset !important;
-    -webkit-text-fill-color: #202020 !important;
+    -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+    -webkit-text-fill-color: #0F172A !important;
     transition: background-color 5000000s ease-in-out 0s;
   }
 
@@ -65,8 +65,43 @@
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    outline: 2px solid #F5B900;
+    outline: 2px solid #0F172A;
     outline-offset: 2px;
+  }
+
+  /* Enterprise Emergency Operations / ICS Design System Components */
+  .gs-panel {
+    @apply bg-white border border-slate-200 rounded-lg shadow-subtle;
+  }
+  .gs-panel-muted {
+    @apply bg-slate-50 border border-slate-200 rounded-lg;
+  }
+  .gs-stat-card {
+    @apply bg-white border border-slate-200 rounded-lg px-4 py-3.5 shadow-subtle transition-colors hover:border-slate-300;
+  }
+  .gs-stat-label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+  }
+  .gs-stat-value {
+    @apply text-2xl font-bold text-slate-900 tracking-tight tabular-nums leading-none mt-1.5 block;
+  }
+  .gs-section-title {
+    @apply text-sm font-semibold text-slate-900 tracking-tight;
+  }
+  .gs-btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-colors active:scale-[0.99];
+  }
+  .gs-btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs transition-colors active:scale-[0.99];
+  }
+  .gs-btn-amber {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs transition-colors active:scale-[0.99];
+  }
+  .gs-btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-md bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition-colors active:scale-[0.99];
+  }
+  .gs-tabular {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -76,8 +111,8 @@
   line-height: 1.4 !important;
   color: #777777 !important;
   background-color: rgba(255, 255, 255, 0.85) !important;
-  backdrop-filter: blur(4px) !important;
   -webkit-backdrop-filter: blur(4px) !important;
+  backdrop-filter: blur(4px) !important;
   border-top-left-radius: 8px !important;
   padding: 2px 8px !important;
   margin: 0 !important;
@@ -144,4 +179,124 @@ td,
 .leaflet-tooltip,
 .leaflet-control {
   font-family: var(--gs-font-sans) !important;
+}
+
+/* ==========================================================================
+   Real-Time Typing Indicator & Full-Screen Mobile Messaging
+   ========================================================================== */
+.gs-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #475569;
+  background-color: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  flex-shrink: 0;
+}
+
+.gs-typing-indicator.hidden {
+  display: none !important;
+}
+
+.gs-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.gs-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: #64748B;
+  animation: gsTypingBounce 1.2s infinite ease-in-out;
+}
+
+.gs-typing-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.gs-typing-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes gsTypingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 1023.98px) {
+  body.gs-chat-fullscreen {
+    overflow: hidden !important;
+  }
+
+  body.gs-chat-fullscreen #geosafe-top-header,
+  body.gs-chat-fullscreen #geosafe-responder-top-header,
+  body.gs-chat-fullscreen #geosafe-bottom-nav,
+  body.gs-chat-fullscreen #geosafe-responder-bottom-nav,
+  body.gs-chat-fullscreen #resident-desktop-sidebar,
+  body.gs-chat-fullscreen #geosafe-responder-sidebar {
+    display: none !important;
+  }
+
+  body.gs-chat-fullscreen #messages-thread-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex !important;
+    flex-direction: column;
+    background-color: #FFFFFF;
+  }
+
+  body.gs-chat-fullscreen #messages-thread-header {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    flex-shrink: 0;
+  }
+
+  body.gs-chat-fullscreen #messages-thread-body {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.gs-chat-fullscreen #messages-compose-form {
+    flex-shrink: 0;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.gs-admin-messages-mobile #admin-top-header,
+  body.gs-admin-messages-mobile #admin-sidebar {
+    display: none !important;
+  }
+
+  body.gs-admin-messages-mobile #section-messages {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    background-color: #FFFFFF;
+    display: flex !important;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 }

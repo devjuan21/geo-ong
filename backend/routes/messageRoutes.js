@@ -6,6 +6,8 @@ const {
   sendConversationMessage,
   markConversationRead,
   getUnreadCount,
+  archiveConversation,
+  unarchiveConversation,
 } = require('../controllers/messageController');
 
 const router = express.Router();
@@ -17,6 +19,8 @@ router.get('/conversations/:id/messages', getConversationMessages);
 router.post('/conversations/:id/messages', sendConversationMessage);
 router.post('/conversations/:id/read', markConversationRead);
 router.patch('/conversations/:id/read', markConversationRead);
+router.patch('/conversations/:id/archive', archiveConversation);
+router.patch('/conversations/:id/unarchive', unarchiveConversation);
 router.get('/unread-count', getUnreadCount);
 
 module.exports = router;

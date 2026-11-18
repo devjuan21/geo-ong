@@ -86,8 +86,8 @@ function renderNotifications(notifs) {
     const isUnread = !n.read;
 
     return `
-      <div class="p-4 sm:p-5 rounded-2xl border ${isUnread ? 'border-brand-200 bg-brand-50/30' : 'border-slate-200 bg-white'} shadow-subtle flex items-start gap-4 transition-all hover:shadow-card">
-        <div class="w-10 h-10 rounded-xl ${iconCfg.color} flex items-center justify-center flex-shrink-0">
+      <div class="p-4 sm:p-5 rounded-lg border ${isUnread ? 'border-brand-200 bg-brand-50/30' : 'border-slate-200 bg-white'} shadow-subtle flex items-start gap-4 transition-all hover:shadow-subtle">
+        <div class="w-10 h-10 rounded-md ${iconCfg.color} flex items-center justify-center flex-shrink-0">
           ${GeoSafeUI.getIcon(iconCfg.icon, 'w-5 h-5')}
         </div>
 

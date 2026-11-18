@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body class="bg-[#FFF9E8] text-[#202020] antialiased min-h-screen flex flex-col font-sans">
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col font-sans">
 
   <!-- Top Operational Header Bar -->
   <div id="geosafe-responder-nav-container"></div>
@@ -18,7 +18,7 @@
   <main class="flex-1 p-3.5 sm:p-5 max-w-4xl mx-auto w-full space-y-3 gs-resp-main pb-24">
 
     <!-- Loading State -->
-    <div id="profile-loading" class="bg-white rounded-xl border border-[#EEEEEE] p-6 text-center shadow-sm">
+    <div id="profile-loading" class="bg-white rounded-md border border-slate-200 p-6 text-center shadow-sm">
       <div class="w-7 h-7 border-3 border-[#F5B900] border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
       <p class="text-xs text-[#777777]">Loading responder profile...</p>
     </div>
@@ -27,10 +27,10 @@
     <div id="profile-content" class="hidden space-y-3">
 
       <!-- 1. Compact Identity & Availability -->
-      <div class="bg-white rounded-xl p-4 sm:p-5 border border-[#EEEEEE] shadow-sm space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EEEEEE]">
+      <div class="bg-white rounded-md p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
           <div class="flex items-center gap-3 min-w-0">
-            <div id="prof-avatar-text" class="w-12 h-12 rounded-xl bg-[#202020] border border-[#F5B900] text-[#F5B900] font-bold text-base flex items-center justify-center flex-shrink-0">
+            <div id="prof-avatar-text" class="w-12 h-12 rounded-md bg-[#202020] border border-[#F5B900] text-[#F5B900] font-bold text-base flex items-center justify-center flex-shrink-0">
               —
             </div>
             <div class="min-w-0">
@@ -59,7 +59,7 @@
             <span class="text-[11px] font-bold text-[#777777] uppercase tracking-wider">Operational Availability</span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button id="opt-duty-on" type="button" onclick="selectAvailability('On Duty')" class="px-3 py-2.5 rounded-xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+            <button id="opt-duty-on" type="button" onclick="selectAvailability('On Duty')" class="px-3 py-2.5 rounded-md border border-slate-200 bg-white text-left transition-all hover:bg-slate-100 flex items-center justify-between">
               <div>
                 <span class="text-xs font-bold text-[#202020] block">On Duty</span>
                 <span class="text-[10px] text-[#777777]">Available for dispatch</span>
@@ -67,7 +67,7 @@
               <span class="w-2.5 h-2.5 rounded-full bg-[#278653] flex-shrink-0"></span>
             </button>
 
-            <button id="opt-duty-unavail" type="button" onclick="selectAvailability('On Break')" class="px-3 py-2.5 rounded-xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+            <button id="opt-duty-unavail" type="button" onclick="selectAvailability('On Break')" class="px-3 py-2.5 rounded-md border border-slate-200 bg-white text-left transition-all hover:bg-slate-100 flex items-center justify-between">
               <div>
                 <span class="text-xs font-bold text-[#202020] block">On Break</span>
                 <span class="text-[10px] text-[#777777]">Standby / on-task</span>
@@ -75,7 +75,7 @@
               <span class="w-2.5 h-2.5 rounded-full bg-[#E99524] flex-shrink-0"></span>
             </button>
 
-            <button id="opt-duty-off" type="button" onclick="selectAvailability('Off Duty')" class="px-3 py-2.5 rounded-xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between">
+            <button id="opt-duty-off" type="button" onclick="selectAvailability('Off Duty')" class="px-3 py-2.5 rounded-md border border-slate-200 bg-white text-left transition-all hover:bg-slate-100 flex items-center justify-between">
               <div>
                 <span class="text-xs font-bold text-[#202020] block">Off Duty</span>
                 <span class="text-[10px] text-[#777777]">Shift concluded</span>
@@ -87,8 +87,8 @@
       </div>
 
       <!-- 3. Operational Information (Combined Capabilities, Equipment & Contact) -->
-      <div class="bg-white rounded-xl p-4 sm:p-5 border border-[#EEEEEE] shadow-sm space-y-3">
-        <h3 class="text-[11px] font-bold text-[#777777] uppercase tracking-wider pb-1.5 border-b border-[#EEEEEE]">
+      <div class="bg-white rounded-md p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
+        <h3 class="text-[11px] font-bold text-[#777777] uppercase tracking-wider pb-1.5 border-b border-slate-200">
           Operational Information
         </h3>
 
@@ -121,7 +121,7 @@
       </div>
 
       <!-- 4. Compact Role Notice & Shift Action -->
-      <div class="bg-white rounded-xl p-4 border border-[#EEEEEE] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="bg-white rounded-md p-4 border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <p class="text-[11px] text-[#666666] leading-snug">
           Authorized under the <strong class="text-[#202020]">Emergency Responder</strong> role for dispatch, field status updates, and operational mapping.
         </p>

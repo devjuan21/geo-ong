@@ -172,7 +172,7 @@ function renderCenterCards(centers) {
 
   container.innerHTML = centers.map(c => {
     return `
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-card p-5 transition-all hover:shadow-card-hover flex flex-col justify-between" id="center-card-${c.id}">
+      <div class="bg-white rounded-lg border border-slate-200 shadow-subtle p-5 transition-all hover:hover:border-slate-300 flex flex-col justify-between" id="center-card-${c.id}">
         <div>
           <div class="flex items-start justify-between gap-3 mb-3">
             <div>
@@ -199,7 +199,7 @@ function renderCenterCards(centers) {
           </div>
 
           <!-- Camp Manager -->
-          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200/60 text-xs">
+          <div class="p-2.5 bg-slate-50 rounded-md border border-slate-200/60 text-xs">
             <span class="text-[10px] text-slate-400 font-medium block">Center Camp Manager</span>
             <span class="font-bold text-slate-800">${c.campManager.name}</span>
             <span class="text-slate-500 ml-1">(${c.campManager.contact})</span>

@@ -14,39 +14,69 @@ let miniPreviewMap = null;
 let miniMapLayerGroup = null;
 let miniEocMarker = null;
 let currentAssignments = [];
+let cachedAuthProfile = null;
+let dashboardLoadInFlight = false;
+let dashboardReloadQueued = false;
+
+const DASHBOARD_REALTIME_EVENTS = new Set([
+  'new-rescue-request',
+  'rescue-assignment-updated',
+  'rescue-status-updated',
+  'status-update',
+  'incident-resolved',
+  'new-incident-report',
+  'new-report',
+  'public-report-verified',
+  'report-verification-result',
+  'reconnect-sync',
+]);
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Responder UI Shell
   GeoSafeResponderUI.init('dashboard', 'Responder Dashboard');
 
   // Load Dashboard Data
-  await loadDashboardData();
+  await loadDashboardData({ background: false });
 
   // Initialize Mini Map Preview
   initMiniMapPreview();
 
-  window.addEventListener('geosafe:realtime-update', () => {
-    loadDashboardData();
+  window.addEventListener('geosafe:realtime-update', (ev) => {
+    const evt = ev && ev.detail ? ev.detail.event : '';
+    if (!DASHBOARD_REALTIME_EVENTS.has(evt)) return;
+    loadDashboardData({ background: true });
   });
 });
 
-async function loadDashboardData() {
+async function loadDashboardData({ background = false } = {}) {
+  if (dashboardLoadInFlight) {
+    dashboardReloadQueued = true;
+    return;
+  }
+  dashboardLoadInFlight = true;
+
   const loadingEl = document.getElementById('dash-loading');
   const contentEl = document.getElementById('dash-content');
 
-  // Verify responder authentication and role
-  const auth = await GeoSafeResponderUI.verifyResponderSession();
-  if (!auth.authorized) {
-    if (loadingEl) loadingEl.classList.add('hidden');
-    const mainEl = document.querySelector('main');
-    GeoSafeResponderUI.renderUnauthorizedScreen(mainEl);
-    return;
-  }
-
-  if (loadingEl) loadingEl.classList.remove('hidden');
-  if (contentEl) contentEl.classList.add('hidden');
-
   try {
+    // Verify responder authentication and role (skip redundant check on background sync if already verified)
+    let auth = cachedAuthProfile ? { authorized: true, profile: cachedAuthProfile } : null;
+    if (!auth) {
+      auth = await GeoSafeResponderUI.verifyResponderSession();
+      if (!auth.authorized) {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        const mainEl = document.querySelector('main');
+        GeoSafeResponderUI.renderUnauthorizedScreen(mainEl);
+        return;
+      }
+      cachedAuthProfile = auth.profile || null;
+    }
+
+    if (!background) {
+      if (loadingEl) loadingEl.classList.remove('hidden');
+      if (contentEl) contentEl.classList.add('hidden');
+    }
+
     const [summary, mapData] = await Promise.all([
       window.geoSafeStore.getResponderDashboardSummary(),
       window.geoSafeStore.getResponderMapData().catch(() => null),
@@ -88,13 +118,19 @@ async function loadDashboardData() {
     updateMiniMapMarkers([...currentAssignments, ...extraIncidents]);
   } catch (err) {
     console.error('[ResponderDashboard] Error loading dashboard:', err);
-    if (loadingEl) {
+    if (!background && loadingEl) {
       loadingEl.innerHTML = `
         <div class="p-6 text-center text-xs text-[#D93636]">
           <p class="font-bold">Failed to load operational dashboard records.</p>
-          <button onclick="loadDashboardData()" class="mt-2 px-3 py-1 rounded-xl bg-slate-100 text-[#202020] font-bold hover:bg-slate-200">Retry</button>
+          <button onclick="loadDashboardData({ background: false })" class="mt-2 px-3 py-1 rounded-md bg-slate-100 text-[#202020] font-bold hover:bg-slate-200">Retry</button>
         </div>
       `;
+    }
+  } finally {
+    dashboardLoadInFlight = false;
+    if (dashboardReloadQueued) {
+      dashboardReloadQueued = false;
+      loadDashboardData({ background: true });
     }
   }
 }
@@ -132,66 +168,71 @@ function renderActiveAssignments(assignments) {
   container.innerHTML = activeList.map(a => {
     const isRescue = a.assignmentType === 'rescue';
 
-    // Status badge styling
+    // Operational status badge styling
     let statusBadge = 'bg-slate-100 text-slate-700 border-slate-200';
     const s = (a.status || '').toLowerCase();
-    if (s === 'en route' || s === 'responding') statusBadge = 'bg-blue-50 text-[#3478C7] border-blue-200 font-bold';
-    else if (s === 'on scene' || s === 'in progress') statusBadge = 'bg-amber-50 text-[#E99524] border-amber-200 font-bold';
-    else if (s === 'accepted') statusBadge = 'bg-purple-50 text-purple-700 border-purple-200';
-    else if (s === 'completed' || s === 'resolved') statusBadge = 'bg-emerald-50 text-[#278653] border-emerald-200';
+    if (s === 'en route' || s === 'responding') statusBadge = 'bg-blue-50 text-blue-700 border-blue-200';
+    else if (s === 'on scene' || s === 'in progress') statusBadge = 'bg-amber-50 text-amber-800 border-amber-200';
+    else if (s === 'accepted') statusBadge = 'bg-slate-100 text-slate-800 border-slate-300';
+    else if (s === 'completed' || s === 'resolved') statusBadge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    else if (s === 'pending' || s === 'assigned' || s === 'dispatched') statusBadge = 'bg-red-50 text-red-700 border-red-200';
 
     return `
-      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card transition-all hover:border-[#F5B900] hover:shadow-card-hover space-y-3">
+      <div class="bg-white rounded-lg p-3.5 sm:p-4 border border-slate-200 shadow-subtle transition-colors hover:border-slate-300 space-y-2.5">
         
         <!-- Header: Ref #, Type, Status -->
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2">
-            <span class="font-mono text-xs sm:text-sm font-bold text-[#202020]">${a.referenceNumber || a.id}</span>
-            <span class="text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}">
+            <span class="font-mono gs-tabular text-xs font-bold text-slate-900">${a.referenceNumber || a.id}</span>
+            <span class="text-[10px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wide ${isRescue ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-800 border-amber-200'}">
               ${isRescue ? 'Rescue' : 'Incident'}
             </span>
           </div>
 
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${statusBadge}">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded border ${statusBadge}">
               ${a.status || 'Pending'}
             </span>
           </div>
         </div>
 
         <!-- Body: Category & Location -->
-        <div>
-          <h4 class="font-bold text-sm sm:text-base text-[#202020] leading-snug">${a.title || a.category}</h4>
-          <p class="text-xs text-[#777777] mt-1 flex items-center gap-1">
-            <svg class="w-3.5 h-3.5 text-[#F5B900] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
+        <div class="space-y-1.5">
+          <h4 class="font-semibold text-sm text-slate-900 leading-snug">${a.title || a.category}</h4>
+          <p class="text-xs text-slate-600 flex items-center gap-1.5">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0"></i>
             <span class="truncate">${a.location || 'Barangay Bayanan'}</span>
           </p>
           ${isRescue && a.peopleCount ? `
-            <div class="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#D93636] bg-[#FFF1F1] px-2.5 py-0.5 rounded-xl border border-[#FFC2C2]">
-              <svg class="w-3.5 h-3.5 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <div class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+              <i data-lucide="users" class="w-3.5 h-3.5 text-red-600"></i>
               <span>${a.peopleCount} ${a.peopleCount > 1 ? 'People Trapped' : 'Person Trapped'}</span>
             </div>
           ` : ''}
           ${a.dispatchInstructions ? `
-            <div class="mt-2.5 p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] text-[11px] text-[#777777] flex items-start gap-2">
-              <svg class="w-3.5 h-3.5 text-[#F5B900] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              <span class="line-clamp-2 leading-relaxed"><strong class="text-[#202020] font-semibold">Dispatch Note:</strong> ${a.dispatchInstructions}</span>
+            <div class="mt-1.5 px-2.5 py-2 bg-slate-50 rounded-md border border-slate-200 text-xs text-slate-600 flex items-start gap-2">
+              <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5"></i>
+              <span class="line-clamp-2 leading-relaxed"><strong class="text-slate-900 font-semibold">Dispatch Note:</strong> ${a.dispatchInstructions}</span>
             </div>
           ` : ''}
         </div>
 
         <!-- Footer: Assigned Time & Action -->
-        <div class="pt-2.5 border-t border-[#EEEEEE] flex items-center justify-between gap-2 text-xs">
-          <span class="text-[10px] text-[#777777]">Assigned ${GeoSafeResponderUI.formatRelativeTime(a.assignedAt)}</span>
-          <a href="responder-assignments.html?id=${encodeURIComponent(a.id)}" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs shadow-subtle transition-all active:scale-95">
+        <div class="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+          <span class="text-[11px] text-slate-500 gs-tabular">Assigned ${GeoSafeResponderUI.formatRelativeTime(a.assignedAt)}</span>
+          <a href="responder-assignments.html?id=${encodeURIComponent(a.id)}" class="gs-btn-primary py-1.5 px-3">
             <span>Manage & Respond</span>
-            <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-amber-400"></i>
           </a>
         </div>
 
       </div>
     `;
   }).join('');
+
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
 }
 
 const miniGpsMarkerState = { marker: null, accuracyCircle: null };
@@ -267,10 +308,10 @@ function updateMiniEocMarker(eoc) {
   if (!miniEocMarker) {
     const eocIcon = GeoSafeMapping.createCustomIcon('eoc', 'EOC');
     miniEocMarker = L.marker([lat, lng], { icon: eocIcon }).addTo(miniPreviewMap).bindPopup(popupHtml);
+    miniPreviewMap.setView([lat, lng], 15);
   } else {
     miniEocMarker.setLatLng([lat, lng]).setPopupContent(popupHtml);
   }
-  miniPreviewMap.setView([lat, lng], 15);
 }
 
 function updateMiniMapMarkers(assignments) {

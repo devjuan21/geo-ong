@@ -637,6 +637,19 @@ function emitResponderLocationOffline(userId) {
   }
 }
 
+function emitConversationArchiveUpdated(userId, conversationId, isArchived, extra = {}) {
+  const uid = Number(userId);
+  const cid = Number(conversationId);
+  if (!io || !Number.isInteger(uid) || uid <= 0 || !Number.isInteger(cid) || cid <= 0) return;
+  io.to(`user:${uid}`).emit('conversation:archive-updated', {
+    userId: uid,
+    conversationId: cid,
+    isArchived: Boolean(isArchived),
+    reason: extra.reason || null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function getLiveResponderLocations() {
   return Array.from(liveResponderLocations.values());
 }
@@ -658,6 +671,7 @@ module.exports = {
   emitConversationMessage,
   emitConversationMessagesRead,
   emitConversationAccessUpdated,
+  emitConversationArchiveUpdated,
   emitResponderLocationUpdate,
   emitResponderLocationOffline,
   getLiveResponderLocations,

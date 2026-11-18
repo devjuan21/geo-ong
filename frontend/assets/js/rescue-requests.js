@@ -56,10 +56,10 @@ function renderRescueCards(requests) {
   if (!listEl) return;
 
   listEl.innerHTML = requests.map(r => `
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-card p-5 sm:p-6 transition-all hover:shadow-card-hover">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-subtle p-5 sm:p-6 transition-all hover:hover:border-slate-300">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-emergency-100 text-emergency-600 flex items-center justify-center flex-shrink-0">
+          <div class="w-10 h-10 rounded-md bg-emergency-100 text-emergency-600 flex items-center justify-center flex-shrink-0">
             ${GeoSafeUI.getIcon('life-buoy', 'w-6 h-6 text-emergency-600')}
           </div>
           <div>
@@ -86,7 +86,7 @@ function renderRescueCards(requests) {
           <span class="text-slate-900 font-bold text-sm mt-0.5 block">${r.emergencyType}</span>
           <p class="text-slate-600 mt-1 leading-relaxed">${r.description}</p>
         </div>
-        <div class="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
+        <div class="space-y-2 bg-slate-50 p-3.5 rounded-md border border-slate-200/60">
           <div>
             <span class="text-slate-500 font-medium">Persons Needing Assistance:</span>
             <span class="font-bold text-slate-900 ml-1">${r.peopleCount} individuals</span>
@@ -111,7 +111,7 @@ function renderRescueCards(requests) {
       </div>
 
       <!-- Assigned Unit & Contact -->
-      <div class="p-3.5 bg-brand-50/70 border border-brand-100 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs mb-4">
+      <div class="p-3.5 bg-brand-50/70 border border-brand-100 rounded-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs mb-4">
         <div>
           <span class="text-[10px] font-bold text-brand-700 uppercase tracking-wider block">Assigned Rescue Unit</span>
           <span class="text-xs font-bold text-slate-900">${r.assignedUnit || 'Dispatching Unit...'}</span>

@@ -9,6 +9,7 @@
     currentUser: null,
     conversations: [],
     pendingRequests: [],
+    activeBox: 'active',
     activeConversationId: null,
     activeConversation: null,
     messages: [],
@@ -55,12 +56,12 @@
   function renderStatusBadge(status) {
     const s = String(status || 'Active');
     if (s === 'Completed') {
-      return '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Completed</span>';
+      return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">Completed</span>';
     }
     if (s === 'Closed') {
-      return '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">Closed</span>';
+      return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">Closed</span>';
     }
-    return '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-[#278653] border border-emerald-200">Active</span>';
+    return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>';
   }
 
   async function initMessagesPage() {
@@ -142,6 +143,23 @@
       return;
     }
 
+    if (event === 'conversation:archive-updated' && data) {
+      const convId = Number(data.conversationId);
+      const isArch = Boolean(data.isArchived);
+      const item = state.conversations.find((c) => Number(c.id) === convId);
+      if (item) {
+        item.isArchived = isArch;
+        if (state.activeConversation && Number(state.activeConversation.id) === convId) {
+          state.activeConversation.isArchived = isArch;
+          updateThreadArchiveButton(state.activeConversation);
+        }
+        renderConversationsList();
+      } else {
+        await loadConversationsList({ silent: true });
+      }
+      return;
+    }
+
     if (
       event === 'messages:unread-update' ||
       event === 'messages:access-updated' ||
@@ -216,12 +234,6 @@
 
       if (loadingEl) loadingEl.classList.add('hidden');
 
-      if (countBadge) {
-        countBadge.textContent = `${state.conversations.length} Conversation${
-          state.conversations.length === 1 ? '' : 's'
-        }`;
-      }
-
       const totalUnread = state.conversations.reduce((sum, c) => sum + Number(c.unreadCount || 0), 0);
       if (unreadPill) {
         unreadPill.textContent = `${totalUnread} Unread`;
@@ -260,7 +272,7 @@
       .map((pr) => {
         if (state.role === 'Responder') {
           return `
-            <div class="p-3 rounded-xl bg-white border border-[#FFE872] shadow-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="p-3 rounded-md bg-white border border-[#FFE872] shadow-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
               <div>
                 <span class="font-mono font-bold text-[#8A6800]">${escapeHtml(pr.rescueReference)}</span>
                 <span class="font-bold text-[#202020] ml-1.5">${escapeHtml(pr.emergencyType)}</span>
@@ -276,13 +288,13 @@
           ? `Assigned to ${pr.assignedResponderName} — waiting for Responder to accept assignment.`
           : 'Waiting for Administrator responder assignment and acceptance.';
         return `
-          <div class="p-3 rounded-xl bg-white border border-[#FFE872] shadow-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="p-3 rounded-md bg-white border border-[#FFE872] shadow-subtle flex flex-wrap items-center justify-between gap-2 text-xs">
             <div>
               <span class="font-mono font-bold text-[#8A6800]">${escapeHtml(pr.rescueReference)}</span>
               <span class="font-bold text-[#202020] ml-1.5">${escapeHtml(pr.emergencyType)}</span>
               <span class="text-[#777777] block sm:inline sm:ml-2 text-[11px]">${escapeHtml(statusMsg)}</span>
             </div>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">
               Messaging Locked Until Accepted
             </span>
           </div>
@@ -291,54 +303,155 @@
       .join('');
   }
 
+  function openArchiveDrawer() {
+    renderArchivedDrawerList();
+    document.getElementById('messages-archive-drawer')?.classList.remove('hidden');
+  }
+
+  function closeArchiveDrawer() {
+    document.getElementById('messages-archive-drawer')?.classList.add('hidden');
+  }
+
+  function updateThreadArchiveButton(conv) {
+    const btn = document.getElementById('thread-archive-btn');
+    const labelEl = document.getElementById('thread-archive-btn-label');
+    if (!btn || !labelEl || !conv) return;
+    btn.classList.remove('hidden');
+    const isArch = Boolean(conv.isArchived);
+    labelEl.textContent = isArch ? 'Unarchive' : 'Archive';
+    btn.title = isArch ? 'Restore to active chats' : 'Archive conversation';
+  }
+
+  async function toggleArchiveConversation(conversationId, shouldArchive) {
+    const convId = Number(conversationId);
+    if (!Number.isInteger(convId) || convId <= 0) return;
+    dismissErrorBanner();
+
+    const action = shouldArchive ? 'archive' : 'unarchive';
+    try {
+      const res = await window.geoSafeStore.request(
+        `/messages/conversations/${convId}/${action}`,
+        { method: 'PATCH' }
+      );
+      const nextArchived = res && typeof res.isArchived === 'boolean' ? res.isArchived : Boolean(shouldArchive);
+      const item = state.conversations.find((c) => Number(c.id) === convId);
+      if (item) {
+        item.isArchived = nextArchived;
+        item.archivedAt = res && res.archivedAt ? res.archivedAt : null;
+      }
+      if (state.activeConversation && Number(state.activeConversation.id) === convId) {
+        state.activeConversation.isArchived = nextArchived;
+        updateThreadArchiveButton(state.activeConversation);
+      }
+      renderConversationsList();
+    } catch (err) {
+      showErrorBanner(err.message || `Unable to ${action} conversation.`);
+    }
+  }
+
+  function toggleActiveConversationArchive() {
+    if (!state.activeConversation) return;
+    return toggleArchiveConversation(state.activeConversation.id, !state.activeConversation.isArchived);
+  }
+
+  function buildConversationRowHtml(c, { isArchivedView = false } = {}) {
+    const isSelected = Number(c.id) === Number(state.activeConversationId);
+    const counterpart = state.role === 'Resident' ? c.responder : c.resident;
+    const preview = c.lastMessagePreview
+      ? escapeHtml(c.lastMessagePreview)
+      : 'No messages yet — start the conversation';
+    const timeStr = c.lastMessageAt ? formatManilaTime(c.lastMessageAt) : formatManilaTime(c.createdAt);
+    const unread = Number(c.unreadCount || 0);
+    const isArch = Boolean(c.isArchived);
+    const clickAction = isArchivedView
+      ? `window.GeoSafeMessages.closeArchiveDrawer(); window.GeoSafeMessages.selectConversation(${c.id});`
+      : `window.GeoSafeMessages.selectConversation(${c.id});`;
+
+    return `
+      <div class="w-full p-3.5 transition-colors flex items-start justify-between gap-2.5 ${
+        isSelected && !isArchivedView ? 'bg-slate-50 border-l-4 border-l-slate-900' : 'hover:bg-slate-50'
+      }">
+        <button type="button" onclick="${clickAction}"
+          class="min-w-0 flex-1 text-left space-y-1 focus:outline-none">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs font-semibold text-slate-900 truncate">${escapeHtml(counterpart.name)}</span>
+            <span class="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 gs-tabular">${escapeHtml(c.rescueReference)}</span>
+          </div>
+          <p class="text-[11px] ${unread > 0 ? 'font-semibold text-slate-900' : 'text-slate-600'} truncate">${preview}</p>
+          <div class="flex items-center gap-2 text-[10px] text-slate-500 gs-tabular">
+            <span>${escapeHtml(c.emergencyType)}</span>
+            <span>•</span>
+            <span>${escapeHtml(timeStr)}</span>
+          </div>
+        </button>
+        <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+          <div class="flex items-center gap-1.5">
+            ${renderStatusBadge(c.conversationStatus)}
+            <button type="button"
+              onclick="event.stopPropagation(); window.GeoSafeMessages.toggleArchiveConversation(${c.id}, ${!isArch})"
+              class="p-1 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors"
+              title="${isArch ? 'Restore to active chats' : 'Archive conversation'}"
+              aria-label="${isArch ? 'Restore to active chats' : 'Archive conversation'}">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                ${
+                  isArch
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path>'
+                }
+              </svg>
+            </button>
+          </div>
+          ${
+            unread > 0
+              ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white gs-tabular">${unread}</span>`
+              : ''
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  function renderArchivedDrawerList() {
+    const listEl = document.getElementById('messages-archived-list');
+    const emptyEl = document.getElementById('messages-archived-empty');
+    const archivedItems = state.conversations.filter((c) => Boolean(c.isArchived));
+
+    if (emptyEl) {
+      emptyEl.classList.toggle('hidden', archivedItems.length > 0);
+    }
+    if (!listEl) return;
+    listEl.innerHTML = archivedItems.map((c) => buildConversationRowHtml(c, { isArchivedView: true })).join('');
+  }
+
+  function updateActiveConversationCountBadge() {
+    const countBadge = document.getElementById('messages-active-count-badge');
+    if (!countBadge) return;
+    const activeCount = state.conversations.filter((c) => !c.isArchived).length;
+    if (activeCount <= 0) {
+      countBadge.classList.add('hidden');
+      countBadge.textContent = '';
+    } else {
+      countBadge.classList.remove('hidden');
+      countBadge.textContent = `${activeCount} Conversation${activeCount === 1 ? '' : 's'}`;
+    }
+  }
+
   function renderConversationsList() {
     const listEl = document.getElementById('messages-conversations-list');
-    if (!listEl) return;
+    const emptyEl = document.getElementById('messages-conversations-empty');
+    const activeItems = state.conversations.filter((c) => !c.isArchived);
 
-    if (!state.conversations.length) {
-      listEl.innerHTML = '';
-      return;
+    updateActiveConversationCountBadge();
+
+    if (emptyEl) {
+      emptyEl.classList.toggle('hidden', activeItems.length > 0);
     }
 
-    listEl.innerHTML = state.conversations
-      .map((c) => {
-        const isSelected = Number(c.id) === Number(state.activeConversationId);
-        const counterpart = state.role === 'Resident' ? c.responder : c.resident;
-        const preview = c.lastMessagePreview
-          ? escapeHtml(c.lastMessagePreview)
-          : 'No messages yet — start the conversation';
-        const timeStr = c.lastMessageAt ? formatManilaTime(c.lastMessageAt) : formatManilaTime(c.createdAt);
-        const unread = Number(c.unreadCount || 0);
+    if (listEl) {
+      listEl.innerHTML = activeItems.map((c) => buildConversationRowHtml(c, { isArchivedView: false })).join('');
+    }
 
-        return `
-          <button type="button" onclick="window.GeoSafeMessages.selectConversation(${c.id})"
-            class="w-full p-3.5 text-left transition-colors flex items-start justify-between gap-2.5 ${
-              isSelected ? 'bg-[#FFF9E8] border-l-4 border-l-[#F5B900]' : 'hover:bg-[#FFFDF7]'
-            }">
-            <div class="min-w-0 flex-1 space-y-1">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(counterpart.name)}</span>
-                <span class="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtml(c.rescueReference)}</span>
-              </div>
-              <p class="text-[11px] ${unread > 0 ? 'font-bold text-[#202020]' : 'text-[#555555]'} truncate">${preview}</p>
-              <div class="flex items-center gap-2 text-[10px] text-[#777777]">
-                <span>${escapeHtml(c.emergencyType)}</span>
-                <span>•</span>
-                <span>${escapeHtml(timeStr)}</span>
-              </div>
-            </div>
-            <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-              ${renderStatusBadge(c.conversationStatus)}
-              ${
-                unread > 0
-                  ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#D93636] text-white">${unread}</span>`
-                  : ''
-              }
-            </div>
-          </button>
-        `;
-      })
-      .join('');
+    renderArchivedDrawerList();
   }
 
   let savedInboxScrollY = 0;
@@ -355,6 +468,22 @@
       threadPanel.style.height = `${window.visualViewport.height}px`;
       threadPanel.style.top = `${window.visualViewport.offsetTop || 0}px`;
     }
+  }
+
+  function exitMobileMessages() {
+    stopTypingSignal();
+    exitMobileFullscreenThread();
+    const fallback = state.role === 'Responder' ? 'responder-dashboard.html' : 'index.html';
+    try {
+      if (document.referrer && new URL(document.referrer).origin === window.location.origin) {
+        const refPath = new URL(document.referrer).pathname.toLowerCase();
+        if (!refPath.endsWith('messages.html') && !refPath.endsWith('responder-messages.html')) {
+          window.history.back();
+          return;
+        }
+      }
+    } catch (_) {}
+    window.location.href = fallback;
   }
 
   function enterMobileFullscreenThread() {
@@ -380,6 +509,7 @@
     window.addEventListener('resize', () => {
       if (window.innerWidth >= 1024) {
         exitMobileFullscreenThread();
+        syncMobileThreadViewportHeight();
       } else {
         syncMobileThreadViewportHeight();
       }
@@ -518,6 +648,7 @@
             conv.rescueAddress ? ` • ${conv.rescueAddress}` : ''
           }`;
     document.getElementById('thread-participant-sub').textContent = subText;
+    updateThreadArchiveButton(conv);
 
     const inputEl = document.getElementById('messages-compose-input');
     const sendBtn = document.getElementById('messages-send-btn');
@@ -598,21 +729,21 @@
 
         return `
           <div class="flex flex-col ${isMine ? 'items-end' : 'items-start'}">
-            <div class="max-w-[82%] sm:max-w-[72%] rounded-2xl px-3.5 py-2.5 text-xs ${
+            <div class="max-w-[82%] sm:max-w-[72%] rounded-lg px-3.5 py-2 text-xs ${
               isMine
-                ? 'bg-[#202020] text-white rounded-br-sm'
-                : 'bg-white border border-[#EEEEEE] text-[#202020] rounded-bl-sm shadow-subtle'
+                ? 'bg-slate-900 text-white rounded-br-none'
+                : 'bg-white border border-slate-200 text-slate-900 rounded-bl-none shadow-subtle'
             }">
               ${
                 !isMine
-                  ? `<span class="block text-[10px] font-bold text-[#8A6800] mb-0.5">${escapeHtml(
+                  ? `<span class="block text-[10px] font-semibold text-amber-700 mb-0.5">${escapeHtml(
                       m.senderName
                     )} (${escapeHtml(m.senderRole)})</span>`
                   : ''
               }
               <p class="whitespace-pre-line leading-relaxed break-words">${escapeHtml(m.body)}</p>
             </div>
-            <div class="mt-1 px-1 text-[10px] text-[#777777] flex items-center gap-1">
+            <div class="mt-1 px-1 text-[10px] text-slate-500 flex items-center gap-1 gs-tabular">
               <span>${escapeHtml(timeStr)}</span>
               ${deliveryText}
             </div>
@@ -751,7 +882,17 @@
     if (!wrapEl || !textEl) return;
 
     const convId = Number(state.activeConversationId || 0);
-    const entry = convId ? typingPeersByConv.get(convId) : null;
+    const activeConv = state.activeConversation;
+    const isClosed = Boolean(
+      activeConv &&
+      Number(activeConv.id) === convId &&
+      (activeConv.canSend === false || ['Closed', 'Completed'].includes(String(activeConv.conversationStatus || '')))
+    );
+    if (isClosed && convId) {
+      typingPeersByConv.delete(convId);
+    }
+
+    const entry = convId && !isClosed ? typingPeersByConv.get(convId) : null;
     if (!entry) {
       wrapEl.classList.add('hidden');
       textEl.textContent = '';
@@ -867,6 +1008,11 @@
   window.GeoSafeMessages = {
     selectConversation,
     backToConversationList,
+    exitMobileMessages,
+    openArchiveDrawer,
+    closeArchiveDrawer,
+    toggleArchiveConversation,
+    toggleActiveConversationArchive,
     handleSendSubmit,
     handleInputKeydown,
     retryMessage,

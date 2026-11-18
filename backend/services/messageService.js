@@ -391,6 +391,25 @@ async function createConversationMessage({ user, conversationId, body, clientMes
       [createdRow.created_at, conv.id]
     );
 
+    // Automatically restore archived conversation to active inbox for the recipient(s)
+    const [unarchivedRes] = await conn.query(
+      `UPDATE conversation_participants
+       SET is_archived = FALSE,
+           archived_at = NULL
+       WHERE conversation_id = ?
+         AND user_id <> ?
+         AND is_active = TRUE
+         AND is_archived = TRUE
+       RETURNING user_id`,
+      [conv.id, user.id]
+    );
+    const unarchivedRows = Array.isArray(unarchivedRes)
+      ? unarchivedRes
+      : unarchivedRes && Array.isArray(unarchivedRes.rows)
+      ? unarchivedRes.rows
+      : [];
+    const unarchivedUserIds = unarchivedRows.map((r) => Number(r.user_id)).filter((id) => id > 0);
+
     await conn.commit();
 
     const formatted = formatMessageRow(
@@ -408,6 +427,7 @@ async function createConversationMessage({ user, conversationId, body, clientMes
       deduplicated: false,
       conversation: conv,
       message: formatted,
+      unarchivedUserIds,
     };
   } catch (err) {
     await conn.rollback();

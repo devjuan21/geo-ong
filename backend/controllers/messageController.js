@@ -11,6 +11,7 @@ const {
 const {
   emitConversationMessage,
   emitConversationMessagesRead,
+  emitConversationArchiveUpdated,
 } = require('../services/socketService');
 
 async function writeMessageAuditLog(req, { action, entityId, details }) {
@@ -44,8 +45,9 @@ async function listConversations(req, res) {
     const roleId = Number(req.user.role_id);
     const userId = Number(req.user.id);
 
+    const archivedFilter = String(req.query.archived || 'all').trim().toLowerCase();
     let whereClause = '1=1';
-    const params = [userId, userId];
+    const params = [userId, userId, userId];
 
     if (roleId === ROLE_IDS.RESIDENT) {
       whereClause = `c.resident_user_id = ? AND EXISTS (
@@ -72,6 +74,8 @@ async function listConversations(req, res) {
               c.status AS conversation_status,
               c.last_message_at,
               c.created_at,
+              COALESCE(cp_self.is_archived, FALSE) AS self_is_archived,
+              cp_self.archived_at AS self_archived_at,
               rr.reference_number AS rescue_reference,
               rr.emergency_type,
               rr.status AS rescue_status,
@@ -107,6 +111,7 @@ async function listConversations(req, res) {
        JOIN rescue_requests rr ON rr.id = c.rescue_id
        JOIN users res_u ON res_u.id = c.resident_user_id
        JOIN users resp_u ON resp_u.id = c.responder_user_id
+       LEFT JOIN conversation_participants cp_self ON cp_self.conversation_id = c.id AND cp_self.user_id = ?
        LEFT JOIN responder_profiles rp ON rp.user_id = c.responder_user_id
        LEFT JOIN LATERAL (
          SELECT id, responder_user_id, assignment_status, accepted_at
@@ -134,6 +139,9 @@ async function listConversations(req, res) {
         if (roleId === ROLE_IDS.RESPONDER && Number(r.latest_responder_id) !== userId) {
           return false;
         }
+        const isArch = Boolean(r.self_is_archived);
+        if (archivedFilter === 'true' && !isArch) return false;
+        if (archivedFilter === 'false' && isArch) return false;
         return true;
       })
       .map((r) => ({
@@ -145,6 +153,8 @@ async function listConversations(req, res) {
         rescueAddress: r.rescue_address || '',
         assignmentStatus: r.assignment_status || 'Assigned',
         conversationStatus: r.conversation_status || 'Active',
+        isArchived: roleId === ROLE_IDS.ADMINISTRATOR ? false : Boolean(r.self_is_archived),
+        archivedAt: roleId === ROLE_IDS.ADMINISTRATOR ? null : (r.self_archived_at || null),
         resident: {
           id: Number(r.resident_user_id),
           name: r.resident_name || 'Resident',
@@ -285,6 +295,18 @@ async function getConversationMessages(req, res) {
     );
 
     const messages = msgRows.map((m) => formatMessageRow(m, conv));
+    let selfIsArchived = false;
+    let selfArchivedAt = null;
+    if (Number(req.user.role_id) !== ROLE_IDS.ADMINISTRATOR) {
+      const [cpRows] = await pool.query(
+        'SELECT is_archived, archived_at FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1',
+        [conv.id, req.user.id]
+      );
+      if (cpRows[0]) {
+        selfIsArchived = Boolean(cpRows[0].is_archived);
+        selfArchivedAt = cpRows[0].archived_at || null;
+      }
+    }
 
     return res.json({
       conversation: {
@@ -296,6 +318,8 @@ async function getConversationMessages(req, res) {
         rescueAddress: conv.rescue_address || '',
         assignmentStatus: conv.assignment_status || 'Accepted',
         conversationStatus: conv.conversation_status || 'Active',
+        isArchived: selfIsArchived,
+        archivedAt: selfArchivedAt,
         canSend:
           Number(req.user.role_id) !== ROLE_IDS.ADMINISTRATOR &&
           !['Completed', 'Closed'].includes(conv.conversation_status),
@@ -340,6 +364,11 @@ async function sendConversationMessage(req, res) {
     }
 
     if (!result.deduplicated) {
+      if (Array.isArray(result.unarchivedUserIds)) {
+        for (const uid of result.unarchivedUserIds) {
+          emitConversationArchiveUpdated(uid, result.conversation.id, false, { reason: 'new-message' });
+        }
+      }
       emitConversationMessage(result.conversation, result.message);
     }
 
@@ -397,10 +426,75 @@ async function getUnreadCount(req, res) {
   }
 }
 
+async function setConversationArchiveState(req, res, shouldArchive) {
+  try {
+    const access = await verifyConversationAccess(req.user, req.params.id, {
+      allowAdmin: false,
+      requireSendPermission: false,
+    });
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const conv = access.conversation;
+    const userId = Number(req.user.id);
+    const participantRole =
+      Number(conv.resident_user_id) === userId ? 'Resident' : 'Responder';
+
+    const [rows] = await pool.query(
+      `INSERT INTO conversation_participants
+         (conversation_id, user_id, role, is_active, is_archived, archived_at, joined_at, left_at)
+       VALUES (?, ?, ?, TRUE, ?, ${shouldArchive ? 'NOW()' : 'NULL'}, NOW(), NULL)
+       ON CONFLICT (conversation_id, user_id) DO UPDATE SET
+         is_archived = EXCLUDED.is_archived,
+         archived_at = ${shouldArchive ? 'NOW()' : 'NULL'}
+       RETURNING is_archived, archived_at`,
+      [conv.id, userId, participantRole, Boolean(shouldArchive)]
+    );
+    const updatedRow = rows && rows[0] ? rows[0] : {};
+    const isArchived = Boolean(shouldArchive);
+    const archivedAt = updatedRow.archived_at || (isArchived ? new Date().toISOString() : null);
+
+    await writeMessageAuditLog(req, {
+      action: isArchived ? 'ARCHIVE_CONVERSATION' : 'UNARCHIVE_CONVERSATION',
+      entityId: conv.id,
+      details: {
+        conversation_id: conv.id,
+        rescue_id: conv.rescue_id,
+        is_archived: isArchived,
+      },
+    });
+
+    emitConversationArchiveUpdated(userId, conv.id, isArchived, {
+      reason: isArchived ? 'user-archived' : 'user-unarchived',
+    });
+
+    return res.json({
+      ok: true,
+      conversationId: Number(conv.id),
+      isArchived,
+      archivedAt,
+    });
+  } catch (err) {
+    console.error('[Messages API] setConversationArchiveState failed:', err.message);
+    return res.status(500).json({ error: 'Unable to update conversation archive state.' });
+  }
+}
+
+async function archiveConversation(req, res) {
+  return setConversationArchiveState(req, res, true);
+}
+
+async function unarchiveConversation(req, res) {
+  return setConversationArchiveState(req, res, false);
+}
+
 module.exports = {
   listConversations,
   getConversationMessages,
   sendConversationMessage,
   markConversationRead,
   getUnreadCount,
+  archiveConversation,
+  unarchiveConversation,
 };

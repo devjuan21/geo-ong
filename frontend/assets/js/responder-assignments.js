@@ -164,50 +164,96 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => openAssignmentDetails(targetId), 250);
   }
 
-  window.addEventListener('geosafe:realtime-update', (ev) => {
+  const ASSIGNMENTS_REALTIME_EVENTS = new Set([
+    'new-rescue-request',
+    'rescue-assignment-updated',
+    'rescue-status-updated',
+    'status-update',
+    'incident-resolved',
+    'new-incident-report',
+    'new-report',
+    'public-report-verified',
+    'report-verification-result',
+    'reconnect-sync',
+  ]);
+
+  window.addEventListener('geosafe:realtime-update', async (ev) => {
+    const evt = ev && ev.detail ? ev.detail.event : '';
+    if (!ASSIGNMENTS_REALTIME_EVENTS.has(evt)) return;
     if (statusUpdateInFlight || progressUpdateInFlight) return;
-    loadAssignments();
+    await loadAssignments({ background: true });
     const detailsModal = document.getElementById('assign-details-modal');
-    if (activeAssignmentDetail && detailsModal && !detailsModal.classList.contains('hidden')) {
-      openAssignmentDetails(activeAssignmentDetail.id);
+    const confirmModal = document.getElementById('status-confirm-modal');
+    const progressModal = document.getElementById('progress-update-modal');
+    const isEditingSubModal =
+      (confirmModal && !confirmModal.classList.contains('hidden')) ||
+      (progressModal && !progressModal.classList.contains('hidden'));
+    if (activeAssignmentDetail && detailsModal && !detailsModal.classList.contains('hidden') && !isEditingSubModal) {
+      const updated = (allAssignments || []).find(
+        (a) => String(a.id) === String(activeAssignmentDetail.id) || String(a.referenceNumber) === String(activeAssignmentDetail.referenceNumber)
+      );
+      if (updated && updated.status !== activeAssignmentDetail.status) {
+        openAssignmentDetails(activeAssignmentDetail.id);
+      }
     }
-    if (navState.active && ev && ev.detail && ev.detail.event === 'reconnect-sync') {
+    if (navState.active && evt === 'reconnect-sync') {
       runTenSecondNavigationSync();
     }
   });
 });
 
-async function loadAssignments() {
+let cachedAssignmentsAuth = null;
+let assignmentsLoadInFlight = false;
+let assignmentsReloadQueued = false;
+
+async function loadAssignments({ background = false } = {}) {
+  if (assignmentsLoadInFlight) {
+    assignmentsReloadQueued = true;
+    return;
+  }
+  assignmentsLoadInFlight = true;
+
   const loadingEl = document.getElementById('assign-loading');
   const container = document.getElementById('assign-list-container');
   const emptyEl = document.getElementById('assign-empty-state');
 
-  // Verify responder authentication and role
-  const auth = await GeoSafeResponderUI.verifyResponderSession();
-  if (!auth.authorized) {
-    if (loadingEl) loadingEl.classList.add('hidden');
-    const mainEl = document.querySelector('main');
-    GeoSafeResponderUI.renderUnauthorizedScreen(mainEl);
-    return;
-  }
-
-  if (loadingEl) loadingEl.classList.remove('hidden');
-  if (container) container.classList.add('hidden');
-  if (emptyEl) emptyEl.classList.add('hidden');
-
   try {
+    // Verify responder authentication and role (skip redundant check on background sync)
+    if (!cachedAssignmentsAuth) {
+      const auth = await GeoSafeResponderUI.verifyResponderSession();
+      if (!auth.authorized) {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        const mainEl = document.querySelector('main');
+        GeoSafeResponderUI.renderUnauthorizedScreen(mainEl);
+        return;
+      }
+      cachedAssignmentsAuth = auth;
+    }
+
+    if (!background) {
+      if (loadingEl) loadingEl.classList.remove('hidden');
+      if (container) container.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.add('hidden');
+    }
+
     allAssignments = await window.geoSafeStore.getResponderAssignments({ status: 'All' });
     if (loadingEl) loadingEl.classList.add('hidden');
     renderFilteredAssignments();
   } catch (err) {
     console.error('[ResponderAssignments] Error loading assignments:', err);
-    if (loadingEl) {
+    if (!background && loadingEl) {
       loadingEl.innerHTML = `
         <div class="p-6 text-center text-xs text-[#D93636]">
           <p class="font-bold">Failed to load responder assignments.</p>
-          <button onclick="loadAssignments()" class="mt-2 px-3 py-1 rounded-xl bg-slate-100 text-[#202020] font-bold">Retry</button>
+          <button onclick="loadAssignments({ background: false })" class="mt-2 px-3 py-1 rounded-md bg-slate-100 text-[#202020] font-bold">Retry</button>
         </div>
       `;
+    }
+  } finally {
+    assignmentsLoadInFlight = false;
+    if (assignmentsReloadQueued) {
+      assignmentsReloadQueued = false;
+      loadAssignments({ background: true });
     }
   }
 }
@@ -221,9 +267,9 @@ window.filterAssignments = function (status) {
     const btn = document.getElementById(`tab-assign-${tab.toLowerCase().replace(/\s+/g, '-')}`);
     if (btn) {
       if (tab.toLowerCase() === status.toLowerCase()) {
-        btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0 whitespace-nowrap';
+        btn.className = 'px-3.5 py-1.5 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0 whitespace-nowrap';
       } else {
-        btn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white border border-[#EEEEEE] text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] flex-shrink-0 whitespace-nowrap';
+        btn.className = 'px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] hover:bg-slate-100 flex-shrink-0 whitespace-nowrap';
       }
     }
   });
@@ -296,12 +342,12 @@ function renderFilteredAssignments() {
     else if (s === 'completed' || s === 'resolved') statusBadge = 'bg-emerald-50 text-[#278653] border-emerald-200';
 
     return `
-      <div onclick="openAssignmentDetails('${a.id}')" class="bg-white rounded-2xl p-4 sm:p-5 border border-[#EEEEEE] shadow-card transition-all hover:border-[#F5B900] cursor-pointer space-y-3">
+      <div onclick="openAssignmentDetails('${a.id}')" class="bg-white rounded-lg p-4 sm:p-5 border border-slate-200 shadow-subtle transition-all hover:border-[#F5B900] cursor-pointer space-y-3">
         
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="flex items-center gap-2">
             <span class="font-mono text-xs sm:text-sm font-bold text-[#202020]">${a.referenceNumber || a.id}</span>
-            <span class="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}">
+            <span class="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-slate-50 text-[#8A6800] border-[#FFE872]'}">
               ${isRescue ? 'Rescue Request' : 'Incident Report'}
             </span>
           </div>
@@ -326,14 +372,14 @@ function renderFilteredAssignments() {
             </div>
           ` : ''}
           ${a.dispatchInstructions ? `
-            <div class="mt-2.5 p-2.5 bg-[#FFFDF7] rounded-xl border border-[#EEEEEE] text-[11px] text-[#777777] flex items-start gap-2">
+            <div class="mt-2.5 p-2.5 bg-slate-50 rounded-md border border-slate-200 text-[11px] text-[#777777] flex items-start gap-2">
               <svg class="w-3.5 h-3.5 text-[#F5B900] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
               <span class="line-clamp-2 leading-relaxed"><strong class="text-[#202020] font-semibold">Dispatch Note:</strong> ${a.dispatchInstructions}</span>
             </div>
           ` : ''}
         </div>
 
-        <div class="pt-2.5 border-t border-[#EEEEEE] flex items-center justify-between text-xs text-[#777777]">
+        <div class="pt-2.5 border-t border-slate-200 flex items-center justify-between text-xs text-[#777777]">
           <span class="text-[10px]">Date: ${formatAssignmentDateTime(a.assignedAt)}</span>
           <span class="font-bold text-[#8A6800] text-xs flex items-center gap-1">
             <span>Manage Assignment</span>
@@ -399,7 +445,7 @@ window.openAssignmentDetails = async function (id) {
       if (!listEl) return;
       if (items.length === 0) {
         listEl.className = 'block';
-        listEl.innerHTML = `<div class="rounded-xl border border-dashed border-[#EEEEEE] bg-[#FBFBFA] p-3 text-center text-[11px] text-[#777777]">${emptyMsg}</div>`;
+        listEl.innerHTML = `<div class="rounded-md border border-dashed border-slate-200 bg-[#FBFBFA] p-3 text-center text-[11px] text-[#777777]">${emptyMsg}</div>`;
         return;
       }
       listEl.className = 'grid grid-cols-2 sm:grid-cols-3 gap-2.5';
@@ -409,11 +455,11 @@ window.openAssignmentDetails = async function (id) {
         const timeStr = formatAssignmentDateTime(ev.createdAt || ev.created_at);
         const uploaderStr = showUploader && ev.uploadedByName ? `${ev.uploadedByName} • ` : '';
         return `
-          <div class="group rounded-xl border border-[#EEEEEE] bg-white overflow-hidden shadow-subtle cursor-pointer hover:border-[#F5B900] transition-colors" onclick="window.open('${url}', '_blank')">
+          <div class="group rounded-md border border-slate-200 bg-white overflow-hidden shadow-subtle cursor-pointer hover:border-[#F5B900] transition-colors" onclick="window.open('${url}', '_blank')">
             <div class="h-24 w-full bg-[#F7F7F7] flex items-center justify-center overflow-hidden">
               <img src="${url}" alt="${name}" class="w-full h-full object-cover group-hover:scale-[1.03] transition-transform">
             </div>
-            <div class="px-2 py-1.5 border-t border-[#EEEEEE]">
+            <div class="px-2 py-1.5 border-t border-slate-200">
               <p class="text-[10px] font-semibold text-[#202020] truncate">${uploaderStr}${timeStr}</p>
             </div>
           </div>
@@ -486,7 +532,7 @@ function renderActionButtons(currentStatus) {
 
   if (s === 'pending' || s === 'pending dispatch' || s === 'assigned') {
     buttonsHtml = `
-      <button type="button" onclick="confirmStatusChange('Accepted')" class="flex-1 py-2.5 px-4 rounded-2xl bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+      <button type="button" onclick="confirmStatusChange('Accepted')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
         <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
         <span>Accept Assignment</span>
       </button>
@@ -494,34 +540,34 @@ function renderActionButtons(currentStatus) {
   } else if (s === 'accepted') {
     buttonsHtml = `
       <div class="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <button type="button" onclick="confirmStatusChange('En Route')" class="flex-1 py-2.5 px-4 rounded-2xl bg-[#3478C7] hover:bg-[#2764AB] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+        <button type="button" onclick="confirmStatusChange('En Route')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#3478C7] hover:bg-[#2764AB] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
           <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="1" stroke-width="2"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8" stroke-width="2"></polygon><circle cx="5.5" cy="18.5" r="2.5" stroke-width="2"></circle><circle cx="18.5" cy="18.5" r="2.5" stroke-width="2"></circle></svg>
           <span>Mark as En Route</span>
         </button>
-        <span class="px-3 py-2 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[11px] font-bold text-[#8A6800] text-center">
+        <span class="px-3 py-2 rounded-lg bg-slate-50 border border-[#FFE872] text-[11px] font-bold text-[#8A6800] text-center">
           Auto On Scene on GPS Arrival
         </span>
       </div>
     `;
   } else if (s === 'en route' || s === 'responding') {
     buttonsHtml = `
-      <div class="w-full py-2.5 px-4 rounded-2xl bg-blue-50 border border-blue-200 text-[#3478C7] text-center text-xs font-bold">
+      <div class="w-full py-2.5 px-4 rounded-lg bg-blue-50 border border-blue-200 text-[#3478C7] text-center text-xs font-bold">
         Automatic Arrival Detection Active — Status updates to On Scene upon arrival at the location
       </div>
     `;
   } else if (s === 'on scene' || s === 'on site' || s === 'in progress') {
     buttonsHtml = `
-      <button type="button" onclick="openProgressUpdateModal()" class="py-2.5 px-3 rounded-2xl bg-[#FFF9E8] border border-[#FFE872] text-[#8A6800] hover:bg-[#FFF3D0] font-bold text-xs transition-all">
+      <button type="button" onclick="openProgressUpdateModal()" class="py-2.5 px-3 rounded-lg bg-slate-50 border border-[#FFE872] text-[#8A6800] hover:bg-[#FFF3D0] font-bold text-xs transition-all">
         Update Progress
       </button>
-      <button type="button" onclick="confirmStatusChange('Completed')" class="flex-1 py-2.5 px-4 rounded-2xl bg-[#278653] hover:bg-[#1E6E43] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+      <button type="button" onclick="confirmStatusChange('Completed')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#278653] hover:bg-[#1E6E43] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
         <span>Mark Operation Completed</span>
       </button>
     `;
   } else if (s === 'completed' || s === 'resolved') {
     buttonsHtml = `
-      <div class="w-full py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[#278653] text-center text-xs font-bold">
+      <div class="w-full py-2 px-3 rounded-md bg-emerald-50 border border-emerald-200 text-[#278653] text-center text-xs font-bold">
         Operation Marked Completed (Preserved for EOC & Resident Verification)
       </div>
     `;
@@ -700,7 +746,7 @@ function updateNavStatusUI(pillText, isPaused = false) {
     if (pillText === 'Arrived') {
       pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-50 text-[#278653] border border-emerald-200';
     } else if (isPaused || pillText === 'Navigation Stopped' || pillText === 'Idle') {
-      pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#F7F7F7] text-[#555555] border border-[#EEEEEE]';
+      pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#F7F7F7] text-[#555555] border border-slate-200';
     } else {
       pill.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-50 text-[#3478C7] border border-blue-200';
     }
@@ -926,7 +972,7 @@ function renderCalculatedRoute(route) {
       stepsList.innerHTML = steps
         .map(
           (st, idx) => `
-            <li class="flex items-start justify-between gap-2 bg-white rounded-lg border border-[#EEEEEE] px-2.5 py-1.5">
+            <li class="flex items-start justify-between gap-2 bg-white rounded-lg border border-slate-200 px-2.5 py-1.5">
               <span class="font-medium text-[#202020]"><span class="font-bold text-[#8A6800] mr-1">${idx + 1}.</span>${escapeHtmlNav(st.instruction)}</span>
               <span class="text-[10px] font-bold text-[#777777] shrink-0">${formatRouteDistance(st.distanceMeters)}</span>
             </li>
@@ -1310,13 +1356,13 @@ function syncResponderAssignmentGps(reading) {
   if (now - lastAssignRespSyncAt < 9000) return;
   lastAssignRespSyncAt = now;
   let sharingEnabled = true;
-  try { sharingEnabled = localStorage.getItem('geosafe_responder_location_sharing') !== 'false'; } catch (_) {}
+  try { sharingEnabled = localStorage.getItem('geosafe_responder_location_sharing') !== 'false'; } catch (_) { }
   window.geoSafeStore.syncResponderLocation({
     lat: reading.lat,
     lng: reading.lng,
     accuracy: reading.accuracy,
     sharingEnabled
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 function startAmbientAssignmentGps() {

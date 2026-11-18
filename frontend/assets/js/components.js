@@ -166,56 +166,56 @@ const GeoSafeUI = {
       document.body.prepend(sidebarContainer);
     }
 
-    sidebarContainer.className = 'hidden lg:flex fixed top-0 bottom-0 left-0 z-40 w-60 bg-white border-r border-[#EEEEEE] flex-col justify-between shadow-subtle select-none transition-all';
+    sidebarContainer.className = 'hidden lg:flex fixed top-0 bottom-0 left-0 z-40 w-60 bg-white border-r border-slate-200 flex-col justify-between select-none transition-all';
 
     const sidebarNavHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
       return `
-        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all ${
+        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs transition-colors ${
           isActive
-            ? 'bg-[#F5B900] text-[#202020] font-bold shadow-sm ring-1 ring-[#F5B900]'
-            : 'text-[#555555] hover:text-[#202020] hover:bg-[#FFF9E8] font-semibold'
+            ? 'bg-slate-900 text-white font-semibold'
+            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
         }">
           <span class="flex items-center gap-3 min-w-0">
-            <span class="flex-shrink-0 ${isActive ? 'text-[#202020]' : 'text-[#777777]'}">${this.getIcon(item.icon, 'w-5 h-5')}</span>
+            <span class="flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-500'}">${this.getIcon(item.icon, 'w-4 h-4')}</span>
             <span class="truncate">${item.label}</span>
           </span>
-          ${item.id === 'messages' ? '<span data-nav-unread="messages" class="hidden px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D93636] text-white leading-none">0</span>' : ''}
+          ${item.id === 'messages' ? '<span data-nav-unread="messages" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white leading-none gs-tabular">0</span>' : ''}
         </a>
       `;
     }).join('');
 
     sidebarContainer.innerHTML = `
       <!-- Top: Logo & Branding -->
-      <div class="h-14 flex items-center px-4 border-b border-[#EEEEEE] gap-2.5 flex-shrink-0 bg-white">
+      <div class="h-14 flex items-center px-4 border-b border-slate-200 gap-2.5 flex-shrink-0 bg-white">
         <a href="index.html" class="flex items-center gap-2.5 group">
-          <div class="w-8 h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-bold text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
+          <div class="w-8 h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
             GS
           </div>
           <div class="min-w-0">
-            <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors block leading-tight">GeoSafe</span>
-            <span class="text-[10px] text-[#777777] font-semibold block leading-tight truncate">Barangay Bayanan</span>
+            <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900 block leading-tight">GeoSafe</span>
+            <span class="text-[10px] text-slate-500 font-medium block leading-tight truncate">Barangay Bayanan</span>
           </div>
         </a>
       </div>
 
-      <!-- Center: 4 Navigation Items with Icons & Labels -->
-      <div class="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        <div class="px-2 pb-1.5 text-[10px] font-bold tracking-wider text-[#777777] uppercase">
+      <!-- Center: Navigation Items -->
+      <div class="flex-1 px-3 py-3.5 space-y-1.5 overflow-y-auto">
+        <div class="px-2.5 pb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
           Resident Portal
         </div>
-        <nav class="space-y-1.5">
+        <nav class="space-y-0.5">
           ${sidebarNavHtml}
         </nav>
       </div>
 
       <!-- Bottom: SafeZone Status Footer -->
-      <div class="p-3 border-t border-[#EEEEEE] bg-[#FFFDF7] flex-shrink-0">
-        <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white border border-[#EEEEEE] shadow-subtle">
-          <div class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse"></div>
+      <div class="p-3 border-t border-slate-200 bg-white flex-shrink-0">
+        <div class="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-50 border border-slate-200">
+          <div class="w-2 h-2 rounded-full bg-emerald-600 flex-shrink-0"></div>
           <div class="min-w-0">
-            <span class="block text-xs font-bold text-[#202020] truncate">Barangay Bayanan</span>
-            <span class="block text-[10px] text-[#777777] font-medium">SafeZone Active</span>
+            <span class="block text-xs font-semibold text-slate-900 truncate">Barangay Bayanan</span>
+            <span class="block text-[10px] text-slate-500 font-medium">SafeZone Active</span>
           </div>
         </div>
       </div>
@@ -230,27 +230,27 @@ const GeoSafeUI = {
     if (!container) return;
 
     container.innerHTML = `
-      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white border-b border-[#EEEEEE] shadow-subtle" style="padding-top: env(safe-area-inset-top, 0px);">
+      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white border-b border-slate-200" style="padding-top: env(safe-area-inset-top, 0px);">
         <div class="w-full px-3 sm:px-5 lg:px-6">
           <div class="flex items-center justify-between h-14 gap-2">
             
             <!-- Left: Logo (Mobile/Tablet) & Dynamic Resident Greeting -->
             <div class="flex items-center gap-2 sm:gap-2.5 min-w-0">
               <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0 lg:hidden">
-                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#F5B900] text-[#202020] flex items-center justify-center font-bold text-xs shadow-subtle ring-1 ring-[#FFF2A5]">
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs">
                   GS
                 </div>
                 <div class="hidden sm:block">
-                  <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#202020] group-hover:text-[#F5B900] transition-colors">GeoSafe</span>
+                  <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
                 </div>
               </a>
 
               <!-- Greeting, Resident Name & Role Badge -->
-              <div class="border-l border-[#EEEEEE] pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0 min-w-0">
-                <span id="header-greeting-label" class="text-[10px] text-[#777777] font-medium block leading-tight">Greeting</span>
+              <div class="border-l border-slate-200 pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0 min-w-0">
+                <span id="header-greeting-label" class="text-[10px] text-slate-500 font-medium block leading-tight">Greeting</span>
                 <div class="flex items-center gap-1.5">
-                  <span id="header-resident-name" class="text-xs sm:text-sm font-bold text-[#202020] tracking-tight block truncate max-w-[120px] sm:max-w-[200px]">Resident</span>
-                  <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872] hidden sm:inline-block flex-shrink-0">Resident</span>
+                  <span id="header-resident-name" class="text-xs sm:text-sm font-semibold text-slate-900 tracking-tight block truncate max-w-[120px] sm:max-w-[200px]">Resident</span>
+                  <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 hidden sm:inline-block flex-shrink-0">Resident</span>
                 </div>
               </div>
             </div>
@@ -264,7 +264,7 @@ const GeoSafeUI = {
               </div>
 
               <!-- Notification Bell with Unread Indicator -->
-              <button onclick="GeoSafeUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-xl text-[#202020] hover:bg-[#FFF9E8] transition-colors focus:outline-none" title="Notifications">
+              <button onclick="GeoSafeUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-md text-[#202020] hover:bg-slate-100 transition-colors focus:outline-none" title="Notifications">
                 ${this.getIcon('bell', 'w-4 h-4 sm:w-5 sm:h-5')}
                 <!-- Unread Indicator (Only shown when actual unread records exist) -->
                 <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D93636] ring-2 ring-white"></span>
@@ -276,19 +276,19 @@ const GeoSafeUI = {
                   type="button"
                   id="resident-profile-menu-btn"
                   onclick="GeoSafeUI.toggleProfileDropdown(event)"
-                  class="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-2xl hover:bg-[#FFF9E8] border border-transparent hover:border-[#FFE872] transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]/40 cursor-pointer group"
+                  class="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded-md hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors focus:outline-none cursor-pointer group"
                   aria-haspopup="true"
                   aria-expanded="false"
                   title="Account menu"
                 >
-                  <div id="header-profile-avatar" class="w-8 h-8 rounded-full bg-[#FFF3D0] border border-[#FFD54F] text-[#202020] font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-subtle">
+                  <div id="header-profile-avatar" class="w-7 h-7 rounded-md bg-slate-900 text-amber-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
                     R
                   </div>
                   <div class="text-left hidden sm:block min-w-0">
-                    <span id="header-profile-name" class="text-xs font-bold text-[#202020] block leading-tight truncate max-w-[130px]">Resident</span>
-                    <span id="header-profile-role" class="text-[10px] text-[#777777] font-semibold block leading-tight">Resident</span>
+                    <span id="header-profile-name" class="text-xs font-semibold text-slate-900 block leading-tight truncate max-w-[130px]">Resident</span>
+                    <span id="header-profile-role" class="text-[10px] text-slate-500 font-medium block leading-tight">Resident</span>
                   </div>
-                  <svg id="resident-profile-chevron" class="w-3.5 h-3.5 text-[#777777] transition-transform duration-200 group-hover:text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg id="resident-profile-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                   </svg>
                 </button>
@@ -296,11 +296,11 @@ const GeoSafeUI = {
                 <!-- Dropdown Menu -->
                 <div
                   id="resident-profile-dropdown"
-                  class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-[#EEEEEE] shadow-modal py-1.5 z-50 transform origin-top-right transition-all"
+                  class="hidden absolute right-0 top-full mt-1.5 w-52 bg-white rounded-lg border border-slate-200 shadow-modal py-1 z-50 transform origin-top-right transition-all"
                   role="menu"
                   aria-orientation="vertical"
                 >
-                  <div class="px-3.5 py-2 border-b border-[#EEEEEE] sm:hidden">
+                  <div class="px-3.5 py-2 border-b border-slate-200 sm:hidden">
                     <span id="header-profile-name-mobile" class="text-xs font-bold text-[#202020] block truncate">Resident</span>
                     <span id="header-profile-role-mobile" class="text-[10px] text-[#777777] font-semibold block">Resident</span>
                   </div>
@@ -308,14 +308,14 @@ const GeoSafeUI = {
                     href="profile.html"
                     id="header-menu-item-profile"
                     role="menuitem"
-                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-[#FFF9E8] hover:text-[#8A6800] transition-colors"
+                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-slate-100 hover:text-[#8A6800] transition-colors"
                   >
                     <svg class="w-4 h-4 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                     </svg>
                     <span>Profile</span>
                   </a>
-                  <div class="my-1 border-t border-[#EEEEEE]"></div>
+                  <div class="my-1 border-t border-slate-200"></div>
                   <button
                     type="button"
                     id="header-menu-item-logout"
@@ -364,24 +364,24 @@ const GeoSafeUI = {
       document.body.appendChild(bottomNavContainer);
     }
 
-    bottomNavContainer.className = 'lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#EEEEEE] shadow-[0_-4px_20px_rgba(32,32,32,0.06)]';
+    bottomNavContainer.className = 'lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200';
 
     const itemsHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
 
       return `
         <a href="${item.href}" data-nav-id="${item.id}" class="flex-1 flex items-center justify-center py-1 px-1 focus:outline-none">
-          <div class="w-full flex flex-col items-center justify-center py-1.5 px-2 rounded-2xl transition-all duration-200 ${
+          <div class="w-full flex flex-col items-center justify-center py-1.5 px-2 rounded-md transition-colors ${
             isActive
-              ? 'bg-[#FFF1BF] shadow-sm'
-              : 'bg-transparent hover:bg-[#FFF9E8]/50'
+              ? 'bg-slate-900 text-white'
+              : 'bg-transparent hover:bg-slate-100 text-slate-600'
           }">
-            <span class="gs-msg-icon-wrap transition-colors ${isActive ? 'text-[#B88600]' : 'text-[#777777]'}">
+            <span class="gs-msg-icon-wrap transition-colors ${isActive ? 'text-amber-400' : 'text-slate-500'}">
               ${this.getIcon(item.icon, 'w-5 h-5')}
               ${item.id === 'messages' ? '<span data-nav-unread="messages" class="gs-msg-badge hidden">0</span>' : ''}
             </span>
             <span class="gs-bottom-nav-label text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
-              isActive ? 'font-bold text-[#202020]' : 'font-medium text-[#777777]'
+              isActive ? 'font-semibold text-white' : 'font-medium text-slate-600'
             }">
               ${item.shortLabel}
             </span>
@@ -488,30 +488,28 @@ const GeoSafeUI = {
 
     const modal = document.createElement('div');
     modal.id = 'geosafe-notifications-modal';
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm hidden';
     modal.innerHTML = `
-      <div class="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-modal border border-[#EEEEEE]">
-        <div class="flex items-center justify-between pb-3.5 border-b border-[#EEEEEE]">
+      <div class="bg-white rounded-lg max-w-md w-full p-5 shadow-modal border border-slate-200">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
           <div class="flex items-center gap-2">
-            <span class="w-8 h-8 rounded-xl bg-[#FFF9E8] text-[#F5B900] flex items-center justify-center">
-              ${this.getIcon('bell', 'w-4 h-4 text-[#F5B900]')}
-            </span>
-            <h3 class="text-sm sm:text-base font-bold text-[#202020]">Notifications</h3>
+            ${this.getIcon('bell', 'w-4 h-4 text-amber-600')}
+            <h3 class="text-sm font-semibold text-slate-900">Notifications</h3>
           </div>
-          <button onclick="GeoSafeUI.closeNotificationsModal()" class="p-1.5 rounded-xl text-[#777777] hover:text-[#202020] hover:bg-[#FFF9E8] transition-colors">
+          <button onclick="GeoSafeUI.closeNotificationsModal()" class="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors">
             ${this.getIcon('x', 'w-4 h-4')}
           </button>
         </div>
 
-        <div id="notif-modal-content" class="py-4 max-h-72 overflow-y-auto space-y-2.5 custom-scrollbar">
+        <div id="notif-modal-content" class="py-3.5 max-h-72 overflow-y-auto space-y-2 custom-scrollbar">
           <!-- Populated dynamically via openNotificationsModal -->
         </div>
 
-        <div class="pt-3.5 border-t border-[#EEEEEE] flex items-center justify-between">
-          <button onclick="GeoSafeUI.markAllNotificationsRead()" class="text-xs font-semibold text-[#8A6800] hover:text-[#5C4500] transition-colors">
+        <div class="pt-3 border-t border-slate-200 flex items-center justify-between">
+          <button onclick="GeoSafeUI.markAllNotificationsRead()" class="text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors">
             Mark all as read
           </button>
-          <button onclick="GeoSafeUI.closeNotificationsModal()" class="px-4 py-2 rounded-xl bg-[#FFF9E8] hover:bg-[#FFF3D0] text-[#202020] text-xs font-bold transition-colors">
+          <button onclick="GeoSafeUI.closeNotificationsModal()" class="gs-btn-secondary py-1.5 px-3">
             Close
           </button>
         </div>
@@ -541,12 +539,12 @@ const GeoSafeUI = {
       }
 
       content.innerHTML = notifs.map(n => `
-        <div class="p-3.5 rounded-2xl border text-xs ${n.read ? 'bg-[#FFFDF7] border-[#EEEEEE] text-[#777777]' : 'bg-[#FFF9E8] border-[#FFE872] text-[#202020]'} space-y-1">
+        <div class="p-3 rounded-md border text-xs ${n.read ? 'bg-white border-slate-200 text-slate-500' : 'bg-amber-50/60 border-amber-200 text-slate-900'} space-y-1">
           <div class="flex items-center justify-between gap-2">
-            <span class="font-bold text-xs text-[#202020]">${n.title}</span>
-            <span class="text-[10px] text-[#777777]">${GeoSafeUI.formatRelative(n.timestamp)}</span>
+            <span class="font-semibold text-xs text-slate-900">${n.title}</span>
+            <span class="text-[10px] text-slate-500 gs-tabular">${GeoSafeUI.formatRelative(n.timestamp)}</span>
           </div>
-          <p class="text-[11px] leading-relaxed text-[#777777]">${n.description}</p>
+          <p class="text-[11px] leading-relaxed text-slate-600">${n.description}</p>
         </div>
       `).join('');
     } catch (err) {
@@ -703,14 +701,14 @@ const GeoSafeUI = {
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = 'pointer-events-auto w-full transform transition-all duration-300 ease-out opacity-0 -translate-y-3 sm:translate-y-0 sm:translate-x-6 scale-95 p-3.5 sm:p-4 rounded-2xl shadow-modal text-xs font-semibold flex items-start gap-3 border backdrop-blur-md';
+    toast.className = 'pointer-events-auto w-full transform transition-all duration-300 ease-out opacity-0 -translate-y-3 sm:translate-y-0 sm:translate-x-6 scale-95 p-3.5 sm:p-4 rounded-lg shadow-modal text-xs font-semibold flex items-start gap-3 border backdrop-blur-md';
 
     if (type === 'success') {
       toast.classList.add('bg-[#F0FDF4]', 'text-[#202020]', 'border-[#BBF7D0]');
       toast.setAttribute('role', 'status');
       toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-6 h-6 rounded-xl bg-[#DCFCE7] text-[#278653] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+        <div class="w-6 h-6 rounded-md bg-[#DCFCE7] text-[#278653] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
           ${this.getIcon('check', 'w-3.5 h-3.5 text-[#278653]')}
         </div>
         <div class="flex-1 min-w-0 pt-0.5">
@@ -722,7 +720,7 @@ const GeoSafeUI = {
       toast.setAttribute('role', 'alert');
       toast.setAttribute('aria-live', 'assertive');
       toast.innerHTML = `
-        <div class="w-6 h-6 rounded-xl bg-[#FFE0E0] text-[#D93636] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+        <div class="w-6 h-6 rounded-md bg-[#FFE0E0] text-[#D93636] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
           <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2" stroke-linecap="round"></line></svg>
         </div>
         <div class="flex-1 min-w-0 pt-0.5">
@@ -734,7 +732,7 @@ const GeoSafeUI = {
       toast.setAttribute('role', 'alert');
       toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-6 h-6 rounded-xl bg-[#FFF3D0] text-[#8A6800] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+        <div class="w-6 h-6 rounded-md bg-[#FFF3D0] text-[#8A6800] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
           ${this.getIcon('alert-triangle', 'w-3.5 h-3.5 text-[#8A6800]')}
         </div>
         <div class="flex-1 min-w-0 pt-0.5">
@@ -746,7 +744,7 @@ const GeoSafeUI = {
       toast.setAttribute('role', 'status');
       toast.setAttribute('aria-live', 'polite');
       toast.innerHTML = `
-        <div class="w-6 h-6 rounded-xl bg-[#E2E8F0] text-[#475569] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
+        <div class="w-6 h-6 rounded-md bg-[#E2E8F0] text-[#475569] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-subtle">
           ${this.getIcon('info', 'w-3.5 h-3.5 text-[#202020]')}
         </div>
         <div class="flex-1 min-w-0 pt-0.5">

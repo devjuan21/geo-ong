@@ -119,8 +119,8 @@ window.switchActionTab = function (tab) {
   const sectionRescue = document.getElementById('section-rescue');
 
   if (tab === 'rescue') {
-    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
-    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white border-2 border-[#D93636] shadow-card ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
+    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white/70 border border-slate-200 text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
+    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white border-2 border-[#D93636] shadow-subtle ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
 
     if (sectionReport) sectionReport.classList.add('hidden');
     if (sectionRescue) sectionRescue.classList.remove('hidden');
@@ -133,8 +133,8 @@ window.switchActionTab = function (tab) {
       }
     }, 150);
   } else {
-    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white border-2 border-[#F5B900] shadow-card text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
-    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-2xl bg-white/70 border border-[#EEEEEE] text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none';
+    if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white border-2 border-[#F5B900] shadow-subtle text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
+    if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white/70 border border-slate-200 text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none';
 
     if (sectionReport) sectionReport.classList.remove('hidden');
     if (sectionRescue) sectionRescue.classList.add('hidden');
@@ -972,7 +972,7 @@ function getSubmissionStatusStyle(status) {
   if (s.includes('rejected') || s.includes('cancelled') || s.includes('dismissed')) {
     return 'bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]';
   }
-  return 'bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+  return 'bg-slate-50 text-[#8A6800] border border-[#FFE872]';
 }
 
 window.loadSubmittedReports = async function () {
@@ -1044,13 +1044,13 @@ window.loadSubmittedReports = async function () {
       const isRescue = item.kind === 'rescue';
       const typeBadgeClass = isRescue
         ? 'bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]'
-        : 'bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+        : 'bg-slate-50 text-[#8A6800] border border-[#FFE872]';
       const statusClass = getSubmissionStatusStyle(item.status);
       const dateStr = formatSubmissionDate(item.submittedAt);
 
       return `
         <button type="button" onclick="openSubmissionDetailModal(${idx})"
-          class="w-full text-left p-3.5 rounded-2xl border border-[#EEEEEE] bg-[#FFFDF7] hover:bg-[#FFF9E8]/80 hover:border-[#F5B900] transition-colors space-y-2 focus:outline-none">
+          class="w-full text-left p-3.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-50 hover:border-[#F5B900] transition-colors space-y-2 focus:outline-none">
           <div class="flex items-center justify-between gap-2">
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${typeBadgeClass}">
               ${escapeHtmlSafe(item.typeLabel)}
@@ -1104,7 +1104,7 @@ window.openSubmissionDetailModal = function (index) {
     typeBadge.textContent = item.typeLabel;
     typeBadge.className = item.kind === 'rescue'
       ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-1 bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]'
-      : 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-1 bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+      : 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold mb-1 bg-slate-50 text-[#8A6800] border border-[#FFE872]';
   }
   if (statusBadge) {
     statusBadge.textContent = item.status;

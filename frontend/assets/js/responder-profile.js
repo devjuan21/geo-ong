@@ -103,7 +103,7 @@ function populateProfileFields(p) {
       skillsList.innerHTML = `<span class="text-xs text-[#777777]">None assigned</span>`;
     } else {
       skillsList.innerHTML = skills.map(s => `
-        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">
+        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-50 text-[#8A6800] border border-[#FFE872]">
           <svg class="w-3 h-3 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
           <span>${s}</span>
         </span>
@@ -144,9 +144,9 @@ function updateAvailabilityUi(status) {
   allOpts.forEach(o => {
     if (o.el) {
       if (o.val === status) {
-        o.el.className = `px-3 py-2.5 rounded-xl border-2 text-left transition-all flex items-center justify-between ${o.activeCls}`;
+        o.el.className = `px-3 py-2.5 rounded-md border-2 text-left transition-all flex items-center justify-between ${o.activeCls}`;
       } else {
-        o.el.className = 'px-3 py-2.5 rounded-xl border border-[#EEEEEE] bg-white text-left transition-all hover:bg-[#FFF9E8] flex items-center justify-between';
+        o.el.className = 'px-3 py-2.5 rounded-md border border-slate-200 bg-white text-left transition-all hover:bg-slate-100 flex items-center justify-between';
       }
     }
   });

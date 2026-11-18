@@ -52,8 +52,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Start automatic 10-second live GPS tracking & authorized backend location sync
   startResponderLiveGps();
 
+  const MAP_REALTIME_EVENTS = new Set([
+    'new-rescue-request',
+    'rescue-assignment-updated',
+    'rescue-status-updated',
+    'status-update',
+    'incident-resolved',
+    'new-incident-report',
+    'new-report',
+    'public-report-verified',
+    'report-verification-result',
+    'reconnect-sync',
+  ]);
+
   window.addEventListener('geosafe:realtime-update', (ev) => {
     const detail = (ev && ev.detail) || {};
+    if (!MAP_REALTIME_EVENTS.has(detail.event)) return;
     const payload = detail.data || detail.payload || {};
     const st = String(payload.status || '').toLowerCase();
     const isTerminal = ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(st) ||
@@ -166,9 +180,9 @@ window.filterMapMarkers = function (filterType) {
     const btn = document.getElementById(`map-filter-${b.toLowerCase()}`);
     if (btn) {
       if (b.toLowerCase() === filterType.toLowerCase()) {
-        btn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0';
+        btn.className = 'px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0';
       } else {
-        btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all bg-white/90 backdrop-blur-sm border border-[#EEEEEE] text-[#777777] hover:text-[#202020] flex-shrink-0';
+        btn.className = 'px-3 py-1.5 rounded-md text-xs font-semibold transition-all bg-white/90 backdrop-blur-sm border border-slate-200 text-[#777777] hover:text-[#202020] flex-shrink-0';
       }
     }
   });
@@ -358,7 +372,7 @@ function startResponderLiveGps() {
         const timePart = new Date(reading.updatedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         if (reading.isStale) {
           gpsStatusEl.textContent = `GPS: Stale${accPart} • ${timePart}`;
-          gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-[#FFF9E8] px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
+          gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-slate-50 px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
         } else {
           gpsStatusEl.textContent = `GPS: Live${accPart} • ${timePart}`;
           gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#278653] bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 truncate';
@@ -373,7 +387,7 @@ function startResponderLiveGps() {
       if (!gpsStatusEl) return;
       if (status === 'acquiring') {
         gpsStatusEl.textContent = 'GPS: Acquiring...';
-        gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-[#FFF9E8] px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
+        gpsStatusEl.className = 'inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8A6800] bg-slate-50 px-2.5 py-1 rounded-full border border-[#FFE872] truncate';
       } else if (status === 'denied') {
         currentGpsLocation = null;
         gpsStatusEl.textContent = 'GPS: Denied';
@@ -450,7 +464,7 @@ function renderResponderGpsMarker(lat, lng, accuracy, isStale = false, updatedAt
     <div class="text-xs p-1 space-y-0.5">
       <div class="flex items-center justify-between gap-2">
         <strong class="text-blue-900">Responder Position</strong>
-        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isStale ? 'bg-[#FFF9E8] text-[#8A6800]' : 'bg-emerald-50 text-[#278653]'}">${statusTag}</span>
+        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isStale ? 'bg-slate-50 text-[#8A6800]' : 'bg-emerald-50 text-[#278653]'}">${statusTag}</span>
       </div>
       <span class="block font-mono text-[10px] text-slate-600">${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}</span>
       ${accuracy ? `<span class="block text-[10px] text-slate-500">Accuracy: ±${Math.round(accuracy)}m</span>` : ''}
@@ -496,7 +510,7 @@ window.selectTaskForNavigation = function (task) {
 
   document.getElementById('sheet-ref').textContent = task.referenceNumber || task.id;
   document.getElementById('sheet-type-badge').textContent = isRescue ? 'Rescue Request' : 'Incident Report';
-  document.getElementById('sheet-type-badge').className = `text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-[#FFF9E8] text-[#8A6800] border-[#FFE872]'}`;
+  document.getElementById('sheet-type-badge').className = `text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${isRescue ? 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]' : 'bg-slate-50 text-[#8A6800] border-[#FFE872]'}`;
   const prioEl = document.getElementById('sheet-prio-badge');
   if (prioEl) {
     prioEl.textContent = task.status || (task.isPublicIncident ? 'Verified' : 'Assigned');

@@ -414,9 +414,9 @@ function updateNavigationStatusBadge(statusText, meta = {}) {
     meta.isRouting ||
     meta.isSyncing
   ) {
-    badgeEl.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]';
+    badgeEl.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-50 text-[#8A6800] border border-[#FFE872]';
   } else if (statusText === 'Idle' || statusText === 'Navigation Stopped' || meta.isPaused) {
-    badgeEl.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#F7F7F7] text-[#555555] border border-[#EEEEEE]';
+    badgeEl.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#F7F7F7] text-[#555555] border border-slate-200';
   } else {
     badgeEl.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-50 text-[#3478C7] border border-blue-200';
   }
@@ -746,8 +746,8 @@ function renderCentersList(centers) {
       : 'text-[#278653] bg-emerald-50 border-emerald-200';
 
     const cardClass = isSelected
-      ? 'h-full min-w-0 p-3 bg-[#FFFDF4] rounded-2xl border-2 border-[#F5B900] ring-1 ring-[#FFE872]/60 shadow-subtle transition-all flex flex-col justify-between gap-2 cursor-pointer'
-      : 'h-full min-w-0 p-3 bg-white rounded-2xl border border-[#EEEEEE] shadow-subtle hover:border-[#F5B900] transition-all flex flex-col justify-between gap-2 cursor-pointer';
+      ? 'h-full min-w-0 p-3 bg-[#FFFDF4] rounded-lg border-2 border-[#F5B900] ring-1 ring-[#FFE872]/60 shadow-subtle transition-all flex flex-col justify-between gap-2 cursor-pointer'
+      : 'h-full min-w-0 p-3 bg-white rounded-lg border border-slate-200 shadow-subtle hover:border-[#F5B900] transition-all flex flex-col justify-between gap-2 cursor-pointer';
 
     return `
       <div class="${cardClass}" data-center-id="${escapeHtml(c.id)}" onclick="selectDestination('${escapeHtml(c.id)}')">
@@ -765,7 +765,7 @@ function renderCentersList(centers) {
           <span class="px-2.5 h-7 rounded-lg border ${
             isSelected
               ? 'border-[#202020] bg-[#202020] text-white'
-              : 'border-[#EEEEEE] bg-[#FFFDF7] text-[#202020]'
+              : 'border-slate-200 bg-slate-50 text-[#202020]'
           } font-bold text-[11px] leading-none transition-colors inline-flex items-center justify-center">
             ${isSelected ? 'Selected Destination' : 'Select Center'}
           </span>
@@ -818,7 +818,7 @@ function plotCentersOnMap(centers) {
         <div class="text-[10px] font-bold text-[#278653] uppercase tracking-wider">Evacuation Center</div>
         <h4 class="font-bold text-[#202020] text-xs sm:text-sm">${safeName}</h4>
         <p class="text-[11px] text-[#6B7280]">${safeAddr}</p>
-        <button type="button" onclick="selectDestination('${escapeHtml(c.id)}')" class="w-full py-1.5 px-2.5 bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] rounded-xl text-[11px] font-bold transition-colors shadow-subtle">
+        <button type="button" onclick="selectDestination('${escapeHtml(c.id)}')" class="w-full py-1.5 px-2.5 bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] rounded-md text-[11px] font-bold transition-colors shadow-subtle">
           ${isSelected ? 'Selected Destination' : 'Select Center'}
         </button>
       </div>
@@ -979,7 +979,7 @@ function updateNavigationHud(route, destination, livePos) {
       stepsList.innerHTML = guidanceSteps
         .map(
           (st, idx) => `
-            <li class="flex items-start justify-between gap-2 bg-white rounded-lg border border-[#EEEEEE] px-2.5 py-1.5">
+            <li class="flex items-start justify-between gap-2 bg-white rounded-lg border border-slate-200 px-2.5 py-1.5">
               <span class="font-medium text-[#202020]"><span class="font-bold text-[#8A6800] mr-1">${idx + 1}.</span>${escapeHtml(formatManeuverText(st))}</span>
               <span class="text-[10px] font-bold text-[#777777] shrink-0">${escapeHtml(GeoSafeMapping.formatDistance(st.distanceMeters))}</span>
             </li>

@@ -37,8 +37,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await Promise.all([loadResponderCategoriesFilter(), loadResponderHazardAlerts()]);
 
-  window.addEventListener('geosafe:realtime-update', () => {
-    loadResponderHazardAlerts();
+  const ALERTS_REALTIME_EVENTS = new Set([
+    'new-hazard-alert',
+    'alert-broadcast',
+    'hazard-alert-expired',
+    'alert-expired',
+    'hazard-alert-cancelled',
+    'alert-cancelled',
+    'administrator-announcement',
+    'reconnect-sync',
+  ]);
+
+  window.addEventListener('geosafe:realtime-update', (ev) => {
+    const evt = ev && ev.detail ? ev.detail.event : '';
+    if (!ALERTS_REALTIME_EVENTS.has(evt)) return;
+    loadResponderHazardAlerts({ background: true });
   });
 });
 
@@ -58,7 +71,7 @@ async function loadResponderCategoriesFilter() {
   }
 }
 
-async function loadResponderHazardAlerts() {
+async function loadResponderHazardAlerts({ background = false } = {}) {
   const loadingEl = document.getElementById('alerts-loading');
   const errorEl = document.getElementById('alerts-error');
   const emptyEl = document.getElementById('alerts-empty');
@@ -66,10 +79,12 @@ async function loadResponderHazardAlerts() {
   const totalBadge = document.getElementById('alerts-total-badge');
   const statusFilter = document.getElementById('alerts-filter-status')?.value || 'active';
 
-  if (loadingEl) loadingEl.classList.remove('hidden');
-  if (errorEl) errorEl.classList.add('hidden');
-  if (emptyEl) emptyEl.classList.add('hidden');
-  if (listContainer) listContainer.classList.add('hidden');
+  if (!background) {
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (errorEl) errorEl.classList.add('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (listContainer) listContainer.classList.add('hidden');
+  }
 
   try {
     const endpoint = statusFilter === 'all' ? '/hazard-alerts?includeArchived=true' : '/hazard-alerts';
@@ -161,7 +176,7 @@ function renderResponderAlerts(alerts) {
     const categoryName = alert.categoryName || alert.advisoryType || alert.category || 'Other';
     const badgeHtml = window.GeoSafeAdvisories
       ? window.GeoSafeAdvisories.renderBadge(categoryName, { badgeColor: alert.badgeColor })
-      : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#FFF9E8] text-[#8A6800] border border-[#FFE872]">${escapeHtmlSafe(categoryName)}</span>`;
+      : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-[#8A6800] border border-[#FFE872]">${escapeHtmlSafe(categoryName)}</span>`;
     const urgencyHtml = renderUrgencyBadgeSafe(alert.urgencyLevel);
     const rawArea = String(alert.locationAddress || alert.targetZones || alert.affectedLocation || '').trim();
     const areaText = rawArea ? escapeHtmlSafe(rawArea) : '';
@@ -174,11 +189,11 @@ function renderResponderAlerts(alerts) {
     const isEmergency = Boolean(alert.isEmergency || Number(alert.priority || 5) <= 2);
     const cardAccent = isEmergency && !isMutedStatus
       ? 'border-[#FFC2C2] border-l-4 border-l-[#D93636]'
-      : 'border-[#EEEEEE]';
+      : 'border-slate-200';
 
     return `
       <div onclick="openResponderAdvisoryModal('${escapeHtmlSafe(alert.id)}')" role="button" tabindex="0"
-        class="bg-white rounded-2xl border ${cardAccent} shadow-card hover:border-[#F5B900] transition-all cursor-pointer overflow-hidden">
+        class="bg-white rounded-lg border ${cardAccent} shadow-subtle hover:border-[#F5B900] transition-all cursor-pointer overflow-hidden">
         <div class="p-3.5 sm:p-4 space-y-2.5">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2 flex-wrap">

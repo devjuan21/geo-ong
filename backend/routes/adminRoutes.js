@@ -7,6 +7,7 @@ const {
   getAdminReportsList,
   getAdminReportDetail,
   reviewAdminReport,
+  closeAdminIncident,
   getAdminUsers,
   createResponderAccount,
   createResidentAccount,
@@ -44,6 +45,7 @@ router.get('/vulnerable', getVulnerableResidents);
 router.get('/reports', getAdminReportsList);
 router.get('/reports/:type/:id', getAdminReportDetail);
 router.patch('/reports/:type/:id/review', reviewAdminReport);
+router.post('/reports/incident/:id/close', closeAdminIncident);
 
 // 3. Responder Management & Dispatch
 router.get('/responders', getAdminRespondersList);

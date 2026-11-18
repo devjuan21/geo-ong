@@ -8,7 +8,7 @@
  *   - Warning: Vibrant Amber-Yellow (#F5A623), circular white warning icon, "Warning!" title.
  *
  * Key Features:
- *   - Large modern floating card layout with clean rounded corners (rounded-2xl).
+ *   - Large modern floating card layout with clean rounded corners (rounded-lg).
  *   - Large circular white icon on the left with centered colored glyph.
  *   - Bold title and legible message text in crisp white contrast.
  *   - Clean top-right dismiss button (X).
@@ -231,7 +231,7 @@
     const container = ensureContainer();
 
     const toast = document.createElement('div');
-    toast.className = `geosafe-toast geosafe-toast-${sanitizedType} pointer-events-auto relative w-full rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 sm:gap-4 text-white shadow-2xl backdrop-blur-md transform transition-all duration-300 ease-out opacity-0 translate-x-8 scale-95 overflow-hidden focus:outline-none focus:ring-2 focus:ring-white/50 ${theme.bg}`;
+    toast.className = `geosafe-toast geosafe-toast-${sanitizedType} pointer-events-auto relative w-full rounded-lg p-3.5 sm:p-4 flex items-start gap-3 text-white shadow-lg border border-white/15 transform transition-all duration-300 ease-out opacity-0 translate-x-8 scale-95 overflow-hidden focus:outline-none focus:ring-2 focus:ring-white/50 ${theme.bg}`;
     toast.setAttribute('role', theme.role);
     toast.setAttribute('aria-live', theme.ariaLive);
     toast.setAttribute('tabindex', '0');

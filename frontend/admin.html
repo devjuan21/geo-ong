@@ -310,8 +310,7 @@
         </p>
       </div>
       <div class="flex items-center justify-center gap-2 pt-1">
-        <a href="login.html"
-          class="gs-btn-primary">
+        <a href="login.html" class="gs-btn-primary">
           Sign In as Administrator
         </a>
       </div>
@@ -327,17 +326,13 @@
 
     <!-- Sidebar Header (Logo Only - No Minimize Buttons Inside Sidebar) -->
     <div id="sidebar-header"
-      class="h-14 border-b border-slate-200 flex items-center px-4 flex-shrink-0 bg-white transition-all duration-200">
+      class="h-16 border-b border-slate-200 flex items-center px-4 flex-shrink-0 bg-white transition-all duration-200">
       <a href="admin.html" id="sidebar-logo-link"
         class="flex items-center gap-2.5 min-w-0 focus:outline-none transition-all duration-200"
         title="GeoSafe Admin - Barangay Bayanan">
-        <div
-          class="w-8 h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-        </div>
+        <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo"
+          class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200"
+          style="border-radius: 50%;">
         <div class="min-w-0 sidebar-label-wrap">
           <div class="flex items-center gap-1.5">
             <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
@@ -480,6 +475,19 @@
               </path>
             </svg>
             <span class="sidebar-label-wrap truncate">Messages</span>
+          </span>
+        </button>
+
+        <!-- 10. Healthcare Facilities -->
+        <button type="button" data-admin-nav="facilities" title="Healthcare Facilities"
+          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
+          <span class="flex items-center gap-3 min-w-0">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h6m-3-3v6m-3 4h6">
+              </path>
+            </svg>
+            <span class="sidebar-label-wrap truncate">Healthcare Facilities</span>
           </span>
         </button>
       </nav>
@@ -641,26 +649,24 @@
             class="lg:col-span-8 bg-white rounded-lg border border-slate-200 shadow-subtle flex flex-col overflow-hidden h-[600px]">
             <!-- Map Toolbar Header -->
             <div
-              class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0 bg-white">
-              <div class="flex items-center gap-2.5">
-                <h2 class="text-sm font-bold text-[#202020]">Real-Time Incident Map</h2>
-                <span id="admin-map-count-badge"
-                  class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">0
-                  markers</span>
-              </div>
+              class="px-4 py-3 border-b border-slate-200 flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 flex-shrink-0 bg-white">
+              <h2 class="text-sm font-bold text-[#202020] whitespace-nowrap shrink-0">Real-Time Incident Map</h2>
 
-              <!-- Map Filter Controls (Consistent 36px / h-9 Heights) -->
-              <div class="flex flex-wrap items-center gap-2">
+              <!-- Map Filter Controls -->
+              <div class="flex flex-wrap sm:flex-nowrap items-center gap-1.5 shrink-0">
                 <select id="map-filter-type" aria-label="Filter by Report Type"
-                  class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="h-8 px-2.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="all">All Types</option>
+                  <option value="facilities">All Facilities</option>
+                  <option value="hospital">Hospitals</option>
+                  <option value="health_center">Health Centers</option>
                   <option value="incident">Incident Reports</option>
                   <option value="rescue">Rescue Requests</option>
                   <option value="responder">Live Responders</option>
                 </select>
 
                 <select id="map-filter-status" aria-label="Filter by Status"
-                  class="h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
+                  class="h-8 px-2.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900]">
                   <option value="all">All Statuses</option>
                   <option value="pending">Pending</option>
                   <option value="under_review">Under Review</option>
@@ -669,15 +675,22 @@
                   <option value="resolved">Resolved</option>
                 </select>
 
+                <label
+                  class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] cursor-pointer select-none whitespace-nowrap">
+                  <input id="map-toggle-hospitals" type="checkbox" checked
+                    class="rounded border-slate-300 text-[#0A58CA] focus:ring-[#0A58CA]">
+                  <span>Hospitals</span>
+                </label>
+
                 <button type="button" onclick="window.GeoSafeAdmin.loadDashboardOverview()"
-                  class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+                  class="h-8 px-3 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle whitespace-nowrap">
                   Refresh
                 </button>
               </div>
             </div>
 
             <!-- Map Viewport Container -->
-            <div class="relative flex-1 w-full bg-slate-50">
+            <div class="relative flex-1 w-full bg-slate-50 isolate overflow-hidden">
               <div id="admin-incident-map" class="w-full h-full z-10"></div>
 
               <!-- Map Loading Overlay -->
@@ -809,7 +822,8 @@
               <button type="button" data-report-filter="rejected"
                 class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Rejected</button>
               <button type="button" data-report-filter="resolved"
-                class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Closed / History</button>
+                class="report-filter-btn px-3 py-1 rounded-lg text-[#555555] hover:text-[#202020]">Closed /
+                History</button>
             </div>
 
             <!-- Type Selector -->
@@ -1151,10 +1165,10 @@
               </div>
               <div id="broadcast-custom-expiration-wrap" class="hidden">
                 <label for="broadcast-custom-hours-input"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Custom Duration (Hours, 1–168) *</label>
+                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Custom Duration (Hours, 1–168)
+                  *</label>
                 <input id="broadcast-custom-hours-input" type="number" min="1" max="168" step="1"
-                  placeholder="Enter hours (1–168)"
-                  oninput="window.GeoSafeAdmin.updateBroadcastExpirationPreview()"
+                  placeholder="Enter hours (1–168)" oninput="window.GeoSafeAdmin.updateBroadcastExpirationPreview()"
                   class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:border-slate-900">
               </div>
             </div>
@@ -1164,12 +1178,14 @@
               <div class="flex items-center gap-2">
                 <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
-                  <polyline points="12 6 12 12 16 14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                  <polyline points="12 6 12 12 16 14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  </polyline>
                 </svg>
-                <span class="font-medium text-slate-700">Choose how long this broadcast alert should remain active. It will automatically expire after the selected duration.</span>
+                <span class="font-medium text-slate-700">Choose how long this broadcast alert should remain active. It
+                  will automatically expire after the selected duration.</span>
               </div>
-              <span class="text-[11px] text-slate-500 gs-tabular">Est. Expiration: <strong id="broadcast-expiration-preview-time"
-                  class="text-slate-900">--</strong></span>
+              <span class="text-[11px] text-slate-500 gs-tabular">Est. Expiration: <strong
+                  id="broadcast-expiration-preview-time" class="text-slate-900">--</strong></span>
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-1">
@@ -1249,7 +1265,8 @@
         <div class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
 
           <!-- Compact Single-Row EOC Toolbar -->
-          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div
+            class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <!-- Left: Back + Title + Date Range Selector -->
             <div class="flex flex-wrap items-center gap-2">
               <button type="button" onclick="window.GeoSafeAdmin.navigateTo('dashboard')"
@@ -1291,7 +1308,8 @@
                 class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z">
+                  </path>
                 </svg>
                 <span>Print</span>
               </button>
@@ -1299,7 +1317,8 @@
                 class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                  </path>
                 </svg>
                 <span>Email</span>
               </button>
@@ -1307,7 +1326,8 @@
                 class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-[#0f172a] bg-[#0f172a] hover:bg-[#1e293b] text-xs font-medium text-white transition-colors">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                  </path>
                 </svg>
                 <span>Export</span>
               </button>
@@ -1333,21 +1353,22 @@
             </button>
           </div>
 
-          <!-- Primary Chart Surface: Incidents by Day -->
-          <div id="analytics-daily-chart-card" class="px-4 pt-3.5 pb-4">
-            <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 pb-2.5 border-b border-slate-200">
+          <!-- Primary Chart Surface: Incidents by Day (Fixed Height: 400px mobile / 550px desktop) -->
+          <div id="analytics-daily-chart-card"
+            class="px-4 pt-3.5 pb-4 flex flex-col h-[400px] min-h-[400px] max-h-[400px] lg:h-[550px] lg:min-h-[550px] lg:max-h-[550px]">
+            <div
+              class="flex-none flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 pb-2.5 border-b border-slate-200">
               <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
                 <h3 class="text-sm font-bold text-[#0f172a]">Incidents by Day</h3>
                 <p class="text-xs text-slate-500">Number of incident reports per day for the selected period</p>
               </div>
-              <span id="analytics-daily-range-label"
-                class="text-xs font-medium text-slate-600 tabular-nums"></span>
+              <span id="analytics-daily-range-label" class="text-xs font-medium text-slate-600 tabular-nums"></span>
             </div>
 
-            <div class="relative pt-3 overflow-x-auto">
-              <div id="analytics-daily-bar-chart" class="w-full min-w-[560px]"></div>
+            <div class="relative flex-1 min-h-0 pt-3 overflow-x-auto overflow-y-hidden">
+              <div id="analytics-daily-bar-chart" class="w-full h-full min-w-[560px]"></div>
               <div id="analytics-daily-empty"
-                class="hidden py-10 text-center text-xs text-slate-500">
+                class="hidden w-full h-full flex items-center justify-center text-center text-xs text-slate-500">
                 No incident reports recorded for the selected date range.
               </div>
               <div id="analytics-daily-tooltip"
@@ -1358,22 +1379,27 @@
         </div>
 
         <!-- Compact 4-Column Operational Metrics Strip -->
-        <div class="bg-white border border-slate-300 rounded-[3px] grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+        <div
+          class="bg-white border border-slate-300 rounded-[3px] grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
           <div class="px-4 py-3">
             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Incidents</span>
-            <span id="analytics-total-reports" class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
+            <span id="analytics-total-reports"
+              class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
           </div>
           <div class="px-4 py-3">
             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Rescues</span>
-            <span id="analytics-total-rescues" class="text-xl font-bold text-[#b91c1c] tabular-nums mt-0.5 block">0</span>
+            <span id="analytics-total-rescues"
+              class="text-xl font-bold text-[#b91c1c] tabular-nums mt-0.5 block">0</span>
           </div>
           <div class="px-4 py-3">
             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Operations</span>
-            <span id="analytics-total-events" class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
+            <span id="analytics-total-events"
+              class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
           </div>
           <div class="px-4 py-3">
             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Dispatches</span>
-            <span id="analytics-active-assignments" class="text-xl font-bold text-[#0A58CA] tabular-nums mt-0.5 block">0</span>
+            <span id="analytics-active-assignments"
+              class="text-xl font-bold text-[#0A58CA] tabular-nums mt-0.5 block">0</span>
           </div>
         </div>
 
@@ -1413,7 +1439,8 @@
             </div>
             <div class="p-4 flex-1">
               <div id="analytics-statuses-list" class="text-xs"></div>
-              <div id="analytics-statuses-empty" class="hidden py-6 text-center text-xs text-slate-500">No status records
+              <div id="analytics-statuses-empty" class="hidden py-6 text-center text-xs text-slate-500">No status
+                records
                 recorded.</div>
             </div>
           </div>
@@ -1425,7 +1452,8 @@
             </div>
             <div class="p-4 flex-1">
               <div id="analytics-locations-list" class="text-xs"></div>
-              <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location data
+              <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location
+                data
                 recorded.</div>
             </div>
           </div>
@@ -1613,7 +1641,8 @@
 
           <!-- Read-Only Audit Table -->
           <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
-            <table id="admin-audit-table" class="w-full min-w-[920px] table-fixed divide-y divide-[#EEEEEE] text-left" style="table-layout: fixed;">
+            <table id="admin-audit-table" class="w-full min-w-[920px] table-fixed divide-y divide-[#EEEEEE] text-left"
+              style="table-layout: fixed;">
               <colgroup>
                 <col style="width: 19%;">
                 <col style="width: 14%;">
@@ -1625,13 +1654,20 @@
               </colgroup>
               <thead class="bg-slate-50">
                 <tr>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Date &amp; Time</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">User</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Role</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Activity</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Module</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">Result</th>
-                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">IP Address</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    Date &amp; Time</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    User</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    Role</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    Activity</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    Module</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">
+                    Result</th>
+                  <th scope="col" class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap">IP
+                    Address</th>
                 </tr>
               </thead>
               <tbody id="admin-audit-tbody" class="divide-y divide-[#EEEEEE] bg-white"></tbody>
@@ -1666,7 +1702,8 @@
       <!-- ================================================================ -->
       <section id="section-messages" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
-        <div class="bg-white rounded-none lg:rounded-lg p-3.5 sm:p-5 lg:p-6 border-0 lg:border border-slate-200 shadow-none lg:shadow-subtle space-y-3 sm:space-y-4 flex-1 flex flex-col min-h-0">
+        <div
+          class="bg-white rounded-none lg:rounded-lg p-3.5 sm:p-5 lg:p-6 border-0 lg:border border-slate-200 shadow-none lg:shadow-subtle space-y-3 sm:space-y-4 flex-1 flex flex-col min-h-0">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-shrink-0">
             <div class="flex items-start sm:items-center gap-2.5">
               <button type="button" onclick="window.GeoSafeAdmin.navigateTo('dashboard')"
@@ -1678,7 +1715,8 @@
               </button>
               <div>
                 <h2 class="text-sm sm:text-base font-bold text-slate-900">Rescue Conversation Oversight</h2>
-                <p class="text-[11px] sm:text-xs text-slate-500">Read-only administrative oversight of private Resident–Responder rescue
+                <p class="text-[11px] sm:text-xs text-slate-500">Read-only administrative oversight of private
+                  Resident–Responder rescue
                   communications. Access is recorded in audit logs.</p>
               </div>
             </div>
@@ -1745,6 +1783,122 @@
 
       </section>
 
+      <!-- ================================================================== -->
+      <!-- SECTION 10: HEALTHCARE & HOSPITAL DIRECTORY (Independent View)     -->
+      <!-- ================================================================== -->
+      <section id="section-facilities" class="space-y-6 hidden min-w-0 max-w-full" hidden>
+        <div class="bg-white rounded-lg border border-slate-200 shadow-subtle overflow-hidden">
+          <div
+            class="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h2 class="text-sm sm:text-base font-bold text-[#0f172a]">Healthcare &amp; Hospital Directory</h2>
+              <p class="text-[11px] text-slate-500">Manage verified hospitals, health centers, and coordinate/status
+                verification across GeoSafe.</p>
+            </div>
+            <button type="button" onclick="window.GeoSafeAdmin.loadAdminFacilitiesList()"
+              class="h-8 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a] shrink-0">
+              Refresh List
+            </button>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-5 text-xs">
+            <!-- Add / Edit Facility Form -->
+            <form id="admin-facility-form" onsubmit="window.GeoSafeAdmin.saveAdminFacility(event)"
+              class="p-4 rounded-lg border border-slate-200 bg-slate-50/70 space-y-3">
+              <input type="hidden" id="fac-edit-id" value="">
+              <div class="flex items-center justify-between gap-2">
+                <span id="fac-form-title" class="text-xs font-bold text-[#0f172a]">Add Verified Hospital /
+                  Facility</span>
+                <button type="button" onclick="window.GeoSafeAdmin.resetFacilityForm()"
+                  class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Clear Form</button>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Name *</label>
+                  <input id="fac-name" type="text" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Type *</label>
+                  <select id="fac-type"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Hospital">Hospital</option>
+                    <option value="Health Center">Health Center</option>
+                    <option value="Medical Clinic">Medical Clinic</option>
+                    <option value="Birthing Home">Birthing Home</option>
+                    <option value="Laboratory">Laboratory</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Verification Status</label>
+                  <select id="fac-verification"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Verified">Verified</option>
+                    <option value="Pending Verification">Pending Verification</option>
+                    <option value="Unverified">Unverified</option>
+                    <option value="Flagged">Flagged</option>
+                  </select>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Complete Address *</label>
+                  <input id="fac-address" type="text" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operating Hours</label>
+                  <input id="fac-hours" type="text" placeholder="e.g. 24 Hours or Unverified"
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Latitude *</label>
+                  <input id="fac-lat" type="number" step="any" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Longitude *</label>
+                  <input id="fac-lng" type="number" step="any" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operational Status</label>
+                  <select id="fac-status"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Operational">Operational</option>
+                    <option value="Under Assessment">Under Assessment</option>
+                    <option value="Full Capacity">Full Capacity</option>
+                    <option value="Critical Supplies">Critical Supplies</option>
+                    <option value="Closed">Closed (Deactivated)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <label class="inline-flex items-center gap-2 text-xs font-semibold text-[#0f172a]">
+                  <input id="fac-emergency-capable" type="checkbox">
+                  <span>Emergency Department Capable</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <button type="button" id="fac-cancel-btn" onclick="window.GeoSafeAdmin.resetFacilityForm()"
+                    class="hidden h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a]">
+                    Cancel Edit
+                  </button>
+                  <button type="submit" id="fac-submit-btn"
+                    class="h-8 px-4 rounded bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                    Save Facility Record
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <!-- Directory List -->
+            <div class="space-y-2">
+              <div class="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Registered Healthcare
+                Facilities</div>
+              <div id="admin-facility-list" class="space-y-2"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
   </div>
@@ -1781,8 +1935,7 @@
 
       <div id="admin-report-modal-body" class="hidden space-y-4">
         <!-- Section A: Metadata Summary Grid -->
-        <div
-          class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs">
           <div>
             <span class="text-[10px] text-[#777777] font-bold uppercase block">Category / Type</span>
             <span id="modal-report-category" class="font-bold text-[#202020] block truncate">-</span>
@@ -1804,8 +1957,10 @@
             <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Incident Closed</span>
             <span id="modal-closure-at" class="text-[11px] font-medium text-emerald-800 gs-tabular">-</span>
           </div>
-          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closed By:</strong> <span id="modal-closure-by">-</span></p>
-          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closure Reason:</strong> <span id="modal-closure-reason">-</span></p>
+          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closed By:</strong> <span
+              id="modal-closure-by">-</span></p>
+          <p class="text-xs text-slate-700"><strong class="font-semibold text-slate-900">Closure Reason:</strong> <span
+              id="modal-closure-reason">-</span></p>
         </div>
 
         <!-- Section B: Description & Category Details -->
@@ -1899,7 +2054,7 @@
             <div id="modal-report-attachments" class="flex-1"></div>
           </div>
 
-          <!-- Right Column: Administrative Review & Dispatch Controls -->
+          <!-- Right Column: Administrative Review & Dispatch Controls (Separated Verification & Assignment) -->
           <div class="p-4 rounded-lg bg-slate-50 border border-[#FFE872] space-y-3 h-full flex flex-col">
             <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Administrative Review &amp; Dispatch
             </h3>
@@ -1908,43 +2063,82 @@
               class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
             </div>
 
-            <div>
-              <label for="review-responder-select"
-                class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Assign Responder</label>
-              <select id="review-responder-select"
-                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></select>
-              <p id="review-responder-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#8A6800]">Assignment
-                accepted – responder locked.</p>
+            <!-- 1. Report Verification (One-time Decision) -->
+            <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">1. Report
+                  Verification</span>
+                <span id="review-verification-status"
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">Pending
+                  Verification</span>
+              </div>
+
+              <div>
+                <label for="review-reason-input"
+                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Review Notes / Reason</label>
+                <textarea id="review-reason-input" rows="2"
+                  placeholder="Enter verification notes or rejection reason..."
+                  class="w-full p-2 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></textarea>
+                <p id="review-notes-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#777777]">Operation
+                  completed – review notes locked.</p>
+              </div>
+
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <button type="button" id="review-verify-btn"
+                  onclick="window.GeoSafeAdmin.submitReportReviewAction('verify')"
+                  class="flex-1 h-9 px-3 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  Verify Report
+                </button>
+                <button type="button" id="review-reject-btn"
+                  onclick="window.GeoSafeAdmin.submitReportReviewAction('reject')"
+                  class="flex-1 h-9 px-3 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] hover:bg-[#FFC2C2]/40 text-[#D93636] text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  Reject / Dismiss
+                </button>
+              </div>
             </div>
 
-            <div class="flex-1 flex flex-col">
-              <label for="review-reason-input" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Review
-                Notes / Reason</label>
-              <textarea id="review-reason-input" rows="3"
-                placeholder="Enter administrative review notes or instructions..."
-                class="w-full flex-1 p-2.5 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></textarea>
-              <p id="review-notes-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#777777]">Operation
-                completed – review notes locked.</p>
+            <!-- 2. Responder Assignment (Independent Operation) -->
+            <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2.5 mt-auto">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">2. Responder
+                  Assignment</span>
+                <span id="review-assignment-status"
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Unassigned</span>
+              </div>
+              <div class="text-[11px] text-[#475569]">
+                Assigned Responder: <strong id="review-assigned-responder-name" class="text-[#0f172a]">None</strong>
+              </div>
+              <div>
+                <label for="review-responder-select"
+                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Select Responder</label>
+                <select id="review-responder-select"
+                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></select>
+                <p id="review-responder-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#8A6800]">Responder
+                  already assigned to this operation.</p>
+              </div>
+              <button type="button" id="review-assign-btn" onclick="window.GeoSafeAdmin.assignResponderFromModal()"
+                class="w-full h-9 px-4 rounded-md bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                Assign Responder
+              </button>
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 mt-auto">
-              <button type="button" id="review-verify-btn"
-                onclick="window.GeoSafeAdmin.submitReportReviewAction('verify')"
-                class="flex-1 h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-                Verify Report
-              </button>
-              <button type="button" id="review-reject-btn"
-                onclick="window.GeoSafeAdmin.submitReportReviewAction('reject')"
-                class="flex-1 h-9 px-4 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] hover:bg-[#FFC2C2]/40 text-[#D93636] text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-                Reject / Dismiss
-              </button>
-            </div>
-            <button type="button" id="review-close-incident-btn"
-              onclick="window.GeoSafeAdmin.openCloseIncidentModal()"
+            <button type="button" id="review-close-incident-btn" onclick="window.GeoSafeAdmin.openCloseIncidentModal()"
               class="hidden w-full h-9 px-4 rounded-md bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               Close Incident
             </button>
           </div>
+        </div>
+
+        <!-- Section F2: Rescue Outcome & Optional Transportation (Rescues Only) -->
+        <div id="modal-rescue-outcome-section"
+          class="hidden p-3.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-[11px] font-bold text-[#777777] uppercase">Rescue Outcome &amp; Patient Transportation</h3>
+            <span id="modal-rescue-outcome-badge"
+              class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200">-</span>
+          </div>
+          <div id="modal-rescue-outcome-body" class="space-y-2"></div>
+          <div id="modal-nearby-hospitals-wrap" class="pt-2 border-t border-slate-200 space-y-1.5"></div>
         </div>
 
         <!-- Section G: Status History -->
@@ -1962,7 +2156,8 @@
     <div class="bg-white rounded-lg border border-slate-200 shadow-modal max-w-md w-full p-5 space-y-4">
       <div class="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
-          <span id="close-incident-modal-ref" class="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 gs-tabular">INC-2026-000000</span>
+          <span id="close-incident-modal-ref"
+            class="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 gs-tabular">INC-2026-000000</span>
           <h3 class="text-sm font-bold text-slate-900 mt-1.5">Close Verified Incident</h3>
           <p id="close-incident-modal-title" class="text-xs text-slate-500 mt-0.5 truncate">-</p>
         </div>
@@ -1975,7 +2170,8 @@
       </div>
 
       <p class="text-xs text-slate-600 leading-relaxed">
-        Closing this incident removes it from active Resident and Responder maps and marks it as resolved while preserving all report history, coordinates, photos, and audit logs.
+        Closing this incident removes it from active Resident and Responder maps and marks it as resolved while
+        preserving all report history, coordinates, photos, and audit logs.
       </p>
 
       <div id="close-incident-modal-error"
@@ -1983,11 +2179,11 @@
 
       <div class="space-y-3">
         <div>
-          <label for="close-incident-preset-select" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          <label for="close-incident-preset-select"
+            class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
             Closure Reason <span class="text-red-600">*</span>
           </label>
-          <select id="close-incident-preset-select"
-            onchange="window.GeoSafeAdmin.handleCloseIncidentPresetChange()"
+          <select id="close-incident-preset-select" onchange="window.GeoSafeAdmin.handleCloseIncidentPresetChange()"
             class="w-full h-9 px-3 rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:border-slate-900">
             <option value="">-- Select a closure reason --</option>
             <option value="Floodwater has subsided.">Floodwater has subsided.</option>
@@ -1999,7 +2195,8 @@
         </div>
 
         <div>
-          <label for="close-incident-reason-input" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+          <label for="close-incident-reason-input"
+            class="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
             Closure Details / Explanation <span id="close-incident-reason-req" class="text-red-600 hidden">*</span>
           </label>
           <textarea id="close-incident-reason-input" rows="3" maxlength="500"
@@ -2011,8 +2208,7 @@
       <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
         <button type="button" onclick="window.GeoSafeAdmin.closeCloseIncidentModal()"
           class="gs-btn-secondary">Cancel</button>
-        <button type="button" id="close-incident-confirm-btn"
-          onclick="window.GeoSafeAdmin.confirmCloseIncident()"
+        <button type="button" id="close-incident-confirm-btn" onclick="window.GeoSafeAdmin.confirmCloseIncident()"
           class="gs-btn-primary">Confirm Close Incident</button>
       </div>
     </div>

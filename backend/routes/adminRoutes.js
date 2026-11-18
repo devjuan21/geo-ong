@@ -27,6 +27,9 @@ const {
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,
   updateAdminSystemSetting,
+  getAdminFacilities,
+  createAdminFacility,
+  updateAdminFacility,
 } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
@@ -153,5 +156,10 @@ router.post('/settings', updateAdminSystemSetting);
 
 // 8. Read-Only Audit Logs
 router.get('/audit-logs', getAdminAuditLogs);
+
+// 9. Healthcare Facility Directory Management
+router.get('/facilities', getAdminFacilities);
+router.post('/facilities', createAdminFacility);
+router.patch('/facilities/:id', updateAdminFacility);
 
 module.exports = router;

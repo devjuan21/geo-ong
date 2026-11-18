@@ -1,5 +1,6 @@
 const { validationResult } = require('express-validator');
 const pool = require('../models/db');
+const { ROLE_IDS } = require('../config/roles');
 const { emitAlertBroadcast } = require('../services/socketService');
 
 async function createAlert(req, res) {
@@ -10,6 +11,18 @@ async function createAlert(req, res) {
 
   const { title, message, targetScope } = req.body;
   const alertTitle = String(title || 'Emergency Alert').trim().slice(0, 150);
+  const scope = String(targetScope || '').trim();
+  const validScopes = ['Residents', 'Residents Only', 'Responders', 'Responders Only', 'Everyone', 'All Barangay Bayanan'];
+  if (!validScopes.includes(scope)) {
+    return res.status(400).json({ error: 'Valid targetScope is required (Residents, Responders, or Everyone).' });
+  }
+
+  const targetRoles =
+    scope === 'Residents' || scope === 'Residents Only'
+      ? [ROLE_IDS.RESIDENT]
+      : scope === 'Responders' || scope === 'Responders Only'
+        ? [ROLE_IDS.RESPONDER]
+        : [ROLE_IDS.RESIDENT, ROLE_IDS.RESPONDER];
 
   const connection = await pool.getConnection();
   try {
@@ -20,8 +33,10 @@ async function createAlert(req, res) {
       [message, req.user.id]
     );
 
+    const rolePlaceholders = targetRoles.map(() => '?').join(', ');
     const [activeUsers] = await connection.query(
-      "SELECT id FROM users WHERE LOWER(account_status) = 'active'"
+      `SELECT id FROM users WHERE role_id IN (${rolePlaceholders}) AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?`,
+      [...targetRoles, req.user.id]
     );
 
     // Record emergency broadcast audit trail
@@ -32,13 +47,13 @@ async function createAlert(req, res) {
       [
         alertTitle,
         message,
-        targetScope ? String(targetScope).slice(0, 100) : 'All Barangay Bayanan',
+        scope,
         activeUsers.length,
         req.user.id,
       ]
     );
 
-    // Save notification for residents and responders
+    // Save notification for targeted active recipients only
     try {
       const [notifRes] = await connection.query(
         `INSERT INTO notifications (title, message, category, created_by)
@@ -67,6 +82,8 @@ async function createAlert(req, res) {
     const alert = {
       ...rows[0],
       title: alertTitle,
+      targetScope: scope,
+      actorUserId: req.user.id,
     };
     emitAlertBroadcast(alert);
     return res.status(201).json({ message: 'Alert broadcast', alert });

@@ -596,7 +596,13 @@ class GeoSafeStore {
       payload.message ||
       '';
     const statusText = payload.status || payload.newStatus || '';
-    const dedupeKey = `${eventName}:${recordId}:${statusText}`;
+    const isBroadcastFamily =
+      eventName === 'new-hazard-alert' ||
+      eventName === 'alert-broadcast' ||
+      eventName === 'administrator-announcement';
+    const dedupeKey = isBroadcastFamily
+      ? `broadcast:${recordId}`
+      : `${eventName}:${recordId}:${statusText}`;
 
     const silentEvents = new Set([
       'public-report-verified',
@@ -619,6 +625,10 @@ class GeoSafeStore {
       'responder:location-offline'
     ]);
     const currentUser = (typeof this.getUser === 'function' ? this.getUser() : null) || (this.state && this.state.currentUser) || null;
+    const roleLower = String((currentUser && (currentUser.role || currentUser.role_name)) || '').toLowerCase();
+    const isAdminUser = roleLower === 'admin' || roleLower === 'administrator' || Number(currentUser && currentUser.role_id) === 1;
+    const isResponderUser = roleLower === 'responder' || Number(currentUser && currentUser.role_id) === 2;
+    const isResidentUser = roleLower === 'resident' || Number(currentUser && currentUser.role_id) === 3;
     const eventActorId = payload.actorUserId || payload.authorizedById || payload.createdBy;
     const isSelfActor = Boolean(
       eventActorId &&
@@ -627,18 +637,51 @@ class GeoSafeStore {
       Number(eventActorId) === Number(currentUser.id)
     );
 
-    if (!silentEvents.has(eventName) && !isSelfActor && this._shouldShowRealtimeToast(dedupeKey) && window.GeoSafeToast) {
+    const isRoleEligibleForToast = (() => {
+      if (isBroadcastFamily) {
+        const scopeRaw = String(payload.targetScope || payload.target_scope || '').trim().toLowerCase();
+        if (scopeRaw === 'responders' || scopeRaw === 'responders only') {
+          return isResponderUser || isAdminUser;
+        }
+        if (scopeRaw === 'residents' || scopeRaw === 'residents only' || scopeRaw === 'lakeshore zone' || scopeRaw === 'specific purok') {
+          return isResidentUser || isAdminUser;
+        }
+        if (scopeRaw === 'everyone' || scopeRaw === 'all barangay bayanan') {
+          return isResidentUser || isResponderUser || isAdminUser;
+        }
+        return false;
+      }
+      if (eventName === 'new-incident-report' || eventName === 'new-report' || eventName === 'new-rescue-request') {
+        return isAdminUser;
+      }
+      if (eventName === 'rescue-assignment-updated') {
+        if (payload.responderId && currentUser && Number(payload.responderId) !== Number(currentUser.id) && !isAdminUser) {
+          return false;
+        }
+        return isResponderUser || isAdminUser;
+      }
+      if (eventName === 'report-verification-result') {
+        if (payload.residentId && currentUser && Number(payload.residentId) !== Number(currentUser.id) && !isAdminUser) {
+          return false;
+        }
+        return isResidentUser || isAdminUser;
+      }
+      return true;
+    })();
+
+    if (!silentEvents.has(eventName) && !isSelfActor && isRoleEligibleForToast && this._shouldShowRealtimeToast(dedupeKey) && window.GeoSafeToast) {
       let toastType = 'info';
       let toastMsg = payload.message || payload.title || 'Real-time operational update received.';
 
       if (eventName === 'new-hazard-alert' || eventName === 'alert-broadcast') {
-        toastType = 'warning';
+        const urg = String(payload.urgency || payload.severity || '').toLowerCase();
+        toastType = (urg === 'critical' || urg === 'emergency') ? 'critical' : 'warning';
         toastMsg = `Hazard Alert: ${payload.title || payload.message || 'New advisory issued for Barangay Bayanan.'}`;
       } else if (eventName === 'new-incident-report' || eventName === 'new-report') {
         toastType = 'info';
         toastMsg = `New Incident Report: ${payload.title || payload.incident_type || payload.incidentType || recordId || 'Submitted'}`;
       } else if (eventName === 'new-rescue-request') {
-        toastType = 'warning';
+        toastType = 'critical';
         toastMsg = `Emergency Rescue Request: ${payload.emergencyType || payload.emergency_type || payload.location || recordId || 'Immediate attention required'}`;
       } else if (eventName === 'rescue-assignment-updated') {
         toastType = 'info';
@@ -663,7 +706,7 @@ class GeoSafeStore {
         toastMsg = `EOC Announcement: ${payload.title || payload.message || 'New operational notice'}`;
       }
 
-      window.GeoSafeToast.show({ message: toastMsg, type: toastType, duration: 5000 });
+      window.GeoSafeToast.show({ message: toastMsg, type: toastType, dedupeKey, duration: 5000 });
     }
 
     // Private Resident-Responder Incoming Message Toast (only for intended recipient, never sender)
@@ -788,16 +831,20 @@ class GeoSafeStore {
         'responder:location-offline'
       ];
 
-      realtimeEvents.forEach((evt) => {
-        socket.on(evt, (payload) => {
-          this._handleRealtimeEvent(evt, payload || {});
+      if (!socket._geosafeRealtimeBound) {
+        socket._geosafeRealtimeBound = true;
+        realtimeEvents.forEach((evt) => {
+          socket.off(evt);
+          socket.on(evt, (payload) => {
+            this._handleRealtimeEvent(evt, payload || {});
+          });
         });
-      });
 
-      if (socket.io && typeof socket.io.on === 'function') {
-        socket.io.on('reconnect', () => {
-          this.syncMissedRealtimeUpdates();
-        });
+        if (socket.io && typeof socket.io.on === 'function') {
+          socket.io.on('reconnect', () => {
+            this.syncMissedRealtimeUpdates();
+          });
+        }
       }
 
       return socket;

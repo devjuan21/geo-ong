@@ -257,19 +257,43 @@ function emitNewRescueRequest(rescue) {
   target.emit('new-rescue-request', rescue);
 }
 
+function resolveAudienceRoles(scopeRaw) {
+  const scope = String(scopeRaw || '').trim().toLowerCase();
+  if (scope === 'residents' || scope === 'residents only' || scope === 'lakeshore zone' || scope === 'specific purok') {
+    return { residents: true, responders: false };
+  }
+  if (scope === 'responders' || scope === 'responders only') {
+    return { residents: false, responders: true };
+  }
+  if (scope === 'everyone' || scope === 'all barangay bayanan') {
+    return { residents: true, responders: true };
+  }
+  // Never interpret missing, invalid, or unknown audience values as Everyone
+  return { residents: false, responders: false };
+}
+
 function buildBroadcastTarget(payload) {
   if (!io) return null;
   const actorId = payload && (payload.actorUserId || payload.authorizedById);
-  const scope = String((payload && (payload.targetScope || payload.target_scope)) || '').trim();
-  let target =
-    scope === 'Responders Only'
-      ? io.to('role:Responder').to('role:responder')
-      : io
-        .to('role:Resident')
-        .to('role:resident')
-        .to('role:Responder')
-        .to('role:responder');
-  if (actorId) {
+  const audience = resolveAudienceRoles(payload && (payload.targetScope || payload.target_scope));
+  if (!audience.residents && !audience.responders) {
+    return null;
+  }
+
+  let target = null;
+  if (audience.residents && audience.responders) {
+    target = io
+      .to('role:Resident')
+      .to('role:resident')
+      .to('role:Responder')
+      .to('role:responder');
+  } else if (audience.residents) {
+    target = io.to('role:Resident').to('role:resident');
+  } else if (audience.responders) {
+    target = io.to('role:Responder').to('role:responder');
+  }
+
+  if (target && actorId) {
     target = target.except(`user:${actorId}`);
   }
   return target;
@@ -284,13 +308,12 @@ function emitAlertBroadcast(alert) {
 
 function buildLifecycleTarget(payload) {
   if (!io) return null;
-  const scope = String((payload && (payload.targetScope || payload.target_scope)) || '').trim();
-  let target = io
-    .to('role:Administrator')
-    .to('role:admin')
-    .to('role:Responder')
-    .to('role:responder');
-  if (scope !== 'Responders Only') {
+  const audience = resolveAudienceRoles(payload && (payload.targetScope || payload.target_scope));
+  let target = io.to('role:Administrator').to('role:admin');
+  if (audience.responders) {
+    target = target.to('role:Responder').to('role:responder');
+  }
+  if (audience.residents) {
     target = target.to('role:Resident').to('role:resident');
   }
   return target;
@@ -650,6 +673,45 @@ function emitConversationArchiveUpdated(userId, conversationId, isArchived, extr
   });
 }
 
+function emitRescueOutcomeUpdated(payload) {
+  if (!io || !payload) return;
+  io.to('role:Administrator').to('role:admin').emit('assignment:outcome', payload);
+  if (payload.responderId) {
+    io.to(`user:${payload.responderId}`).emit('assignment:outcome', payload);
+  }
+  if (payload.residentId) {
+    // Send sanitized operational summary to requesting resident (no private clinical notes)
+    io.to(`user:${payload.residentId}`).emit('assignment:outcome', {
+      id: payload.id,
+      dbId: payload.dbId,
+      referenceNumber: payload.referenceNumber,
+      primaryOutcome: payload.primaryOutcome,
+      transportRequired: payload.transportRequired,
+      updatedAt: payload.updatedAt,
+    });
+  }
+}
+
+function emitRescueTransportUpdated(payload) {
+  if (!io || !payload) return;
+  io.to('role:Administrator').to('role:admin').emit('rescue:transport-updated', payload);
+  if (payload.responderId) {
+    io.to(`user:${payload.responderId}`).emit('rescue:transport-updated', payload);
+  }
+  if (payload.residentId) {
+    io.to(`user:${payload.residentId}`).emit('rescue:transport-updated', {
+      id: payload.id,
+      dbId: payload.dbId,
+      referenceNumber: payload.referenceNumber,
+      transportId: payload.transportId,
+      destinationName: payload.destinationName,
+      destinationFacilityType: payload.destinationFacilityType,
+      transportStatus: payload.transportStatus,
+      updatedAt: payload.updatedAt,
+    });
+  }
+}
+
 function getLiveResponderLocations() {
   return Array.from(liveResponderLocations.values());
 }
@@ -666,6 +728,8 @@ module.exports = {
   emitAlertCancelled,
   emitAssignmentUpdate,
   emitStatusUpdate,
+  emitRescueOutcomeUpdated,
+  emitRescueTransportUpdated,
   emitIncidentResolved,
   emitAdminAnnouncement,
   emitConversationMessage,

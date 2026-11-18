@@ -11,6 +11,8 @@ const {
   emitIncidentResolved,
   emitResponderLocationUpdate,
   emitResponderLocationOffline,
+  emitRescueOutcomeUpdated,
+  emitRescueTransportUpdated,
 } = require('../services/socketService');
 const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
 const { getEocLocation } = require('../config/eocConfig');
@@ -158,14 +160,43 @@ function formatReportForPortal(r, photos = [], timeline = []) {
   };
 }
 
-function formatRescueForPortal(r, updates = [], photos = []) {
+function formatPeopleCountDisplay(peopleCount, category) {
+  const cat = String(category || '').toLowerCase();
+  if (cat === 'unknown') return 'Unknown';
+  if (cat === 'more_than_10') return 'More than 10';
+  if (peopleCount === null || peopleCount === undefined) return 'Unknown';
+  const n = Number(peopleCount);
+  if (!Number.isFinite(n) || n < 1) return 'Unknown';
+  return `${n} ${n === 1 ? 'Person' : 'People'}`;
+}
+
+function formatRescueForPortal(r, updates = [], photos = [], meta = {}) {
+  const category = r.people_count_category || (r.people_count === null ? 'unknown' : 'exact');
+  const countVal = category === 'exact' && r.people_count !== null ? Number(r.people_count) : null;
+  const assignedUnit = meta.assignedUnit || null;
+  const assignedResponderName = meta.assignedResponderName || null;
+  const assignmentStatus = meta.assignmentStatus || null;
+  const responderContact = assignedResponderName
+    ? `Responder: ${assignedResponderName}${assignmentStatus ? ` (${assignmentStatus})` : ''}`
+    : null;
+
   return {
     id: r.reference_number || `RES-${r.id}`,
     dbId: r.id,
     referenceNumber: r.reference_number || `RES-${r.id}`,
     emergencyType: r.emergency_type,
     description: r.description,
-    peopleCount: r.people_count || 1,
+    peopleCount: countVal,
+    peopleCountCategory: category,
+    peopleCountDisplay: formatPeopleCountDisplay(countVal, category),
+    assignedResponderId: meta.assignedResponderId || null,
+    assignedResponderName,
+    assignedUnit,
+    assignmentStatus,
+    responderContact,
+    conversationId: meta.conversationId || null,
+    conversationStatus: meta.conversationStatus || null,
+    conversationArchived: Boolean(meta.conversationArchived),
     vulnerableDetails: r.vulnerable_details || 'None specified',
     location: r.address || 'Barangay Bayanan, Muntinlupa City',
     landmark: r.landmark || '',
@@ -410,62 +441,127 @@ router.put('/profile', async (req, res) => {
 // ----------------------------------------------------------------------------
 // 3. RESCUE REQUESTS
 // ----------------------------------------------------------------------------
+async function loadRescuePortalEnrichment(rescueIds, userId, isResidentUser) {
+  const photosByRescue = new Map();
+  const updatesByRescue = new Map();
+  const metaByRescue = new Map();
+  const inClause = buildInClause(rescueIds);
+  if (!inClause) {
+    return { photosByRescue, updatesByRescue, metaByRescue };
+  }
+
+  try {
+    const [assignRows] = await pool.query(
+      `SELECT DISTINCT ON (ra.rescue_id)
+              ra.rescue_id, ra.responder_user_id, ra.assignment_status,
+              u.name AS responder_name,
+              rp.assigned_unit, rp.department
+       FROM rescue_assignments ra
+       JOIN users u ON u.id = ra.responder_user_id
+       LEFT JOIN responder_profiles rp ON rp.user_id = ra.responder_user_id
+       WHERE ra.rescue_id IN (${inClause.placeholders})
+         AND ra.assignment_status <> 'Reassigned'
+       ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC`,
+      inClause.params
+    );
+    for (const a of assignRows) {
+      metaByRescue.set(a.rescue_id, {
+        assignedResponderId: Number(a.responder_user_id),
+        assignedResponderName: a.responder_name || 'Responder',
+        assignedUnit: a.assigned_unit || a.department || 'Barangay Bayanan Response Unit',
+        assignmentStatus: a.assignment_status || 'Assigned',
+        conversationId: null,
+        conversationStatus: null,
+        conversationArchived: false,
+      });
+    }
+
+    const [convRows] = await pool.query(
+      `SELECT DISTINCT ON (c.rescue_id)
+              c.id AS conversation_id, c.rescue_id, c.status AS conversation_status,
+              COALESCE(cp.is_archived, FALSE) AS is_archived
+       FROM conversations c
+       LEFT JOIN conversation_participants cp
+         ON cp.conversation_id = c.id AND cp.user_id = ?
+       WHERE c.rescue_id IN (${inClause.placeholders})
+       ORDER BY c.rescue_id, c.id DESC`,
+      [userId, ...inClause.params]
+    );
+    for (const c of convRows) {
+      const cur = metaByRescue.get(c.rescue_id) || {};
+      metaByRescue.set(c.rescue_id, {
+        ...cur,
+        conversationId: Number(c.conversation_id),
+        conversationStatus: c.conversation_status || 'Active',
+        conversationArchived: Boolean(c.is_archived),
+      });
+    }
+  } catch {
+    // Ignore if optional metadata lookup fails
+  }
+
+  try {
+    const [attRows] = await pool.query(
+      `SELECT rescue_id, file_url FROM rescue_attachments WHERE rescue_id IN (${inClause.placeholders}) ORDER BY created_at ASC`,
+      inClause.params
+    );
+    for (const a of attRows) {
+      if (!photosByRescue.has(a.rescue_id)) photosByRescue.set(a.rescue_id, []);
+      photosByRescue.get(a.rescue_id).push(a.file_url);
+    }
+  } catch {
+    // Ignore if table empty
+  }
+
+  try {
+    const privacyClause = isResidentUser ? 'AND COALESCE(h.is_internal_only, FALSE) = FALSE' : '';
+    const [histRows] = await pool.query(
+      `SELECT h.id, h.rescue_id, h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
+       FROM rescue_status_history h
+       LEFT JOIN users u ON h.changed_by = u.id
+       WHERE h.rescue_id IN (${inClause.placeholders})
+         ${privacyClause}
+       ORDER BY h.created_at ASC, h.id ASC`,
+      inClause.params
+    );
+    for (const h of histRows) {
+      if (!updatesByRescue.has(h.rescue_id)) updatesByRescue.set(h.rescue_id, []);
+      updatesByRescue.get(h.rescue_id).push({
+        id: h.id,
+        status: h.status || 'Update',
+        note: h.note || '',
+        author: h.author || 'Command Center',
+        timestamp: h.timestamp,
+      });
+    }
+  } catch {
+    // Ignore
+  }
+
+  return { photosByRescue, updatesByRescue, metaByRescue };
+}
+
 router.get('/rescue-requests', async (req, res) => {
   try {
     let query = 'SELECT * FROM rescue_requests';
     const params = [];
-    if (req.user.role === 'resident') {
+    const isResidentUser = req.user.role === 'resident';
+    if (isResidentUser) {
       query += ' WHERE user_id = ?';
       params.push(req.user.id);
     }
     query += ' ORDER BY created_at DESC';
     const [rows] = await pool.query(query, params);
 
-    const photosByRescue = new Map();
-    const updatesByRescue = new Map();
-    if (rows.length > 0) {
-      const inClause = buildInClause(rows.map((r) => r.id));
-      if (inClause) {
-        try {
-          const [attRows] = await pool.query(
-            `SELECT rescue_id, file_url FROM rescue_attachments WHERE rescue_id IN (${inClause.placeholders}) ORDER BY created_at ASC`,
-            inClause.params
-          );
-          for (const a of attRows) {
-            if (!photosByRescue.has(a.rescue_id)) photosByRescue.set(a.rescue_id, []);
-            photosByRescue.get(a.rescue_id).push(a.file_url);
-          }
-        } catch {
-          // Ignore if table empty
-        }
-
-        try {
-          const [histRows] = await pool.query(
-            `SELECT h.rescue_id, h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
-             FROM rescue_status_history h
-             LEFT JOIN users u ON h.changed_by = u.id
-             WHERE h.rescue_id IN (${inClause.placeholders})
-             ORDER BY h.created_at ASC`,
-            inClause.params
-          );
-          for (const h of histRows) {
-            if (!updatesByRescue.has(h.rescue_id)) updatesByRescue.set(h.rescue_id, []);
-            updatesByRescue.get(h.rescue_id).push({
-              status: h.status,
-              note: h.note || '',
-              author: h.author || 'Command Center',
-              timestamp: h.timestamp,
-            });
-          }
-        } catch {
-          // Ignore
-        }
-      }
-    }
+    const { photosByRescue, updatesByRescue, metaByRescue } = await loadRescuePortalEnrichment(
+      rows.map((r) => r.id),
+      req.user.id,
+      isResidentUser
+    );
 
     return res.json(
       rows.map((r) =>
-        formatRescueForPortal(r, updatesByRescue.get(r.id) || [], photosByRescue.get(r.id) || [])
+        formatRescueForPortal(r, updatesByRescue.get(r.id) || [], photosByRescue.get(r.id) || [], metaByRescue.get(r.id) || {})
       )
     );
   } catch (err) {
@@ -483,42 +579,25 @@ router.get('/rescue-requests/:id', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Rescue request not found' });
     const row = rows[0];
-    if (req.user.role === 'resident' && row.user_id !== req.user.id) {
+    const isResidentUser = req.user.role === 'resident';
+    if (isResidentUser && row.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    let photos = [];
-    let updates = [];
-    try {
-      const [attRows] = await pool.query(
-        'SELECT file_url FROM rescue_attachments WHERE rescue_id = ? ORDER BY created_at ASC',
-        [row.id]
-      );
-      photos = attRows.map((a) => a.file_url);
-    } catch {
-      photos = [];
-    }
+    const { photosByRescue, updatesByRescue, metaByRescue } = await loadRescuePortalEnrichment(
+      [row.id],
+      req.user.id,
+      isResidentUser
+    );
 
-    try {
-      const [histRows] = await pool.query(
-        `SELECT h.new_status AS status, h.work_notes AS note, h.created_at AS timestamp, u.name AS author
-         FROM rescue_status_history h
-         LEFT JOIN users u ON h.changed_by = u.id
-         WHERE h.rescue_id = ?
-         ORDER BY h.created_at ASC`,
-        [row.id]
-      );
-      updates = histRows.map((h) => ({
-        status: h.status,
-        note: h.note || '',
-        author: h.author || 'Command Center',
-        timestamp: h.timestamp,
-      }));
-    } catch {
-      updates = [];
-    }
-
-    return res.json(formatRescueForPortal(row, updates, photos));
+    return res.json(
+      formatRescueForPortal(
+        row,
+        updatesByRescue.get(row.id) || [],
+        photosByRescue.get(row.id) || [],
+        metaByRescue.get(row.id) || {}
+      )
+    );
   } catch (err) {
     console.error('[Portal API] GET /rescue-requests/:id failed:', err.message);
     return res.status(503).json({ error: 'Unable to load rescue request' });
@@ -561,27 +640,59 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
   let validatedCount;
   let storedVulnerableDetails = vulnerableDetails ? String(vulnerableDetails).trim() : '';
 
+  const rawCategoryInput = String(req.body && req.body.peopleCountCategory || '').trim().toLowerCase();
+  const rawAnyCount = [peopleCount, peopleTrapped, patientCount, assistanceCount].find((v) => v !== undefined && v !== null && String(v).trim() !== '');
+  const rawAnyLower = String(rawAnyCount ?? '').trim().toLowerCase();
+
+  let peopleCountCategory = 'exact';
+  if (rawCategoryInput === 'unknown' || rawAnyLower === 'unknown' || Boolean(req.body && req.body.peopleCountUnknown)) {
+    peopleCountCategory = 'unknown';
+  } else if (rawCategoryInput === 'more_than_10' || rawAnyLower === 'more_than_10') {
+    peopleCountCategory = 'more_than_10';
+  }
+
   if (isMedical) {
-    const rawPatient = patientCount !== undefined ? patientCount : peopleCount;
-    validatedCount = parsePositiveWhole(rawPatient);
-    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
-      return res.status(400).json({ error: 'Number of patients needing evacuation must be a positive whole number (1-50).' });
+    if (peopleCountCategory === 'unknown' || peopleCountCategory === 'more_than_10') {
+      validatedCount = null;
+      const label = peopleCountCategory === 'more_than_10' ? 'More than 10' : 'Unknown';
+      const prefix = `Patients Needing Evacuation: ${label}`;
+      storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
+    } else {
+      const rawPatient = patientCount !== undefined ? patientCount : peopleCount;
+      validatedCount = parsePositiveWhole(rawPatient);
+      if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+        return res.status(400).json({ error: 'Number of patients needing evacuation must be a positive whole number (1-50), More than 10, or Unknown.' });
+      }
+      const prefix = `Patients Needing Evacuation: ${validatedCount}`;
+      storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
     }
-    const prefix = `Patients Needing Evacuation: ${validatedCount}`;
-    storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
   } else if (isVulnerability) {
-    const rawAssist = assistanceCount !== undefined ? assistanceCount : peopleCount;
-    validatedCount = parsePositiveWhole(rawAssist);
-    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
-      return res.status(400).json({ error: 'Number of individuals needing assistance must be a positive whole number (1-50).' });
+    if (peopleCountCategory === 'unknown' || peopleCountCategory === 'more_than_10') {
+      validatedCount = null;
+      const label = peopleCountCategory === 'more_than_10' ? 'More than 10' : 'Unknown';
+      const prefix = `Individuals Needing Assistance: ${label}`;
+      storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
+    } else {
+      const rawAssist = assistanceCount !== undefined ? assistanceCount : peopleCount;
+      validatedCount = parsePositiveWhole(rawAssist);
+      if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+        return res.status(400).json({ error: 'Number of individuals needing assistance must be a positive whole number (1-50), More than 10, or Unknown.' });
+      }
+      const prefix = `Individuals Needing Assistance: ${validatedCount}`;
+      storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
     }
-    const prefix = `Individuals Needing Assistance: ${validatedCount}`;
-    storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
   } else {
-    const rawTrapped = peopleTrapped !== undefined ? peopleTrapped : peopleCount;
-    validatedCount = parsePositiveWhole(rawTrapped);
-    if (validatedCount === undefined || Number.isNaN(validatedCount)) {
-      return res.status(400).json({ error: 'Number of people trapped must be a positive whole number (1-50).' });
+    if (peopleCountCategory === 'unknown' || peopleCountCategory === 'more_than_10') {
+      validatedCount = null;
+      const label = peopleCountCategory === 'more_than_10' ? 'More than 10' : 'Unknown';
+      const prefix = `People Trapped: ${label}`;
+      storedVulnerableDetails = storedVulnerableDetails ? `${prefix} | ${storedVulnerableDetails}` : prefix;
+    } else {
+      const rawTrapped = peopleTrapped !== undefined ? peopleTrapped : peopleCount;
+      validatedCount = parsePositiveWhole(rawTrapped);
+      if (validatedCount === undefined || Number.isNaN(validatedCount)) {
+        return res.status(400).json({ error: 'Number of people trapped must be a positive whole number (1-50), More than 10, or Unknown.' });
+      }
     }
   }
 
@@ -681,15 +792,16 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
 
     const [result] = await conn.query(
       `INSERT INTO rescue_requests
-         (reference_number, user_id, emergency_type, description, people_count, vulnerable_details,
+         (reference_number, user_id, emergency_type, description, people_count, people_count_category, vulnerable_details,
           latitude, longitude, address, landmark, priority, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Dispatch')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Dispatch')`,
       [
         tempRef,
         req.user.id,
         emergencyLabel,
         descText,
         validatedCount,
+        peopleCountCategory,
         storedVulnerableDetails ? storedVulnerableDetails.slice(0, 255) : null,
         lat,
         lng,
@@ -725,9 +837,10 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     // Notify all active Administrators
     try {
       const adminIds = await getActiveAdminIds(conn);
+      const countText = formatPeopleCountDisplay(validatedCount, peopleCountCategory);
       await createNotificationForUsers(conn, {
         title: `Emergency Rescue Request: ${refNum}`,
-        message: `${emergencyLabel} rescue requested at ${addrText} (${Math.max(1, parseInt(peopleCount, 10) || 1)} person/s).`,
+        message: `${emergencyLabel} rescue requested at ${addrText} (${countText}).`,
         category: 'Alert',
         createdBy: req.user.id,
         userIds: adminIds,
@@ -868,21 +981,25 @@ router.get('/hazard-alerts', async (req, res) => {
        LEFT JOIN user_profiles up ON u.id = up.user_id
        WHERE 1=1
          ${includeInactive ? '' : "AND ebl.is_active = TRUE AND ebl.status = 'Active' AND (ebl.expires_at IS NULL OR ebl.expires_at > NOW())"}
-         ${isResident ? "AND ebl.target_scope NOT IN ('Responders', 'Responders Only')" : ''}
-         ${isResponder ? "AND ebl.target_scope <> 'Residents'" : ''}
+         ${isResident ? "AND ebl.target_scope IN ('Residents', 'Residents Only', 'Everyone', 'All Barangay Bayanan', 'Lakeshore Zone', 'Specific Purok')" : ''}
+         ${isResponder ? "AND ebl.target_scope IN ('Responders', 'Responders Only', 'Everyone', 'All Barangay Bayanan')" : ''}
        ORDER BY ebl.broadcasted_at DESC
        LIMIT 100`
     );
-    const [alertRows] = await pool.query(
-      `SELECT a.*, u.name AS author_name, u.email AS author_email
-       FROM alerts a
-       LEFT JOIN users u ON a.created_by = u.id
-       WHERE NOT EXISTS (
-         SELECT 1 FROM emergency_broadcast_logs ebl
-         WHERE (ebl.title || ': ' || ebl.message) = a.message
-       )
-       ORDER BY a.created_at DESC LIMIT 50`
-    );
+    const alertRows = [];
+    if (!isResident && !isResponder) {
+      const [legacyRows] = await pool.query(
+        `SELECT a.*, u.name AS author_name, u.email AS author_email
+         FROM alerts a
+         LEFT JOIN users u ON a.created_by = u.id
+         WHERE NOT EXISTS (
+           SELECT 1 FROM emergency_broadcast_logs ebl
+           WHERE (ebl.title || ': ' || ebl.message) = a.message
+         )
+         ORDER BY a.created_at DESC LIMIT 50`
+      );
+      alertRows.push(...legacyRows);
+    }
 
     const mappedBroadcasts = broadcastRows.map((b) => {
       const categoryName = b.category_name || b.advisory_type || 'Other';
@@ -1388,6 +1505,67 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
     }
   }
 
+  const rescueOutcomeMap = new Map();
+  const rescueTransportsMap = new Map();
+  const rescueIds = [...new Set(rescueRows.map((r) => r.id))];
+  if (rescueIds.length > 0) {
+    const resIn = buildInClause(rescueIds);
+    try {
+      const [outRows] = await pool.query(
+        `SELECT * FROM rescue_outcomes WHERE rescue_id IN (${resIn.placeholders})`,
+        resIn.params
+      );
+      for (const o of outRows) {
+        rescueOutcomeMap.set(o.rescue_id, {
+          primaryOutcome: o.primary_outcome,
+          totalRescued: Number(o.total_rescued || 0),
+          firstAidCount: Number(o.first_aid_count || 0),
+          hospitalTransportCount: Number(o.hospital_transport_count || 0),
+          medicalFacilityCount: Number(o.medical_facility_count || 0),
+          evacuationCenterCount: Number(o.evacuation_center_count || 0),
+          stillAssistingCount: Number(o.still_assisting_count || 0),
+          firstAidActions: o.first_aid_actions || '',
+          furtherMedicalRecommended: Boolean(o.further_medical_recommended),
+          transportRequired: Boolean(o.transport_required),
+          otherDescription: o.other_description || '',
+          adminCoordinationRequired: Boolean(o.admin_coordination_required),
+          operationalNotes: o.operational_notes || '',
+          recordedAt: o.recorded_at,
+          updatedAt: o.updated_at,
+        });
+      }
+
+      const [trRows] = await pool.query(
+        `SELECT * FROM rescue_transports WHERE rescue_id IN (${resIn.placeholders}) ORDER BY created_at ASC, id ASC`,
+        resIn.params
+      );
+      for (const t of trRows) {
+        if (!rescueTransportsMap.has(t.rescue_id)) rescueTransportsMap.set(t.rescue_id, []);
+        rescueTransportsMap.get(t.rescue_id).push({
+          id: t.id,
+          destinationCategory: t.destination_category,
+          hospitalId: t.hospital_id,
+          evacuationCenterId: t.evacuation_center_id,
+          destinationName: t.destination_name,
+          destinationFacilityType: t.destination_facility_type,
+          latitude: t.destination_latitude !== null ? Number(t.destination_latitude) : null,
+          longitude: t.destination_longitude !== null ? Number(t.destination_longitude) : null,
+          peopleCount: Number(t.people_count || 1),
+          routeDistanceMeters: t.route_distance_meters !== null ? Number(t.route_distance_meters) : null,
+          routeDurationSeconds: t.route_duration_seconds !== null ? Number(t.route_duration_seconds) : null,
+          transportStatus: t.transport_status,
+          startedAt: t.started_at,
+          arrivedAt: t.arrived_at,
+          handedOverAt: t.handed_over_at,
+          handoverConfirmed: Boolean(t.handover_confirmed),
+          handoverNotes: t.handover_notes || '',
+        });
+      }
+    } catch (_) {
+      // ignore if tables unavailable
+    }
+  }
+
   return [
     ...rescueRows.map((r) => ({
       id: r.reference_number || `RES-${r.id}`,
@@ -1408,7 +1586,9 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
           : r.status === 'In Progress'
             ? 'In Progress'
             : r.assignment_status || r.status || 'Assigned',
-      peopleCount: r.people_count || 1,
+      peopleCount: (r.people_count_category || 'exact') === 'exact' && r.people_count !== null ? Number(r.people_count) : null,
+      peopleCountCategory: r.people_count_category || (r.people_count === null ? 'unknown' : 'exact'),
+      peopleCountDisplay: formatPeopleCountDisplay(r.people_count, r.people_count_category || (r.people_count === null ? 'unknown' : 'exact')),
       vulnerableDetails: r.vulnerable_details || 'None specified',
       residentName: r.resident_name || 'Resident',
       residentPhone: r.resident_phone || '',
@@ -1422,6 +1602,8 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       residentEvidence: rescueResidentEvidenceMap.get(r.id) || [],
       responderCompletionEvidence: rescueCompletionEvidenceMap.get(r.id) || [],
       dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to EOC.',
+      outcome: rescueOutcomeMap.get(r.id) || null,
+      transports: rescueTransportsMap.get(r.id) || [],
     })),
     ...reportRows.map((r) => ({
       id: r.reference_number || `REP-${r.id}`,
@@ -1755,6 +1937,27 @@ async function handleResponderAssignmentUpdate(req, res) {
       if (!workNotes || !String(workNotes).trim()) {
         await conn.rollback();
         return res.status(400).json({ error: 'Please enter a completion summary.' });
+      }
+
+      if (targetKind === 'rescue') {
+        const [trRows] = await conn.query(
+          `SELECT id, destination_name, transport_status, arrived_at, handover_confirmed
+           FROM rescue_transports
+           WHERE rescue_id = ? AND transport_status <> 'Cancelled'`,
+          [rescueRow.id]
+        );
+        const requiresTransport = trRows.length > 0;
+        if (requiresTransport) {
+          const incomplete = trRows.filter(
+            (t) => t.transport_status !== 'Handed Over' || !t.handover_confirmed || !t.arrived_at
+          );
+          if (incomplete.length > 0) {
+            await conn.rollback();
+            return res.status(400).json({
+              error: `Arrival and handover confirmation required for ${incomplete.map((i) => i.destination_name).join(', ')} before completing.`,
+            });
+          }
+        }
       }
     }
 
@@ -2140,6 +2343,724 @@ router.patch('/responder/assignments/:id/status', requireRole('responder', 'admi
 router.put('/responder/assignments/:id/status', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
 router.post('/responder/assignments/:id/updates', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
 
+async function resolveOwnedRescueForResponder(conn, paramId, user) {
+  const numericId = /^\d+$/.test(paramId) ? parseInt(paramId, 10) : -1;
+  const [rRows] = await conn.query(
+    `SELECT rr.*
+     FROM rescue_requests rr
+     LEFT JOIN rescue_assignments ra ON ra.rescue_id = rr.id
+     WHERE rr.reference_number = ? OR rr.id = ? OR ra.id = ?
+     LIMIT 1`,
+    [paramId, numericId, numericId]
+  );
+  if (!rRows.length) return { errorStatus: 404, error: 'Rescue assignment not found.' };
+  const rescueRow = rRows[0];
+
+  if (user.role !== 'admin') {
+    const [latestRows] = await conn.query(
+      `SELECT responder_user_id FROM rescue_assignments WHERE rescue_id = ? ORDER BY assigned_at DESC, id DESC LIMIT 1`,
+      [rescueRow.id]
+    );
+    if (!latestRows.length || Number(latestRows[0].responder_user_id) !== Number(user.id)) {
+      return { errorStatus: 403, error: 'You are not authorized to update this rescue assignment.' };
+    }
+  }
+  return { rescueRow };
+}
+
+router.post('/responder/assignments/:id/outcome', requireRole('responder', 'admin'), async (req, res) => {
+  const paramId = String(req.params.id || '').trim();
+  const {
+    primaryOutcome,
+    totalRescued = 0,
+    firstAidCount = 0,
+    hospitalTransportCount = 0,
+    medicalFacilityCount = 0,
+    evacuationCenterCount = 0,
+    stillAssistingCount = 0,
+    firstAidActions = '',
+    furtherMedicalRecommended = false,
+    transportRequired,
+    otherDescription = '',
+    adminCoordinationRequired = false,
+    operationalNotes = '',
+    transports = [],
+  } = req.body || {};
+
+  const validOutcomes = ['first_aid', 'hospital', 'medical_facility', 'evacuation_center', 'other'];
+  if (!validOutcomes.includes(primaryOutcome)) {
+    return res.status(400).json({ error: 'Invalid rescue outcome option.' });
+  }
+
+  const parsedTotal = Math.max(0, parseInt(totalRescued, 10) || 0);
+  const parsedFirstAid = Math.max(0, parseInt(firstAidCount, 10) || 0);
+  const parsedHospital = Math.max(0, parseInt(hospitalTransportCount, 10) || 0);
+  const parsedMedFac = Math.max(0, parseInt(medicalFacilityCount, 10) || 0);
+  const parsedEvac = Math.max(0, parseInt(evacuationCenterCount, 10) || 0);
+  const parsedStill = Math.max(0, parseInt(stillAssistingCount, 10) || 0);
+
+  if (primaryOutcome === 'first_aid' && !String(firstAidActions || '').trim() && !String(operationalNotes || '').trim()) {
+    return res.status(400).json({ error: 'Please record the first-aid actions performed.' });
+  }
+  if (primaryOutcome === 'other' && !String(otherDescription || '').trim()) {
+    return res.status(400).json({ error: 'Please provide a description for Other / Special Assistance.' });
+  }
+
+  const transportList = Array.isArray(transports) ? transports : [];
+  const outcomeRequiresTransport = ['hospital', 'medical_facility', 'evacuation_center'].includes(primaryOutcome);
+  const needsTransport = outcomeRequiresTransport;
+
+  if (!outcomeRequiresTransport && transportList.length > 0) {
+    return res.status(400).json({
+      error: 'Transport destinations are not allowed for First Aid / On-Site Assistance or Other / Special Assistance.',
+    });
+  }
+
+  if (needsTransport && transportList.length === 0) {
+    return res.status(400).json({ error: 'Please select a transport destination when transportation is required.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const resolved = await resolveOwnedRescueForResponder(conn, paramId, req.user);
+    if (resolved.error) {
+      await conn.rollback();
+      return res.status(resolved.errorStatus).json({ error: resolved.error });
+    }
+    const rescueRow = resolved.rescueRow;
+
+    if (rescueRow.status === 'Completed' || rescueRow.status === 'Cancelled') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Cannot modify outcome of a completed or cancelled rescue operation.' });
+    }
+
+    // Validate every requested transport destination against Primary Rescue Outcome & PostgreSQL records
+    const validatedTransports = [];
+    for (const t of transportList) {
+      const cat = String(t.destinationCategory || '').toLowerCase();
+      if (!['hospital', 'medical_facility', 'evacuation_center'].includes(cat)) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Invalid transport destination category.' });
+      }
+      if (cat !== primaryOutcome) {
+        await conn.rollback();
+        return res.status(400).json({
+          error: `Destination category "${cat}" does not match Primary Rescue Outcome "${primaryOutcome}".`,
+        });
+      }
+      const pCount = Math.max(1, parseInt(t.peopleCount, 10) || 1);
+      const distMeters = Number.isFinite(Number(t.routeDistanceMeters)) ? Math.round(Number(t.routeDistanceMeters)) : null;
+      const durSeconds = Number.isFinite(Number(t.routeDurationSeconds)) ? Math.round(Number(t.routeDurationSeconds)) : null;
+
+      if (cat === 'evacuation_center') {
+        const ecId = parseInt(t.evacuationCenterId || t.facilityId, 10);
+        if (!Number.isFinite(ecId) || ecId <= 0) {
+          await conn.rollback();
+          return res.status(400).json({ error: 'Invalid evacuation center ID.' });
+        }
+        const [ecRows] = await conn.query('SELECT * FROM evacuation_centers WHERE id = ? LIMIT 1', [ecId]);
+        if (!ecRows.length) {
+          await conn.rollback();
+          return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
+        }
+        const ec = ecRows[0];
+        if (ec.status === 'Full / Closed') {
+          await conn.rollback();
+          return res.status(400).json({ error: `${ec.name} is currently Full / Closed.` });
+        }
+        validatedTransports.push({
+          destinationCategory: cat,
+          hospitalId: null,
+          evacuationCenterId: ec.id,
+          destinationName: ec.name,
+          destinationFacilityType: 'Evacuation Center',
+          latitude: Number(ec.latitude),
+          longitude: Number(ec.longitude),
+          peopleCount: pCount,
+          routeDistanceMeters: distMeters,
+          routeDurationSeconds: durSeconds,
+        });
+      } else {
+        const hId = parseInt(t.hospitalId || t.facilityId, 10);
+        if (!Number.isFinite(hId) || hId <= 0) {
+          await conn.rollback();
+          return res.status(400).json({ error: 'Invalid healthcare facility ID.' });
+        }
+        const [hRows] = await conn.query('SELECT * FROM hospitals WHERE id = ? LIMIT 1', [hId]);
+        if (!hRows.length) {
+          await conn.rollback();
+          return res.status(404).json({ error: 'Selected healthcare facility does not exist.' });
+        }
+        const fac = hRows[0];
+        if (fac.status === 'Closed') {
+          await conn.rollback();
+          return res.status(400).json({ error: `${fac.name} is currently Closed / Inactive.` });
+        }
+        if (fac.verification_status !== 'Verified') {
+          await conn.rollback();
+          return res.status(400).json({
+            error: `${fac.name} is marked "${fac.verification_status}" and cannot be selected as a confirmed navigation destination.`,
+          });
+        }
+        if (cat === 'hospital' && fac.facility_type !== 'Hospital') {
+          await conn.rollback();
+          return res.status(400).json({
+            error: `${fac.name} is classified as ${fac.facility_type}, not a Hospital.`,
+          });
+        }
+        if (cat === 'medical_facility' && fac.facility_type !== 'Health Center') {
+          await conn.rollback();
+          return res.status(400).json({
+            error: `${fac.name} is classified as ${fac.facility_type}, not a Health Center.`,
+          });
+        }
+        validatedTransports.push({
+          destinationCategory: cat,
+          hospitalId: fac.id,
+          evacuationCenterId: null,
+          destinationName: fac.name,
+          destinationFacilityType: fac.facility_type || 'Hospital',
+          latitude: Number(fac.latitude),
+          longitude: Number(fac.longitude),
+          peopleCount: pCount,
+          routeDistanceMeters: distMeters,
+          routeDurationSeconds: durSeconds,
+        });
+      }
+    }
+
+    // Upsert rescue_outcomes
+    const [existingOut] = await conn.query('SELECT id FROM rescue_outcomes WHERE rescue_id = ? LIMIT 1', [rescueRow.id]);
+    if (existingOut.length) {
+      await conn.query(
+        `UPDATE rescue_outcomes
+         SET responder_user_id = ?, primary_outcome = ?, total_rescued = ?, first_aid_count = ?,
+             hospital_transport_count = ?, medical_facility_count = ?, evacuation_center_count = ?,
+             still_assisting_count = ?, first_aid_actions = ?, further_medical_recommended = ?,
+             transport_required = ?, other_description = ?, admin_coordination_required = ?,
+             operational_notes = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE rescue_id = ?`,
+        [
+          req.user.id,
+          primaryOutcome,
+          parsedTotal,
+          parsedFirstAid,
+          parsedHospital,
+          parsedMedFac,
+          parsedEvac,
+          parsedStill,
+          String(firstAidActions || '').trim() || null,
+          Boolean(furtherMedicalRecommended),
+          Boolean(needsTransport),
+          String(otherDescription || '').trim() || null,
+          Boolean(adminCoordinationRequired),
+          String(operationalNotes || '').trim() || null,
+          rescueRow.id,
+        ]
+      );
+    } else {
+      await conn.query(
+        `INSERT INTO rescue_outcomes (
+           rescue_id, responder_user_id, primary_outcome, total_rescued, first_aid_count,
+           hospital_transport_count, medical_facility_count, evacuation_center_count,
+           still_assisting_count, first_aid_actions, further_medical_recommended,
+           transport_required, other_description, admin_coordination_required, operational_notes
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          rescueRow.id,
+          req.user.id,
+          primaryOutcome,
+          parsedTotal,
+          parsedFirstAid,
+          parsedHospital,
+          parsedMedFac,
+          parsedEvac,
+          parsedStill,
+          String(firstAidActions || '').trim() || null,
+          Boolean(furtherMedicalRecommended),
+          Boolean(needsTransport),
+          String(otherDescription || '').trim() || null,
+          Boolean(adminCoordinationRequired),
+          String(operationalNotes || '').trim() || null,
+        ]
+      );
+    }
+
+    // Replace only Pending transport legs (preserve active In Transit / Arrived / Handed Over legs)
+    await conn.query(
+      `DELETE FROM rescue_transports WHERE rescue_id = ? AND transport_status = 'Pending'`,
+      [rescueRow.id]
+    );
+    for (const vt of validatedTransports) {
+      await conn.query(
+        `INSERT INTO rescue_transports (
+           rescue_id, responder_user_id, destination_category, hospital_id, evacuation_center_id,
+           destination_name, destination_facility_type, destination_latitude, destination_longitude,
+           people_count, route_distance_meters, route_duration_seconds, transport_status
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        [
+          rescueRow.id,
+          req.user.id,
+          vt.destinationCategory,
+          vt.hospitalId,
+          vt.evacuationCenterId,
+          vt.destinationName,
+          vt.destinationFacilityType,
+          vt.latitude,
+          vt.longitude,
+          vt.peopleCount,
+          vt.routeDistanceMeters,
+          vt.routeDurationSeconds,
+        ]
+      );
+    }
+
+    const outcomeLabelMap = {
+      first_aid: 'First Aid / On-Site Assistance',
+      hospital: 'Transport to Hospital',
+      medical_facility: 'Transport to Medical Facility',
+      evacuation_center: 'Transport to Evacuation Center',
+      other: 'Other / Special Assistance',
+    };
+    const summaryText = `Outcome recorded: ${outcomeLabelMap[primaryOutcome]} (Rescued: ${parsedTotal}, First Aid: ${parsedFirstAid}${needsTransport ? `, Transport legs: ${validatedTransports.length}` : ', No transport required'})`;
+
+    await conn.query(
+      `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, is_internal_only)
+       VALUES (?, ?, 'In Progress', ?, FALSE)`,
+      [rescueRow.id, req.user.id, summaryText]
+    );
+    await conn.query(
+      `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
+       VALUES (?, ?, ?, ?, ?)`,
+      [rescueRow.id, rescueRow.status, rescueRow.status, req.user.id, summaryText]
+    );
+
+    const refNumber = rescueRow.reference_number || `RES-${rescueRow.id}`;
+    try {
+      const adminIds = await getActiveAdminIds(conn);
+      if (adminIds.length) {
+        await createNotificationForUsers(conn, {
+          title: `Rescue Outcome (${refNumber}): ${outcomeLabelMap[primaryOutcome]}`,
+          message: summaryText,
+          category: 'Dispatch',
+          createdBy: req.user.id,
+          userIds: adminIds,
+        });
+      }
+      if (rescueRow.user_id) {
+        const residentMsg =
+          primaryOutcome === 'first_aid'
+            ? 'First aid and on-site assistance have been provided by the responder.'
+            : needsTransport
+              ? `Responder has arranged transportation (${outcomeLabelMap[primaryOutcome]}).`
+              : 'Rescue assistance is in progress.';
+        await createNotificationForUsers(conn, {
+          title: `Rescue Update (${refNumber})`,
+          message: residentMsg,
+          category: 'Dispatch',
+          createdBy: req.user.id,
+          userIds: [rescueRow.user_id],
+        });
+      }
+    } catch (_) {}
+
+    const [savedOutRows] = await conn.query('SELECT * FROM rescue_outcomes WHERE rescue_id = ? LIMIT 1', [rescueRow.id]);
+    const [savedTrRows] = await conn.query(
+      'SELECT * FROM rescue_transports WHERE rescue_id = ? ORDER BY created_at ASC, id ASC',
+      [rescueRow.id]
+    );
+    await conn.commit();
+
+    const o = savedOutRows[0];
+    const outcomePayload = {
+      primaryOutcome: o.primary_outcome,
+      totalRescued: Number(o.total_rescued || 0),
+      firstAidCount: Number(o.first_aid_count || 0),
+      hospitalTransportCount: Number(o.hospital_transport_count || 0),
+      medicalFacilityCount: Number(o.medical_facility_count || 0),
+      evacuationCenterCount: Number(o.evacuation_center_count || 0),
+      stillAssistingCount: Number(o.still_assisting_count || 0),
+      firstAidActions: o.first_aid_actions || '',
+      furtherMedicalRecommended: Boolean(o.further_medical_recommended),
+      transportRequired: Boolean(o.transport_required),
+      otherDescription: o.other_description || '',
+      adminCoordinationRequired: Boolean(o.admin_coordination_required),
+      operationalNotes: o.operational_notes || '',
+      recordedAt: o.recorded_at,
+      updatedAt: o.updated_at,
+    };
+
+    emitRescueOutcomeUpdated({
+      id: refNumber,
+      dbId: rescueRow.id,
+      referenceNumber: refNumber,
+      responderId: req.user.id,
+      residentId: rescueRow.user_id,
+      ...outcomePayload,
+      transportsCount: savedTrRows.length,
+    });
+
+    return res.json({
+      success: true,
+      outcome: outcomePayload,
+      transports: savedTrRows.map((tr) => ({
+        id: tr.id,
+        destinationCategory: tr.destination_category,
+        hospitalId: tr.hospital_id,
+        evacuationCenterId: tr.evacuation_center_id,
+        destinationName: tr.destination_name,
+        destinationFacilityType: tr.destination_facility_type,
+        latitude: tr.destination_latitude !== null ? Number(tr.destination_latitude) : null,
+        longitude: tr.destination_longitude !== null ? Number(tr.destination_longitude) : null,
+        peopleCount: Number(tr.people_count || 1),
+        routeDistanceMeters: tr.route_distance_meters !== null ? Number(tr.route_distance_meters) : null,
+        routeDurationSeconds: tr.route_duration_seconds !== null ? Number(tr.route_duration_seconds) : null,
+        transportStatus: tr.transport_status,
+        startedAt: tr.started_at,
+        arrivedAt: tr.arrived_at,
+        handedOverAt: tr.handed_over_at,
+        handoverConfirmed: Boolean(tr.handover_confirmed),
+        handoverNotes: tr.handover_notes || '',
+      })),
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Portal API] POST /responder/assignments/:id/outcome failed:', err.message);
+    return res.status(500).json({ error: 'Unable to record rescue outcome.' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/responder/assignments/:id/transports', requireRole('responder', 'admin'), async (req, res) => {
+  const paramId = String(req.params.id || '').trim();
+  const { destinationCategory, hospitalId, evacuationCenterId, facilityId, peopleCount, routeDistanceMeters, routeDurationSeconds } = req.body || {};
+  const cat = String(destinationCategory || '').toLowerCase();
+
+  if (!['hospital', 'medical_facility', 'evacuation_center'].includes(cat)) {
+    return res.status(400).json({ error: 'Invalid transport destination category.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const resolved = await resolveOwnedRescueForResponder(conn, paramId, req.user);
+    if (resolved.error) {
+      await conn.rollback();
+      return res.status(resolved.errorStatus).json({ error: resolved.error });
+    }
+    const rescueRow = resolved.rescueRow;
+
+    if (rescueRow.status === 'Completed' || rescueRow.status === 'Cancelled') {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Cannot add transport to a completed or cancelled rescue operation.' });
+    }
+
+    const pCount = Math.max(1, parseInt(peopleCount, 10) || 1);
+    const distMeters = Number.isFinite(Number(routeDistanceMeters)) ? Math.round(Number(routeDistanceMeters)) : null;
+    const durSeconds = Number.isFinite(Number(routeDurationSeconds)) ? Math.round(Number(routeDurationSeconds)) : null;
+
+    let destData = null;
+    if (cat === 'evacuation_center') {
+      const ecId = parseInt(evacuationCenterId || facilityId, 10);
+      if (!Number.isFinite(ecId) || ecId <= 0) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Invalid evacuation center ID.' });
+      }
+      const [ecRows] = await conn.query('SELECT * FROM evacuation_centers WHERE id = ? LIMIT 1', [ecId]);
+      if (!ecRows.length) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
+      }
+      const ec = ecRows[0];
+      if (ec.status === 'Full / Closed') {
+        await conn.rollback();
+        return res.status(400).json({ error: `${ec.name} is currently Full / Closed.` });
+      }
+      destData = {
+        hospitalId: null,
+        evacuationCenterId: ec.id,
+        destinationName: ec.name,
+        destinationFacilityType: 'Evacuation Center',
+        latitude: Number(ec.latitude),
+        longitude: Number(ec.longitude),
+      };
+    } else {
+      const hId = parseInt(hospitalId || facilityId, 10);
+      if (!Number.isFinite(hId) || hId <= 0) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Invalid healthcare facility ID.' });
+      }
+      const [hRows] = await conn.query('SELECT * FROM hospitals WHERE id = ? LIMIT 1', [hId]);
+      if (!hRows.length) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Selected healthcare facility does not exist.' });
+      }
+      const fac = hRows[0];
+      if (fac.status === 'Closed') {
+        await conn.rollback();
+        return res.status(400).json({ error: `${fac.name} is currently Closed / Inactive.` });
+      }
+      if (fac.verification_status !== 'Verified') {
+        await conn.rollback();
+        return res.status(400).json({ error: `${fac.name} is marked "${fac.verification_status}" and cannot be selected.` });
+      }
+      if (cat === 'hospital' && fac.facility_type !== 'Hospital') {
+        await conn.rollback();
+        return res.status(400).json({ error: `${fac.name} is classified as ${fac.facility_type}, not a Hospital.` });
+      }
+      if (cat === 'medical_facility' && fac.facility_type !== 'Health Center') {
+        await conn.rollback();
+        return res.status(400).json({ error: `${fac.name} is classified as ${fac.facility_type}, not a Health Center.` });
+      }
+      destData = {
+        hospitalId: fac.id,
+        evacuationCenterId: null,
+        destinationName: fac.name,
+        destinationFacilityType: fac.facility_type || 'Hospital',
+        latitude: Number(fac.latitude),
+        longitude: Number(fac.longitude),
+      };
+    }
+
+    // Prevent duplicate active transport leg for the same rescue & destination
+    const [existingLeg] = await conn.query(
+      cat === 'evacuation_center'
+        ? `SELECT id FROM rescue_transports
+           WHERE rescue_id = ? AND destination_category = 'evacuation_center' AND evacuation_center_id = ?
+             AND transport_status IN ('Pending', 'In Transit', 'Arrived')
+           LIMIT 1`
+        : `SELECT id FROM rescue_transports
+           WHERE rescue_id = ? AND destination_category = ? AND hospital_id = ?
+             AND transport_status IN ('Pending', 'In Transit', 'Arrived')
+           LIMIT 1`,
+      cat === 'evacuation_center'
+        ? [rescueRow.id, destData.evacuationCenterId]
+        : [rescueRow.id, cat, destData.hospitalId]
+    );
+
+    if (!existingLeg.length) {
+      await conn.query(
+        `INSERT INTO rescue_transports (
+           rescue_id, responder_user_id, destination_category, hospital_id, evacuation_center_id,
+           destination_name, destination_facility_type, destination_latitude, destination_longitude,
+           people_count, route_distance_meters, route_duration_seconds, transport_status
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        [
+          rescueRow.id,
+          req.user.id,
+          cat,
+          destData.hospitalId,
+          destData.evacuationCenterId,
+          destData.destinationName,
+          destData.destinationFacilityType,
+          destData.latitude,
+          destData.longitude,
+          pCount,
+          distMeters,
+          durSeconds,
+        ]
+      );
+    }
+
+    await conn.commit();
+    const [savedTrRows] = await pool.query(
+      `SELECT * FROM rescue_transports WHERE rescue_id = ? AND transport_status <> 'Cancelled' ORDER BY id ASC`,
+      [rescueRow.id]
+    );
+    return res.json({
+      success: true,
+      transports: savedTrRows.map((tr) => ({
+        id: tr.id,
+        destinationCategory: tr.destination_category,
+        hospitalId: tr.hospital_id,
+        evacuationCenterId: tr.evacuation_center_id,
+        destinationName: tr.destination_name,
+        destinationFacilityType: tr.destination_facility_type,
+        latitude: tr.destination_latitude !== null ? Number(tr.destination_latitude) : null,
+        longitude: tr.destination_longitude !== null ? Number(tr.destination_longitude) : null,
+        peopleCount: Number(tr.people_count || 1),
+        routeDistanceMeters: tr.route_distance_meters !== null ? Number(tr.route_distance_meters) : null,
+        routeDurationSeconds: tr.route_duration_seconds !== null ? Number(tr.route_duration_seconds) : null,
+        transportStatus: tr.transport_status,
+        startedAt: tr.started_at,
+        arrivedAt: tr.arrived_at,
+        handedOverAt: tr.handed_over_at,
+        handoverConfirmed: Boolean(tr.handover_confirmed),
+        handoverNotes: tr.handover_notes || '',
+      })),
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Portal API] POST /responder/assignments/:id/transports failed:', err.message);
+    return res.status(500).json({ error: 'Unable to add transport destination.' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.patch('/responder/assignments/:id/transports/:transportId', requireRole('responder', 'admin'), async (req, res) => {
+  const paramId = String(req.params.id || '').trim();
+  const transportId = parseInt(req.params.transportId, 10);
+  const { action, handoverConfirmed, handoverNotes } = req.body || {};
+
+  if (!Number.isInteger(transportId) || transportId <= 0) {
+    return res.status(400).json({ error: 'Invalid transport leg ID.' });
+  }
+  if (!['start', 'arrive', 'handover', 'cancel'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid transport action. Expected start, arrive, handover, or cancel.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const resolved = await resolveOwnedRescueForResponder(conn, paramId, req.user);
+    if (resolved.error) {
+      await conn.rollback();
+      return res.status(resolved.errorStatus).json({ error: resolved.error });
+    }
+    const rescueRow = resolved.rescueRow;
+
+    const [trRows] = await conn.query(
+      'SELECT * FROM rescue_transports WHERE id = ? AND rescue_id = ? LIMIT 1',
+      [transportId, rescueRow.id]
+    );
+    if (!trRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Transport record not found.' });
+    }
+    const tr = trRows[0];
+
+    let nextStatus = tr.transport_status;
+    let noteMsg = '';
+    if (action === 'start') {
+      nextStatus = 'In Transit';
+      noteMsg = `Transportation started to ${tr.destination_name} (${tr.destination_facility_type}) for ${tr.people_count} person(s).`;
+      await conn.query(
+        `UPDATE rescue_transports
+         SET transport_status = 'In Transit', started_at = COALESCE(started_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [tr.id]
+      );
+    } else if (action === 'arrive') {
+      nextStatus = 'Arrived';
+      noteMsg = `Arrived at ${tr.destination_name}.`;
+      await conn.query(
+        `UPDATE rescue_transports
+         SET transport_status = 'Arrived',
+             started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+             arrived_at = COALESCE(arrived_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [tr.id]
+      );
+    } else if (action === 'handover') {
+      if (!handoverConfirmed) {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Handover confirmation is required.' });
+      }
+      if (!tr.arrived_at && tr.transport_status !== 'Arrived') {
+        await conn.rollback();
+        return res.status(400).json({ error: 'Arrival at destination must be recorded before confirming handover.' });
+      }
+      nextStatus = 'Handed Over';
+      const cleanNotes = String(handoverNotes || '').trim();
+      noteMsg = `Patient/evacuee handover confirmed at ${tr.destination_name}${cleanNotes ? `: ${cleanNotes}` : '.'}`;
+      await conn.query(
+        `UPDATE rescue_transports
+         SET transport_status = 'Handed Over',
+             handed_over_at = COALESCE(handed_over_at, CURRENT_TIMESTAMP),
+             handover_confirmed = TRUE,
+             handover_notes = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [cleanNotes || null, tr.id]
+      );
+    } else if (action === 'cancel') {
+      nextStatus = 'Cancelled';
+      noteMsg = `Transportation leg to ${tr.destination_name} cancelled.`;
+      await conn.query(
+        `UPDATE rescue_transports SET transport_status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [tr.id]
+      );
+    }
+
+    await conn.query(
+      `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, is_internal_only)
+       VALUES (?, ?, 'In Progress', ?, FALSE)`,
+      [rescueRow.id, req.user.id, noteMsg]
+    );
+    await conn.query(
+      `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
+       VALUES (?, ?, ?, ?, ?)`,
+      [rescueRow.id, rescueRow.status, rescueRow.status, req.user.id, noteMsg]
+    );
+
+    const refNumber = rescueRow.reference_number || `RES-${rescueRow.id}`;
+    try {
+      const adminIds = await getActiveAdminIds(conn);
+      const recipients = [...adminIds];
+      if (rescueRow.user_id) recipients.push(rescueRow.user_id);
+      if (recipients.length) {
+        await createNotificationForUsers(conn, {
+          title: `Transport Update (${refNumber}): ${nextStatus}`,
+          message: noteMsg,
+          category: 'Dispatch',
+          createdBy: req.user.id,
+          userIds: recipients,
+        });
+      }
+    } catch (_) {}
+
+    const [updatedRows] = await conn.query('SELECT * FROM rescue_transports WHERE id = ? LIMIT 1', [tr.id]);
+    await conn.commit();
+    const u = updatedRows[0];
+
+    emitRescueTransportUpdated({
+      id: refNumber,
+      dbId: rescueRow.id,
+      referenceNumber: refNumber,
+      transportId: u.id,
+      destinationName: u.destination_name,
+      destinationFacilityType: u.destination_facility_type,
+      transportStatus: u.transport_status,
+      responderId: req.user.id,
+      residentId: rescueRow.user_id,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      transport: {
+        id: u.id,
+        destinationCategory: u.destination_category,
+        hospitalId: u.hospital_id,
+        evacuationCenterId: u.evacuation_center_id,
+        destinationName: u.destination_name,
+        destinationFacilityType: u.destination_facility_type,
+        latitude: u.destination_latitude !== null ? Number(u.destination_latitude) : null,
+        longitude: u.destination_longitude !== null ? Number(u.destination_longitude) : null,
+        peopleCount: Number(u.people_count || 1),
+        routeDistanceMeters: u.route_distance_meters !== null ? Number(u.route_distance_meters) : null,
+        routeDurationSeconds: u.route_duration_seconds !== null ? Number(u.route_duration_seconds) : null,
+        transportStatus: u.transport_status,
+        startedAt: u.started_at,
+        arrivedAt: u.arrived_at,
+        handedOverAt: u.handed_over_at,
+        handoverConfirmed: Boolean(u.handover_confirmed),
+        handoverNotes: u.handover_notes || '',
+      },
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Portal API] PATCH /responder/assignments/:id/transports/:transportId failed:', err.message);
+    return res.status(500).json({ error: 'Unable to update transportation status.' });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), async (req, res) => {
   try {
     const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
@@ -2236,11 +3157,14 @@ router.get('/responder/map-data', requireRole('responder', 'admin'), async (req,
           ...e,
           coordinates: { lat: Number(e.latitude), lng: Number(e.longitude) },
         })),
-      barangayFacilities: hospitalRows.map((h) => ({
-        ...h,
-        type: h.facility_type || h.hospital_type || 'Hospital',
-        coordinates: { lat: Number(h.latitude), lng: Number(h.longitude) },
-      })),
+      barangayFacilities: hospitalRows
+        .filter((h) => h.verification_status === 'Verified' && h.status !== 'Closed')
+        .map((h) => ({
+          ...h,
+          type: h.facility_type || h.hospital_type || 'Hospital',
+          verificationStatus: h.verification_status,
+          coordinates: { lat: Number(h.latitude), lng: Number(h.longitude) },
+        })),
       responderLocation:
         prof && prof.current_latitude && prof.current_longitude
           ? { lat: Number(prof.current_latitude), lng: Number(prof.current_longitude) }

@@ -67,6 +67,7 @@ const navState = {
   staleGpsTimer: null,
   syncIntervalId: null,
   gpsRequestInFlight: false,
+  activeTransportLeg: null,
 };
 
 const arrivalConfig = {
@@ -365,10 +366,10 @@ function renderFilteredAssignments() {
             <svg class="w-3.5 h-3.5 text-[#F5B900] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
             <span class="truncate">${a.location || 'Barangay Bayanan'}</span>
           </p>
-          ${isRescue && a.peopleCount ? `
+          ${isRescue && (a.peopleCountDisplay || a.peopleCount || a.peopleCountCategory) ? `
             <div class="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#D93636] bg-[#FFF1F1] px-2 py-0.5 rounded-lg border border-[#FFC2C2]">
               <svg class="w-3 h-3 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-              <span>${a.peopleCount} ${a.peopleCount > 1 ? 'People Trapped' : 'Person Trapped'}</span>
+              <span>${a.peopleCountDisplay || (a.peopleCountCategory === 'more_than_10' ? 'More than 10' : a.peopleCountCategory === 'unknown' || !a.peopleCount ? 'Unknown' : `${a.peopleCount} ${a.peopleCount > 1 ? 'People Trapped' : 'Person Trapped'}`)}</span>
             </div>
           ` : ''}
           ${a.dispatchInstructions ? `
@@ -419,7 +420,13 @@ window.openAssignmentDetails = async function (id) {
     if (assignment.assignmentType === 'rescue') {
       if (rescueFields) {
         rescueFields.classList.remove('hidden');
-        document.getElementById('dtl-people-count').textContent = `${assignment.peopleCount || 1} Person(s)`;
+        document.getElementById('dtl-people-count').textContent =
+          assignment.peopleCountDisplay ||
+          (assignment.peopleCountCategory === 'more_than_10'
+            ? 'More than 10'
+            : assignment.peopleCountCategory === 'unknown' || !assignment.peopleCount
+              ? 'Unknown'
+              : `${assignment.peopleCount} Person(s)`);
         document.getElementById('dtl-vulnerable').textContent = assignment.vulnerableDetails || 'None specified';
       }
       if (incidentFields) incidentFields.classList.add('hidden');
@@ -501,6 +508,9 @@ window.openAssignmentDetails = async function (id) {
       }
     }
 
+    // Rescue Outcome & Optional Transportation Panel
+    renderRescueOutcomePanel(assignment);
+
     // Dynamic Action Buttons
     renderActionButtons(assignment.status);
 
@@ -556,13 +566,22 @@ function renderActionButtons(currentStatus) {
       </div>
     `;
   } else if (s === 'on scene' || s === 'on site' || s === 'in progress') {
+    const isRescue = activeAssignmentDetail && activeAssignmentDetail.assignmentType === 'rescue';
+    const transports = Array.isArray(activeAssignmentDetail?.transports) ? activeAssignmentDetail.transports : [];
+    const activeLegs = transports.filter((t) => t.transportStatus !== 'Cancelled');
+    const needsHandover = Boolean(
+      isRescue &&
+      activeLegs.length > 0 &&
+      activeLegs.some((t) => t.transportStatus !== 'Handed Over' || !t.handoverConfirmed || !t.arrivedAt)
+    );
     buttonsHtml = `
       <button type="button" onclick="openProgressUpdateModal()" class="py-2.5 px-3 rounded-lg bg-slate-50 border border-[#FFE872] text-[#8A6800] hover:bg-[#FFF3D0] font-bold text-xs transition-all">
         Update Progress
       </button>
-      <button type="button" onclick="confirmStatusChange('Completed')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#278653] hover:bg-[#1E6E43] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
-        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-        <span>Mark Operation Completed</span>
+      <button type="button" ${needsHandover ? 'disabled title="Confirm arrival and handover for all transport legs before completing"' : ''} onclick="confirmStatusChange('Completed')"
+        class="flex-1 py-2.5 px-4 rounded-lg ${needsHandover ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'bg-[#278653] hover:bg-[#1E6E43] text-white shadow-subtle'} font-bold text-xs transition-all flex items-center justify-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span>${needsHandover ? 'Handover Required to Complete' : 'Complete Task'}</span>
       </button>
     `;
   } else if (s === 'completed' || s === 'resolved') {
@@ -592,7 +611,10 @@ function parseValidCoords(coords) {
   return { lat, lng };
 }
 
-function isNavigableStatus(status) {
+function isNavigableStatus(status, assignment) {
+  if (navState.activeTransportLeg || (assignment && assignment._isTransportNavigation)) {
+    return true;
+  }
   const s = String(status || '').toLowerCase();
   return s === 'accepted' || s === 'en route' || s === 'responding';
 }
@@ -606,9 +628,12 @@ function initDetailMap(assignment) {
 
   stopAssignmentNavigation({ clearRoute: true });
 
+  const isTransportNav = Boolean(assignment && assignment._isTransportNavigation && assignment._transportLeg);
+  navState.activeTransportLeg = isTransportNav ? assignment._transportLeg : null;
+
   const destCoords = parseValidCoords(assignment && assignment.coordinates);
   const statusStr = assignment ? assignment.status : '';
-  const shouldNavigate = isNavigableStatus(statusStr);
+  const shouldNavigate = isNavigableStatus(statusStr, assignment);
 
   if (!destCoords) {
     if (missingOverlay) missingOverlay.classList.remove('hidden');
@@ -627,11 +652,19 @@ function initDetailMap(assignment) {
 
   const targetCoords = [destCoords.lat, destCoords.lng];
   const destLabel = (assignment && (assignment.location || assignment.referenceNumber)) || 'Assigned Location';
+  if (isTransportNav) {
+    const locEl = document.getElementById('dtl-location');
+    if (locEl) locEl.textContent = `${destLabel} (${assignment._transportLeg.destinationFacilityType || 'Transport Destination'})`;
+  }
 
   const isRescueTarget =
     (assignment && (assignment.assignmentType === 'rescue' || assignment.recordType === 'rescue')) ||
     String((assignment && (assignment.referenceNumber || assignment.id)) || '').startsWith('RES-');
-  const targetIcon = GeoSafeMapping.createCustomIcon(isRescueTarget ? 'rescue' : 'incident');
+  const targetIcon = isTransportNav
+    ? (assignment._transportLeg.destinationCategory === 'evacuation_center'
+        ? GeoSafeMapping.createCustomIcon('evacuation')
+        : GeoSafeMapping.createMedicalFacilityIcon(assignment._transportLeg.destinationFacilityType || 'Hospital'))
+    : GeoSafeMapping.createCustomIcon(isRescueTarget ? 'rescue' : 'incident');
 
   if (!detailMap) {
     try {
@@ -666,7 +699,7 @@ function initDetailMap(assignment) {
   const arrivedBanner = document.getElementById('dtl-nav-arrived-banner');
   const toggleBtn = document.getElementById('dtl-nav-toggle-btn');
   const statusLower = String(statusStr || '').toLowerCase();
-  const isArrived = statusLower === 'on scene' || statusLower === 'on site';
+  const isArrived = !isTransportNav && (statusLower === 'on scene' || statusLower === 'on site');
 
   if (shouldNavigate) {
     navState.arrived = false;
@@ -857,6 +890,7 @@ function stopAssignmentNavigation({ clearRoute = true, userPaused = false, prese
   }
 
   if (clearRoute) {
+    navState.activeTransportLeg = null;
     clearRouteDisplay();
     clearResponderMarker();
     navState.currentGps = null;
@@ -1056,6 +1090,9 @@ function handleGpsSuccess(position, isCycleSync = false, sessionId = navState.se
   const gps = { lat, lng, accuracy };
   navState.currentGps = gps;
   updateResponderGpsMarker(gps);
+  if (isCycleSync) {
+    syncResponderAssignmentGps(gps);
+  }
 
   // Evaluate automatic GPS-based arrival detection first (never triggered by route completion alone)
   evaluateArrivalProximity(gps);
@@ -1172,7 +1209,11 @@ function evaluateArrivalProximity(gps) {
       retryCooldownOk
     ) {
       clearArrivalRecheckTimer();
-      triggerAutomaticArrivalOnScene(gps, distMeters);
+      if (navState.activeTransportLeg) {
+        triggerAutomaticTransportArrival(gps, distMeters);
+      } else {
+        triggerAutomaticArrivalOnScene(gps, distMeters);
+      }
     } else {
       // Schedule fresh GPS check so stationary responders already at the scene confirm without moving
       scheduleArrivalRecheck();
@@ -1185,6 +1226,62 @@ function evaluateArrivalProximity(gps) {
       arrivalState.firstInsideAt = null;
       updateNavStatusUI('Navigation Active', false);
     }
+  }
+}
+
+async function triggerAutomaticTransportArrival(gps, distMeters) {
+  const leg = navState.activeTransportLeg;
+  if (!activeAssignmentDetail || !leg || arrivalState.inFlight || arrivalState.triggered) return;
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    arrivalState.pendingRetry = true;
+    showNavigationError('Network disconnected while confirming transport arrival. Will retry automatically when online.', true);
+    return;
+  }
+
+  arrivalState.inFlight = true;
+  arrivalState.lastAttemptAt = Date.now();
+  arrivalState.lastGps = gps;
+  arrivalState.lastDistMeters = distMeters;
+  const assignmentId = activeAssignmentDetail.id;
+
+  try {
+    if (window.geoSafeStore && !window.geoSafeStore.getCsrfToken() && typeof window.geoSafeStore.checkSession === 'function') {
+      await window.geoSafeStore.checkSession();
+    }
+    const data = await window.geoSafeStore.request(
+      `/responder/assignments/${encodeURIComponent(assignmentId)}/transports/${leg.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'arrive' }),
+      }
+    );
+    if (!data || !data.transport) throw new Error((data && data.error) || 'Failed to mark transport arrived');
+
+    arrivalState.triggered = true;
+    arrivalState.pendingRetry = false;
+    const destLabel = leg.destinationName || 'Transport Destination';
+    navState.activeTransportLeg = null;
+    renderResponderArrivedState(destLabel);
+
+    GeoSafeResponderUI.showToast(
+      `Arrived at ${destLabel}. Please confirm patient/evacuee handover.`,
+      'success'
+    );
+
+    await loadAssignments();
+    if (activeAssignmentDetail && activeAssignmentDetail.id === assignmentId) {
+      await openAssignmentDetails(assignmentId);
+    }
+  } catch (err) {
+    arrivalState.pendingRetry = true;
+    arrivalState.triggered = false;
+    showNavigationError(
+      err.message || 'Failed to confirm transport arrival with server. Will retry safely.',
+      true
+    );
+  } finally {
+    arrivalState.inFlight = false;
   }
 }
 
@@ -1304,7 +1401,7 @@ function runTenSecondNavigationSync() {
 }
 
 function startAssignmentNavigation(assignment) {
-  if (!assignment || !isNavigableStatus(assignment.status) || !navState.destCoords) return;
+  if (!assignment || !isNavigableStatus(assignment.status, assignment) || !navState.destCoords) return;
 
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     updateNavStatusUI('GPS Unavailable', false);
@@ -1895,6 +1992,378 @@ window.submitProgressUpdate = async function () {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Submit Update';
     }
+  }
+};
+
+// ============================================================================
+// OPTIONAL PATIENT / EVACUEE TRANSPORT & HANDOVER WORKFLOW
+// ============================================================================
+let loadedRecommendedFacilities = [];
+
+function escapeOutcomeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatRouteDist(meters) {
+  const m = Number(meters);
+  if (!Number.isFinite(m) || m <= 0) return '—';
+  return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
+}
+
+function formatRouteEta(sec) {
+  const s = Number(sec);
+  if (!Number.isFinite(s) || s <= 0) return '—';
+  const mins = Math.max(1, Math.round(s / 60));
+  return `${mins} min`;
+}
+
+function renderRescueOutcomePanel(assignment) {
+  const section = document.getElementById('dtl-rescue-outcome-section');
+  const form = document.getElementById('dtl-outcome-form');
+  const legsContainer = document.getElementById('dtl-transport-legs-container');
+  if (!section) return;
+
+  const isRescue = assignment && assignment.assignmentType === 'rescue';
+  const s = String(assignment?.status || '').toLowerCase();
+  const canEdit = isRescue && ['on scene', 'on site', 'in progress'].includes(s);
+  const transports = Array.isArray(assignment?.transports) ? assignment.transports : [];
+
+  if (!isRescue || (!canEdit && transports.length === 0)) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+
+  if (legsContainer) {
+    if (transports.length > 0) {
+      legsContainer.classList.remove('hidden');
+      legsContainer.innerHTML = `
+        <div class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">Transport &amp; Handover Tracking</div>
+        ${transports.map((tr) => {
+          const statusColor =
+            tr.transportStatus === 'Handed Over'
+              ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+              : tr.transportStatus === 'Arrived'
+                ? 'bg-blue-50 text-[#0A58CA] border-blue-200'
+                : tr.transportStatus === 'In Transit'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-slate-50 text-slate-600 border-slate-200';
+          return `
+            <div class="p-2.5 rounded-md border border-slate-200 bg-white space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <strong class="text-xs text-[#0f172a]">${escapeOutcomeHtml(tr.destinationName)}</strong>
+                  <span class="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">${escapeOutcomeHtml(tr.destinationFacilityType)}</span>
+                  <span class="ml-1.5 text-[10px] text-[#64748b]">${tr.peopleCount} person(s)</span>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${statusColor}">${escapeOutcomeHtml(tr.transportStatus)}</span>
+              </div>
+              <div class="text-[10px] text-[#64748b] flex flex-wrap gap-3">
+                ${tr.routeDistanceMeters ? `<span>Route: ${formatRouteDist(tr.routeDistanceMeters)} (${formatRouteEta(tr.routeDurationSeconds)})</span>` : ''}
+                ${tr.startedAt ? `<span>Started: ${new Date(tr.startedAt).toLocaleTimeString()}</span>` : ''}
+                ${tr.arrivedAt ? `<span>Arrived: ${new Date(tr.arrivedAt).toLocaleTimeString()}</span>` : ''}
+                ${tr.handedOverAt ? `<span>Handed Over: ${new Date(tr.handedOverAt).toLocaleTimeString()}</span>` : ''}
+              </div>
+              ${canEdit && tr.transportStatus !== 'Handed Over' && tr.transportStatus !== 'Cancelled' ? `
+                <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                  ${tr.transportStatus === 'Pending' || tr.transportStatus === 'In Transit' ? `
+                    <button type="button" onclick="triggerTransportAction(${tr.id}, 'start')"
+                      class="h-7 px-2.5 rounded bg-[#0A58CA] hover:bg-[#084298] text-white text-[11px] font-semibold">
+                      ${tr.transportStatus === 'In Transit' ? 'Navigate to Destination' : 'Start Transport &amp; Navigate'}
+                    </button>
+                  ` : ''}
+                  ${tr.transportStatus === 'In Transit' || tr.transportStatus === 'Pending' ? `
+                    <button type="button" onclick="triggerTransportAction(${tr.id}, 'arrive')"
+                      class="h-7 px-2.5 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#0A58CA] text-[11px] font-semibold">
+                      Mark Arrived
+                    </button>
+                  ` : ''}
+                  ${tr.transportStatus === 'Arrived' ? `
+                    <button type="button" onclick="triggerTransportAction(${tr.id}, 'handover')"
+                      class="h-7 px-2.5 rounded bg-[#278653] hover:bg-[#1E6E43] text-white text-[11px] font-semibold">
+                      Confirm Patient Handover
+                    </button>
+                  ` : ''}
+                  ${tr.transportStatus === 'Pending' ? `
+                    <button type="button" onclick="triggerTransportAction(${tr.id}, 'cancel')"
+                      class="h-7 px-2.5 rounded border border-red-200 bg-red-50 hover:bg-red-100 text-[#D93636] text-[11px] font-semibold">
+                      Remove
+                    </button>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
+      `;
+    } else {
+      legsContainer.classList.add('hidden');
+      legsContainer.innerHTML = '';
+    }
+  }
+
+  if (form) {
+    form.classList.toggle('hidden', !canEdit);
+    if (canEdit) {
+      const neededCheck = document.getElementById('out-transport-needed');
+      const picker = document.getElementById('out-destination-picker');
+      const typeSelect = document.getElementById('out-transport-type');
+      const destSelect = document.getElementById('out-rec-destination');
+      const statusEl = document.getElementById('out-rec-status');
+      loadedRecommendedFacilities = [];
+      if (neededCheck) neededCheck.checked = false;
+      if (picker) picker.classList.add('hidden');
+      if (typeSelect) typeSelect.value = '';
+      if (destSelect) {
+        destSelect.disabled = true;
+        destSelect.innerHTML = '<option value="">Select destination type first...</option>';
+      }
+      if (statusEl) statusEl.classList.add('hidden');
+    }
+  }
+}
+
+window.toggleOptionalTransportPicker = function () {
+  const needed = Boolean(document.getElementById('out-transport-needed')?.checked);
+  const picker = document.getElementById('out-destination-picker');
+  const typeSelect = document.getElementById('out-transport-type');
+  const destSelect = document.getElementById('out-rec-destination');
+  const statusEl = document.getElementById('out-rec-status');
+  if (picker) picker.classList.toggle('hidden', !needed);
+  if (!needed) {
+    loadedRecommendedFacilities = [];
+    if (typeSelect) typeSelect.value = '';
+    if (destSelect) {
+      destSelect.disabled = true;
+      destSelect.innerHTML = '<option value="">Select destination type first...</option>';
+    }
+    if (statusEl) statusEl.classList.add('hidden');
+  }
+};
+
+window.handleTransportTypeChange = function () {
+  const recCat = document.getElementById('out-transport-type')?.value || '';
+  const destSelect = document.getElementById('out-rec-destination');
+  const statusEl = document.getElementById('out-rec-status');
+  loadedRecommendedFacilities = [];
+  if (!recCat) {
+    if (destSelect) {
+      destSelect.disabled = true;
+      destSelect.innerHTML = '<option value="">Select destination type first...</option>';
+    }
+    if (statusEl) statusEl.classList.add('hidden');
+    return;
+  }
+  loadOutcomeFacilityRecommendations(recCat);
+};
+
+window.loadOutcomeFacilityRecommendations = async function (explicitCategory) {
+  const destSelect = document.getElementById('out-rec-destination');
+  const statusEl = document.getElementById('out-rec-status');
+  const recCat = explicitCategory || document.getElementById('out-transport-type')?.value || '';
+  if (!destSelect || !recCat || !activeAssignmentDetail) return;
+
+  const coords = parseValidCoords(activeAssignmentDetail.coordinates);
+  if (!coords) {
+    loadedRecommendedFacilities = [];
+    destSelect.innerHTML = '<option value="">Coordinates unavailable</option>';
+    destSelect.disabled = true;
+    if (statusEl) {
+      statusEl.textContent = 'Incident/rescue coordinates are missing; cannot compute route recommendations.';
+      statusEl.className = 'text-[11px] text-[#D93636]';
+      statusEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  destSelect.disabled = true;
+  destSelect.innerHTML = '<option value="">Loading eligible destinations...</option>';
+  if (statusEl) {
+    statusEl.textContent = 'Calculating route distances from PostgreSQL facility directory...';
+    statusEl.className = 'text-[11px] text-[#64748b]';
+    statusEl.classList.remove('hidden');
+  }
+
+  try {
+    const res = await fetch(
+      `/api/hospitals/recommendations?lat=${encodeURIComponent(coords.lat)}&lng=${encodeURIComponent(coords.lng)}&category=${encodeURIComponent(recCat)}&includeUnverified=true`,
+      { credentials: 'include' }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load recommendations');
+
+    const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+    const flagged = Array.isArray(data.flaggedFacilities) ? data.flaggedFacilities : [];
+    loadedRecommendedFacilities = recs;
+
+    const eligibleRecs = recs.filter((fac) => fac.isVerified);
+    if (recs.length === 0 || eligibleRecs.length === 0) {
+      destSelect.innerHTML = '<option value="">No eligible destinations available</option>';
+      destSelect.disabled = true;
+      if (statusEl) {
+        statusEl.textContent = flagged.length
+          ? `No verified destinations available (${flagged.length} flagged/unavailable).`
+          : 'No eligible destinations registered for this category.';
+        statusEl.className = 'text-[11px] text-amber-700';
+        statusEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    destSelect.disabled = false;
+    destSelect.innerHTML = [
+      '<option value="">Select recommended destination...</option>',
+      ...recs.map((fac, idx) => {
+        const distPart = fac.routeDistanceMeters
+          ? ` — ${formatRouteDist(fac.routeDistanceMeters)}${fac.routeDurationSeconds ? ` (~${formatRouteEta(fac.routeDurationSeconds)})` : ''}`
+          : '';
+        const unverifiedPart = fac.isVerified ? '' : ' (Unverified)';
+        return `<option value="${idx}" ${fac.isVerified ? '' : 'disabled'}>${escapeOutcomeHtml(fac.name)}${escapeOutcomeHtml(distPart)}${unverifiedPart}</option>`;
+      }),
+    ].join('');
+
+    if (statusEl) {
+      if (flagged.length > 0) {
+        statusEl.textContent = `${flagged.length} facility record(s) flagged/unavailable and excluded from selection.`;
+        statusEl.className = 'text-[10px] text-amber-700';
+        statusEl.classList.remove('hidden');
+      } else {
+        statusEl.classList.add('hidden');
+      }
+    }
+  } catch (err) {
+    loadedRecommendedFacilities = [];
+    destSelect.innerHTML = '<option value="">Unable to load destinations</option>';
+    destSelect.disabled = true;
+    if (statusEl) {
+      statusEl.textContent = err.message || 'Unable to load destinations.';
+      statusEl.className = 'text-[11px] text-[#D93636]';
+      statusEl.classList.remove('hidden');
+    }
+  }
+};
+
+let isAddingTransportLeg = false;
+
+window.addOptionalTransportLeg = async function () {
+  if (!activeAssignmentDetail || isAddingTransportLeg) return;
+  const recCat = document.getElementById('out-transport-type')?.value || '';
+  const rawIdx = document.getElementById('out-rec-destination')?.value || '';
+  if (!recCat) {
+    GeoSafeResponderUI.showToast('Please select a Destination Type.', 'warning');
+    return;
+  }
+  if (rawIdx === '') {
+    GeoSafeResponderUI.showToast('Please select a Recommended Transport Destination.', 'warning');
+    return;
+  }
+  const fac = loadedRecommendedFacilities[Number(rawIdx)];
+  if (!fac || !fac.isVerified) {
+    GeoSafeResponderUI.showToast('Selected destination is not verified.', 'warning');
+    return;
+  }
+
+  const addBtn = document.getElementById('out-add-transport-btn');
+  isAddingTransportLeg = true;
+  if (addBtn) addBtn.disabled = true;
+  try {
+    if (window.geoSafeStore && !window.geoSafeStore.getCsrfToken() && typeof window.geoSafeStore.checkSession === 'function') {
+      await window.geoSafeStore.checkSession();
+    }
+    const data = await window.geoSafeStore.request(
+      `/responder/assignments/${encodeURIComponent(activeAssignmentDetail.id)}/transports`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          destinationCategory: recCat,
+          hospitalId: recCat === 'evacuation_center' ? null : fac.id,
+          evacuationCenterId: recCat === 'evacuation_center' ? fac.id : null,
+          peopleCount: Number(activeAssignmentDetail.peopleCount) || 1,
+          routeDistanceMeters: fac.routeDistanceMeters || null,
+          routeDurationSeconds: fac.routeDurationSeconds || null,
+        }),
+      }
+    );
+    if (!data || !data.success) throw new Error((data && data.error) || 'Failed to add transport destination');
+
+    GeoSafeResponderUI.showToast(`Transport destination added: ${fac.name}`, 'success');
+    await loadAssignments();
+    await openAssignmentDetails(activeAssignmentDetail.id);
+  } catch (err) {
+    GeoSafeResponderUI.showToast(err.message || 'Could not add transport destination.', 'error');
+  } finally {
+    isAddingTransportLeg = false;
+    if (addBtn) addBtn.disabled = false;
+  }
+};
+
+window.triggerTransportAction = async function (transportId, action) {
+  if (!activeAssignmentDetail) return;
+  let handoverNotes = '';
+  let handoverConfirmed = false;
+  if (action === 'handover') {
+    handoverConfirmed = window.confirm('Confirm that rescued individual(s) have been safely handed over at the destination?');
+    if (!handoverConfirmed) return;
+    handoverNotes = window.prompt('Optional handover notes (receiving unit / remarks):', '') || '';
+  }
+
+  try {
+    if (window.geoSafeStore && !window.geoSafeStore.getCsrfToken() && typeof window.geoSafeStore.checkSession === 'function') {
+      await window.geoSafeStore.checkSession();
+    }
+    const data = await window.geoSafeStore.request(
+      `/responder/assignments/${encodeURIComponent(activeAssignmentDetail.id)}/transports/${transportId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ action, handoverConfirmed, handoverNotes }),
+      }
+    );
+    if (!data || !data.transport) throw new Error((data && data.error) || 'Failed to update transport leg');
+
+    GeoSafeResponderUI.showToast(`Transport updated: ${data.transport.transportStatus}`, 'success');
+
+    if (action === 'start' && data.transport && Number.isFinite(data.transport.latitude) && Number.isFinite(data.transport.longitude)) {
+      if (Array.isArray(activeAssignmentDetail.transports)) {
+        activeAssignmentDetail.transports = activeAssignmentDetail.transports.map((t) =>
+          Number(t.id) === Number(data.transport.id) ? data.transport : t
+        );
+      }
+      renderRescueOutcomePanel(activeAssignmentDetail);
+      renderActionButtons(activeAssignmentDetail.status);
+
+      const destTarget = {
+        ...activeAssignmentDetail,
+        _isTransportNavigation: true,
+        _transportLeg: data.transport,
+        coordinates: { lat: data.transport.latitude, lng: data.transport.longitude },
+        location: data.transport.destinationName,
+      };
+      initDetailMap(destTarget);
+      document.getElementById('dtl-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      if (Array.isArray(activeAssignmentDetail.transports)) {
+        activeAssignmentDetail.transports = activeAssignmentDetail.transports
+          .map((t) => (Number(t.id) === Number(data.transport.id) ? data.transport : t))
+          .filter((t) => t.transportStatus !== 'Cancelled');
+      }
+      renderRescueOutcomePanel(activeAssignmentDetail);
+      renderActionButtons(activeAssignmentDetail.status);
+
+      if (action === 'arrive' || action === 'handover' || action === 'cancel') {
+        if (navState.activeTransportLeg && Number(navState.activeTransportLeg.id) === Number(transportId)) {
+          stopAssignmentNavigation({ clearRoute: true });
+        }
+      }
+      await loadAssignments();
+      await openAssignmentDetails(activeAssignmentDetail.id);
+    }
+  } catch (err) {
+    GeoSafeResponderUI.showToast(err.message || 'Transport update failed.', 'error');
   }
 };
 

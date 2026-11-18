@@ -91,11 +91,28 @@
     const reqRescueId = params.get('rescueId');
 
     if (reqConvId) {
-      await selectConversation(Number(reqConvId));
+      const targetId = Number(reqConvId);
+      const isActiveMatch = (state.conversations || []).some((c) => Number(c.id) === targetId);
+      const isArchivedMatch = (state.archivedConversations || []).some((c) => Number(c.id) === targetId);
+      if (isArchivedMatch && typeof openArchiveDrawer === 'function') {
+        openArchiveDrawer();
+      }
+      if (isActiveMatch || isArchivedMatch) {
+        await selectConversation(targetId);
+      } else if (window.GeoSafeToast) {
+        window.GeoSafeToast.error('Unable to open this responder conversation.');
+      }
     } else if (reqRescueId) {
-      const match = state.conversations.find((c) => Number(c.rescueId) === Number(reqRescueId));
+      const match =
+        state.conversations.find((c) => Number(c.rescueId) === Number(reqRescueId)) ||
+        (state.archivedConversations || []).find((c) => Number(c.rescueId) === Number(reqRescueId));
       if (match) {
+        if (match.isArchived && typeof openArchiveDrawer === 'function') {
+          openArchiveDrawer();
+        }
         await selectConversation(match.id);
+      } else if (window.GeoSafeToast) {
+        window.GeoSafeToast.error('No responder conversation is available for this rescue request yet.');
       }
     } else if (state.conversations.length > 0 && window.innerWidth >= 1024) {
       await selectConversation(state.conversations[0].id);
@@ -554,6 +571,11 @@
   function backToConversationList() {
     stopTypingSignal();
     exitMobileFullscreenThread();
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('from') === 'report-rescue') {
+      window.location.href = 'report-rescue.html';
+      return;
+    }
     const listPanel = document.getElementById('messages-list-panel');
     const threadPanel = document.getElementById('messages-thread-panel');
     if (listPanel && threadPanel) {

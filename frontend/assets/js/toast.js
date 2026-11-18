@@ -1,47 +1,49 @@
 /**
- * GeoSafe — Modern Floating Toast Notification System
+ * GeoSafe — Centralized Priority Toast Notification Queue
  * ============================================================================
- * Redesigned based on the reference showcase:
- *   - Success: Vibrant Green (#28C76F), circular white check icon, "Success!" title.
- *   - Error:   Vibrant Red-Orange (#F25430), circular white X icon, "Error!" title.
- *   - Info:    Vibrant Blue (#0082E6), circular white info icon, "Info!" title.
- *   - Warning: Vibrant Amber-Yellow (#F5A623), circular white warning icon, "Warning!" title.
- *
- * Key Features:
- *   - Large modern floating card layout with clean rounded corners (rounded-lg).
- *   - Large circular white icon on the left with centered colored glyph.
- *   - Bold title and legible message text in crisp white contrast.
- *   - Clean top-right dismiss button (X).
- *   - Smooth bottom progress bar indicating remaining auto-dismiss time (~4s).
- *   - Hover/focus pause: pauses both auto-dismiss timer and progress bar smoothly.
- *   - Responsive: 400-450px on desktop (max 90vw), calc(100% - 32px) on mobile.
- *   - Accessible: role="alert" / role="status", aria-live, keyboard close & ESC key.
- *   - Deduplication: prevents duplicate notifications for the same operation.
- *   - Non-blocking container (pointer-events-none container, pointer-events-auto toast).
- *   - Zero external dependencies.
+ * Features:
+ *   - Single-toast display: only ONE toast notification is visible at a time.
+ *   - Priority Queue:
+ *       1. Emergency / Critical (type: 'critical' | 'emergency' | 'error')
+ *       2. Warning              (type: 'warning')
+ *       3. Success              (type: 'success')
+ *       4. Information          (type: 'info')
+ *   - Deduplication: ignores duplicate notifications matching the same key or
+ *     type + message while currently displayed or waiting in the queue.
+ *   - Consistent duration (~4s default) with hover/focus pause & progress bar.
+ *   - Responsive layout with mobile safe-area inset support and non-blocking
+ *     pointer-events container.
+ *   - Dismissing one toast cleanly advances to the next queued notification.
  * ============================================================================
  */
 
 (function (global) {
   'use strict';
 
-  // Active toast registry keyed by type + normalized message to prevent duplicate stacking
-  const activeToasts = new Map();
+  const DEFAULT_DURATION = 4000;
+  const EXIT_ANIMATION_MS = 220;
 
-  const DEFAULT_DURATION = 4000; // ~4 seconds auto-dismiss
+  const PRIORITY_RANK = {
+    critical: 1,
+    emergency: 1,
+    error: 1,
+    warning: 2,
+    success: 3,
+    info: 4,
+  };
 
   const THEMES = {
-    success: {
-      bg: 'bg-[#28C76F]',
-      accentColor: '#28C76F',
-      defaultTitle: 'Success!',
-      role: 'status',
-      ariaLive: 'polite',
+    critical: {
+      bg: 'bg-[#D93636]',
+      accentColor: '#D93636',
+      defaultTitle: 'Emergency Alert!',
+      role: 'alert',
+      ariaLive: 'assertive',
       iconSvg: `
-        <svg class="w-5 h-5 text-[#28C76F]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+        <svg class="w-5 h-5 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.75" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
         </svg>
-      `
+      `,
     },
     error: {
       bg: 'bg-[#F25430]',
@@ -53,20 +55,7 @@
         <svg class="w-5 h-5 text-[#F25430]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
-      `
-    },
-    info: {
-      bg: 'bg-[#0082E6]',
-      accentColor: '#0082E6',
-      defaultTitle: 'Info!',
-      role: 'status',
-      ariaLive: 'polite',
-      iconSvg: `
-        <svg class="w-5 h-5 text-[#0082E6]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.75" aria-hidden="true">
-          <circle cx="12" cy="7" r="1.25" fill="currentColor" stroke="none"></circle>
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 11v6"></path>
-        </svg>
-      `
+      `,
     },
     warning: {
       bg: 'bg-[#F5A623]',
@@ -79,48 +68,75 @@
           <circle cx="12" cy="7" r="1.25" fill="currentColor" stroke="none"></circle>
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 11v6"></path>
         </svg>
-      `
-    }
+      `,
+    },
+    success: {
+      bg: 'bg-[#28C76F]',
+      accentColor: '#28C76F',
+      defaultTitle: 'Success!',
+      role: 'status',
+      ariaLive: 'polite',
+      iconSvg: `
+        <svg class="w-5 h-5 text-[#28C76F]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+        </svg>
+      `,
+    },
+    info: {
+      bg: 'bg-[#0082E6]',
+      accentColor: '#0082E6',
+      defaultTitle: 'Info!',
+      role: 'status',
+      ariaLive: 'polite',
+      iconSvg: `
+        <svg class="w-5 h-5 text-[#0082E6]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.75" aria-hidden="true">
+          <circle cx="12" cy="7" r="1.25" fill="currentColor" stroke="none"></circle>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 11v6"></path>
+        </svg>
+      `,
+    },
   };
+  THEMES.emergency = THEMES.critical;
 
-  const CONTAINER_CLASS = 'fixed top-4 inset-x-4 sm:inset-x-auto sm:top-6 sm:right-6 z-[9999] pointer-events-none flex flex-col gap-3.5 items-center sm:items-end w-auto max-w-[calc(100%-2rem)] sm:max-w-[440px] sm:w-[440px]';
+  const CONTAINER_CLASS =
+    'fixed top-3 inset-x-4 sm:inset-x-auto sm:top-5 sm:right-6 z-[9999] pointer-events-none flex flex-col items-center sm:items-end w-auto max-w-[calc(100%-2rem)] sm:max-w-[420px] sm:w-[420px]';
   const STYLE_ID = 'geosafe-toast-styles';
 
-  /**
-   * Critical toast styles injected once at runtime so the notifications render
-   * correctly even when the pre-compiled Tailwind build (assets/css/style.css)
-   * is missing some of the utility classes used below.
-   */
   const CRITICAL_CSS = `
-#geosafe-toast-container{position:fixed;top:16px;left:16px;right:16px;bottom:auto;transform:none;z-index:9999;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:14px;width:auto;max-width:calc(100% - 32px);margin:0 auto;}
-@media (min-width:640px){#geosafe-toast-container{top:24px;right:24px;left:auto;width:440px;max-width:440px;align-items:flex-end;margin:0;}}
-#geosafe-toast-container .geosafe-toast{pointer-events:auto;position:relative;box-sizing:border-box;width:100%;border-radius:16px;padding:16px;display:flex;align-items:flex-start;gap:14px;color:#fff;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);transition:opacity 300ms ease-out,transform 300ms ease-out;opacity:0;transform:translateX(32px) scale(0.95);}
-@media (min-width:640px){#geosafe-toast-container .geosafe-toast{padding:20px;gap:16px;}}
+#geosafe-toast-container{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:16px;right:16px;bottom:auto;transform:none;z-index:9999;pointer-events:none;display:flex;flex-direction:column;align-items:center;width:auto;max-width:calc(100% - 32px);margin:0 auto;}
+@media (min-width:640px){#geosafe-toast-container{top:calc(env(safe-area-inset-top,0px) + 20px);right:24px;left:auto;width:420px;max-width:420px;align-items:flex-end;margin:0;}}
+#geosafe-toast-container .geosafe-toast{pointer-events:auto;position:relative;box-sizing:border-box;width:100%;border-radius:12px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;color:#fff;overflow:hidden;box-shadow:0 18px 38px -10px rgba(0,0,0,0.28);transition:opacity 240ms ease-out,transform 240ms ease-out;opacity:0;transform:translateX(24px) scale(0.96);}
+@media (min-width:640px){#geosafe-toast-container .geosafe-toast{padding:16px 18px;gap:14px;}}
 #geosafe-toast-container .geosafe-toast.geosafe-toast-visible{opacity:1;transform:translateX(0) scale(1);}
-#geosafe-toast-container .geosafe-toast.geosafe-toast-bump{transform:translateX(0) scale(1.03);}
-#geosafe-toast-container .geosafe-toast.geosafe-toast-leaving{opacity:0;transform:translateX(32px) scale(0.95);transition-duration:200ms;}
+#geosafe-toast-container .geosafe-toast.geosafe-toast-bump{transform:translateX(0) scale(1.02);}
+#geosafe-toast-container .geosafe-toast.geosafe-toast-leaving{opacity:0;transform:translateX(24px) scale(0.96);transition-duration:200ms;}
+#geosafe-toast-container .geosafe-toast-critical,#geosafe-toast-container .geosafe-toast-emergency{background-color:#D93636;}
 #geosafe-toast-container .geosafe-toast-success{background-color:#28C76F;}
 #geosafe-toast-container .geosafe-toast-error{background-color:#F25430;}
 #geosafe-toast-container .geosafe-toast-info{background-color:#0082E6;}
 #geosafe-toast-container .geosafe-toast-warning{background-color:#F5A623;}
-#geosafe-toast-container .geosafe-toast-icon{width:40px;height:40px;border-radius:9999px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);}
-@media (min-width:640px){#geosafe-toast-container .geosafe-toast-icon{width:44px;height:44px;}}
+#geosafe-toast-container .geosafe-toast-icon{width:38px;height:38px;border-radius:9999px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.12);}
+@media (min-width:640px){#geosafe-toast-container .geosafe-toast-icon{width:42px;height:42px;}}
 #geosafe-toast-container .geosafe-toast-icon svg{width:20px;height:20px;}
-#geosafe-toast-container .geosafe-toast-body{flex:1 1 0%;min-width:0;padding-right:24px;padding-top:2px;}
-#geosafe-toast-container .geosafe-toast-title{margin:0;font-weight:800;color:#fff;font-size:14px;line-height:1.25;letter-spacing:-0.025em;}
-#geosafe-toast-container .geosafe-toast-message{margin:4px 0 0;color:rgba(255,255,255,0.95);font-size:12px;line-height:1.375;overflow-wrap:break-word;word-break:break-word;}
-@media (min-width:640px){#geosafe-toast-container .geosafe-toast-title{font-size:16px;}#geosafe-toast-container .geosafe-toast-message{font-size:14px;}}
-#geosafe-toast-container .toast-dismiss-btn{position:absolute;top:14px;right:14px;padding:4px;border:0;background:transparent;border-radius:8px;color:rgba(255,255,255,0.8);cursor:pointer;line-height:0;}
-#geosafe-toast-container .toast-dismiss-btn:hover{color:#fff;background:rgba(255,255,255,0.1);}
+#geosafe-toast-container .geosafe-toast-body{flex:1 1 0%;min-width:0;padding-right:24px;padding-top:1px;}
+#geosafe-toast-container .geosafe-toast-title{margin:0;font-weight:800;color:#fff;font-size:14px;line-height:1.25;letter-spacing:-0.015em;}
+#geosafe-toast-container .geosafe-toast-message{margin:3px 0 0;color:rgba(255,255,255,0.96);font-size:12px;line-height:1.35;overflow-wrap:break-word;word-break:break-word;}
+@media (min-width:640px){#geosafe-toast-container .geosafe-toast-title{font-size:15px;}#geosafe-toast-container .geosafe-toast-message{font-size:13px;}}
+#geosafe-toast-container .toast-dismiss-btn{position:absolute;top:12px;right:12px;padding:4px;border:0;background:transparent;border-radius:8px;color:rgba(255,255,255,0.85);cursor:pointer;line-height:0;}
+#geosafe-toast-container .toast-dismiss-btn:hover{color:#fff;background:rgba(255,255,255,0.14);}
 #geosafe-toast-container .toast-dismiss-btn svg{width:16px;height:16px;}
-#geosafe-toast-container .toast-progress-track{position:absolute;left:0;right:0;bottom:0;height:6px;background:rgba(0,0,0,0.15);overflow:hidden;pointer-events:none;}
-#geosafe-toast-container .toast-progress-fill{height:100%;background:rgba(255,255,255,0.4);}
+#geosafe-toast-container .toast-progress-track{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(0,0,0,0.16);overflow:hidden;pointer-events:none;}
+#geosafe-toast-container .toast-progress-fill{height:100%;background:rgba(255,255,255,0.45);}
 `;
+
+  // Centralized Queue State (strictly max 1 active toast rendered at a time)
+  const toastQueue = [];
+  let currentToastRecord = null;
+  let isTransitioningOut = false;
+  let queueSeq = 0;
 
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
-    // Only inject in real browser DOMs where <head> or <html> exists (keeps minimal
-    // Node/VM test sandboxes that only mock document.body.children unaffected).
     const styleTarget = document.head || document.documentElement;
     if (!styleTarget || typeof styleTarget.appendChild !== 'function') return;
     const style = document.createElement('style');
@@ -137,8 +153,6 @@
       container.id = 'geosafe-toast-container';
       document.body.appendChild(container);
     }
-    // Always normalize the container to the top-right layout defined here, even if
-    // another script (e.g. a legacy fallback) created it with different classes.
     container.className = CONTAINER_CLASS;
     if (typeof container.removeAttribute === 'function') {
       container.removeAttribute('aria-live');
@@ -158,268 +172,299 @@
       .replace(/'/g, '&#39;');
   }
 
-  function show(options = {}) {
-    if (typeof document === 'undefined') return null;
-
+  function normalizeToastOptions(options) {
     let message = '';
     let type = 'info';
     let title = '';
     let duration = DEFAULT_DURATION;
     let onClick = null;
+    let customKey = '';
+    let explicitPriority = null;
 
     if (typeof options === 'string') {
       message = options;
     } else if (typeof options === 'object' && options !== null) {
-      message = options.message || '';
-      type = (options.type || 'info').toLowerCase();
-      title = options.title || '';
+      message = String(options.message || '').trim();
+      type = String(options.type || 'info').toLowerCase().trim();
+      title = String(options.title || '').trim();
       onClick = typeof options.onClick === 'function' ? options.onClick : null;
+      customKey = options.dedupeKey ? String(options.dedupeKey).trim() : '';
       if (typeof options.duration === 'number' && options.duration > 0) {
         duration = options.duration;
+      }
+      if (typeof options.priority === 'number' && options.priority >= 1) {
+        explicitPriority = options.priority;
       }
     }
 
     if (!message) return null;
 
     const sanitizedType = THEMES[type] ? type : 'info';
-    const theme = THEMES[sanitizedType];
-    const displayTitle = title || theme.defaultTitle;
+    const priority = explicitPriority !== null ? explicitPriority : (PRIORITY_RANK[sanitizedType] || 4);
+    const dedupeKey = customKey || `${sanitizedType}:${title.toLowerCase()}:${message.toLowerCase()}`;
 
-    const normalizedKey = `${sanitizedType}:${message.trim().toLowerCase()}`;
+    return {
+      message,
+      type: sanitizedType,
+      title,
+      duration,
+      onClick,
+      priority,
+      dedupeKey,
+      seq: ++queueSeq,
+    };
+  }
 
-    // Deduplication: Prevent multiple identical toasts from stacking
-    if (activeToasts.has(normalizedKey)) {
-      const existing = activeToasts.get(normalizedKey);
-      if (existing && existing.toastEl) {
-        // Reset remaining time and restart timer
-        existing.remaining = duration;
-        existing.startTime = Date.now();
-        if (existing.timer) clearTimeout(existing.timer);
-
-        existing.timer = setTimeout(() => {
-          dismissToast(existing.toastEl, normalizedKey);
-        }, duration);
-
-        // Reset progress bar back to 100% and restart smooth decrease
-        const fillEl = existing.toastEl.querySelector('.toast-progress-fill');
-        if (fillEl) {
-          fillEl.style.transition = 'none';
-          fillEl.style.width = '100%';
-          const requestFrame = typeof requestAnimationFrame !== 'undefined'
-            ? requestAnimationFrame
-            : (cb) => setTimeout(cb, 16);
-          requestFrame(() => {
-            fillEl.style.transition = `width ${duration}ms linear`;
-            fillEl.style.width = '0%';
-          });
-        }
-
-        // Tactile scale feedback on existing toast
-        existing.toastEl.classList.remove('scale-100');
-        existing.toastEl.classList.add('scale-[1.03]', 'geosafe-toast-bump');
-        setTimeout(() => {
-          if (existing.toastEl) {
-            existing.toastEl.classList.remove('scale-[1.03]', 'geosafe-toast-bump');
-            existing.toastEl.classList.add('scale-100');
-          }
-        }, 150);
-
-        return existing.toastEl;
+  function insertIntoPriorityQueue(item) {
+    // Higher priority (smaller rank number) goes first; preserve FIFO within same priority
+    let idx = toastQueue.length;
+    for (let i = 0; i < toastQueue.length; i++) {
+      if (item.priority < toastQueue[i].priority) {
+        idx = i;
+        break;
       }
     }
+    toastQueue.splice(idx, 0, item);
+  }
 
+  function refreshActiveToastTimer(record) {
+    if (!record || !record.toastEl) return;
+    const { toastEl, duration } = record;
+    record.remaining = duration;
+    record.startTime = Date.now();
+    if (record.timer) {
+      clearTimeout(record.timer);
+      record.timer = null;
+    }
+    record.timer = setTimeout(() => {
+      dismissCurrentToast();
+    }, duration);
+
+    const fillEl = toastEl.querySelector('.toast-progress-fill');
+    if (fillEl) {
+      fillEl.style.transition = 'none';
+      fillEl.style.width = '100%';
+      const rf = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+      rf(() => {
+        fillEl.style.transition = `width ${duration}ms linear`;
+        fillEl.style.width = '0%';
+      });
+    }
+
+    toastEl.classList.add('geosafe-toast-bump');
+    setTimeout(() => {
+      if (toastEl) toastEl.classList.remove('geosafe-toast-bump');
+    }, 150);
+  }
+
+  function renderToastItem(item) {
     const container = ensureContainer();
+    // Enforce single visible toast guarantee: clear any stale DOM nodes before rendering
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
+    const theme = THEMES[item.type] || THEMES.info;
+    const displayTitle = item.title || theme.defaultTitle;
 
     const toast = document.createElement('div');
-    toast.className = `geosafe-toast geosafe-toast-${sanitizedType} pointer-events-auto relative w-full rounded-lg p-3.5 sm:p-4 flex items-start gap-3 text-white shadow-lg border border-white/15 transform transition-all duration-300 ease-out opacity-0 translate-x-8 scale-95 overflow-hidden focus:outline-none focus:ring-2 focus:ring-white/50 ${theme.bg}`;
+    toast.className = `geosafe-toast geosafe-toast-${item.type} pointer-events-auto relative w-full rounded-xl p-3.5 sm:p-4 flex items-start gap-3 text-white shadow-lg border border-white/15 transform transition-all duration-300 ease-out opacity-0 translate-x-6 scale-95 overflow-hidden focus:outline-none focus:ring-2 focus:ring-white/50 ${theme.bg}`;
     toast.setAttribute('role', theme.role);
     toast.setAttribute('aria-live', theme.ariaLive);
     toast.setAttribute('tabindex', '0');
 
     toast.innerHTML = `
-      <!-- Circular White Icon Badge -->
-      <div class="geosafe-toast-icon w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-md">
+      <div class="geosafe-toast-icon w-10 h-10 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-md">
         ${theme.iconSvg}
       </div>
-
-      <!-- Content: Bold Title & Message -->
       <div class="geosafe-toast-body flex-1 min-w-0 pr-6 pt-0.5">
         <h4 class="geosafe-toast-title font-extrabold text-sm sm:text-base text-white tracking-tight leading-tight">${escapeHtml(displayTitle)}</h4>
-        <p class="geosafe-toast-message text-xs sm:text-sm text-white/95 mt-1 leading-snug break-words">${escapeHtml(message)}</p>
+        <p class="geosafe-toast-message text-xs sm:text-sm text-white/95 mt-1 leading-snug break-words">${escapeHtml(item.message)}</p>
       </div>
-
-      <!-- Close Button (Top Right) -->
       <button
         type="button"
         aria-label="Close notification"
-        class="toast-dismiss-btn absolute top-3.5 right-3.5 p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+        class="toast-dismiss-btn absolute top-3 right-3 p-1 rounded-lg text-white/85 hover:text-white hover:bg-white/15 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>
-
-      <!-- Bottom Progress Bar -->
-      <div class="toast-progress-track absolute bottom-0 left-0 right-0 h-1.5 bg-black/15 overflow-hidden pointer-events-none">
-        <div class="toast-progress-fill h-full bg-white/40" style="width: 100%;"></div>
+      <div class="toast-progress-track absolute bottom-0 left-0 right-0 h-1 bg-black/15 overflow-hidden pointer-events-none">
+        <div class="toast-progress-fill h-full bg-white/45" style="width: 100%;"></div>
       </div>
     `;
 
-    // Close button handler
+    const record = {
+      item,
+      dedupeKey: item.dedupeKey,
+      toastEl: toast,
+      timer: null,
+      startTime: Date.now(),
+      duration: item.duration,
+      remaining: item.duration,
+      isPaused: false,
+    };
+
     const closeBtn = toast.querySelector('.toast-dismiss-btn');
     if (closeBtn) {
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        dismissToast(toast, normalizedKey);
+        dismissCurrentToast();
       });
     }
 
-    if (onClick) {
+    if (item.onClick) {
       toast.style.cursor = 'pointer';
       toast.addEventListener('click', () => {
-        try { onClick(); } catch (_) {}
-        dismissToast(toast, normalizedKey);
+        try { item.onClick(); } catch (_) {}
+        dismissCurrentToast();
       });
     }
 
-    // Progress bar fill element
     const progressFill = toast.querySelector('.toast-progress-fill');
 
-    // Timer & pause/resume state management
-    const toastRecord = {
-      toastEl: toast,
-      timer: null,
-      startTime: Date.now(),
-      duration,
-      remaining: duration,
-      isPaused: false
-    };
-
     function startTimer(ms) {
-      toastRecord.startTime = Date.now();
-      toastRecord.isPaused = false;
-      toastRecord.timer = setTimeout(() => {
-        dismissToast(toast, normalizedKey);
+      record.startTime = Date.now();
+      record.isPaused = false;
+      if (record.timer) clearTimeout(record.timer);
+      record.timer = setTimeout(() => {
+        dismissCurrentToast();
       }, ms);
 
       if (progressFill) {
         progressFill.style.transition = `width ${ms}ms linear`;
-        const requestFrame = typeof requestAnimationFrame !== 'undefined'
-          ? requestAnimationFrame
-          : (cb) => setTimeout(cb, 16);
-        requestFrame(() => {
+        const rf = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+        rf(() => {
           progressFill.style.width = '0%';
         });
       }
     }
 
     function pauseTimer() {
-      if (toastRecord.isPaused || toast._isDismissing) return;
-      toastRecord.isPaused = true;
-
-      if (toastRecord.timer) {
-        clearTimeout(toastRecord.timer);
-        toastRecord.timer = null;
+      if (record.isPaused || toast._isDismissing) return;
+      record.isPaused = true;
+      if (record.timer) {
+        clearTimeout(record.timer);
+        record.timer = null;
       }
-
-      const elapsed = Date.now() - toastRecord.startTime;
-      toastRecord.remaining = Math.max(0, toastRecord.remaining - elapsed);
+      const elapsed = Date.now() - record.startTime;
+      record.remaining = Math.max(0, record.remaining - elapsed);
 
       if (progressFill) {
-        // Freeze progress bar at current visually computed position
-        const computedWidth = typeof window !== 'undefined' && window.getComputedStyle
-          ? window.getComputedStyle(progressFill).width
-          : progressFill.style.width;
+        const computedWidth =
+          typeof window !== 'undefined' && window.getComputedStyle
+            ? window.getComputedStyle(progressFill).width
+            : progressFill.style.width;
         progressFill.style.transition = 'none';
         progressFill.style.width = computedWidth;
       }
     }
 
     function resumeTimer() {
-      if (!toastRecord.isPaused || toast._isDismissing || toastRecord.remaining <= 0) return;
-      startTimer(toastRecord.remaining);
+      if (!record.isPaused || toast._isDismissing || record.remaining <= 0) return;
+      startTimer(record.remaining);
     }
 
-    // Pause on hover or keyboard focus, resume on leave/blur
     toast.addEventListener('mouseenter', pauseTimer);
     toast.addEventListener('mouseleave', resumeTimer);
     toast.addEventListener('focusin', pauseTimer);
     toast.addEventListener('focusout', resumeTimer);
-
-    // ESC key support
     toast.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        dismissToast(toast, normalizedKey);
+        dismissCurrentToast();
       }
     });
 
-    activeToasts.set(normalizedKey, toastRecord);
+    currentToastRecord = record;
     container.appendChild(toast);
 
-    // Trigger smooth entrance animation from right
-    const requestFrame = typeof requestAnimationFrame !== 'undefined'
-      ? requestAnimationFrame
-      : (cb) => setTimeout(cb, 16);
-
-    requestFrame(() => {
-      toast.classList.remove('opacity-0', 'translate-x-8', 'scale-95');
+    const rf = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+    rf(() => {
+      toast.classList.remove('opacity-0', 'translate-x-6', 'scale-95');
       toast.classList.add('opacity-100', 'translate-x-0', 'scale-100', 'geosafe-toast-visible');
     });
 
-    startTimer(duration);
+    startTimer(item.duration);
     return toast;
   }
 
-  function dismissToast(toast, key) {
-    if (!toast || toast._isDismissing) return;
-    toast._isDismissing = true;
+  function processQueue() {
+    if (currentToastRecord || isTransitioningOut || toastQueue.length === 0) {
+      return null;
+    }
+    const nextItem = toastQueue.shift();
+    return renderToastItem(nextItem);
+  }
 
-    if (key && activeToasts.has(key)) {
-      const record = activeToasts.get(key);
-      if (record && record.timer) clearTimeout(record.timer);
-      activeToasts.delete(key);
-    } else {
-      // Find key by element if not provided
-      for (const [k, rec] of activeToasts.entries()) {
-        if (rec && rec.toastEl === toast) {
-          if (rec.timer) clearTimeout(rec.timer);
-          activeToasts.delete(k);
-          break;
-        }
-      }
+  function dismissCurrentToast() {
+    if (!currentToastRecord || !currentToastRecord.toastEl || isTransitioningOut) return;
+    const record = currentToastRecord;
+    const toast = record.toastEl;
+    if (toast._isDismissing) return;
+
+    toast._isDismissing = true;
+    isTransitioningOut = true;
+
+    if (record.timer) {
+      clearTimeout(record.timer);
+      record.timer = null;
     }
 
-    // Smooth exit animation
     toast.classList.remove('opacity-100', 'translate-x-0', 'scale-100', 'geosafe-toast-visible');
-    toast.classList.add('opacity-0', 'translate-x-8', 'scale-95', 'duration-200', 'geosafe-toast-leaving');
+    toast.classList.add('opacity-0', 'translate-x-6', 'scale-95', 'geosafe-toast-leaving');
 
     setTimeout(() => {
       if (toast.parentNode) {
         toast.parentNode.removeChild(toast);
       }
-    }, 220);
+      if (currentToastRecord === record) {
+        currentToastRecord = null;
+      }
+      isTransitioningOut = false;
+      processQueue();
+    }, EXIT_ANIMATION_MS);
+  }
+
+  function dismissToast(toast) {
+    if (!currentToastRecord) return;
+    if (!toast || currentToastRecord.toastEl === toast) {
+      dismissCurrentToast();
+    }
   }
 
   function dismissAll() {
-    activeToasts.forEach((record, key) => {
-      if (record && record.toastEl) {
-        dismissToast(record.toastEl, key);
-      }
-    });
-    activeToasts.clear();
+    toastQueue.length = 0;
+    if (currentToastRecord) {
+      dismissCurrentToast();
+    }
   }
 
-  // Global ESC key listener to dismiss the newest toast
+  function show(options = {}) {
+    if (typeof document === 'undefined') return null;
+
+    const item = normalizeToastOptions(options);
+    if (!item) return null;
+
+    // Deduplicate against currently active toast
+    if (currentToastRecord && currentToastRecord.dedupeKey === item.dedupeKey && !isTransitioningOut) {
+      refreshActiveToastTimer(currentToastRecord);
+      return currentToastRecord.toastEl;
+    }
+
+    // Deduplicate against queued items
+    if (toastQueue.some((q) => q.dedupeKey === item.dedupeKey)) {
+      return currentToastRecord ? currentToastRecord.toastEl : null;
+    }
+
+    insertIntoPriorityQueue(item);
+    return processQueue();
+  }
+
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && activeToasts.size > 0) {
-        const lastKey = Array.from(activeToasts.keys()).pop();
-        if (lastKey) {
-          const record = activeToasts.get(lastKey);
-          if (record && record.toastEl) {
-            dismissToast(record.toastEl, lastKey);
-          }
-        }
+      if (e.key === 'Escape' && currentToastRecord) {
+        dismissCurrentToast();
       }
     });
   }
@@ -479,6 +524,10 @@
       const parsed = resolveArgs(message, titleOrDuration, maybeDuration);
       return show({ ...parsed, type: 'error' });
     },
+    critical(message, titleOrDuration, maybeDuration) {
+      const parsed = resolveArgs(message, titleOrDuration, maybeDuration);
+      return show({ ...parsed, type: 'critical' });
+    },
     info(message, titleOrDuration, maybeDuration) {
       const parsed = resolveArgs(message, titleOrDuration, maybeDuration);
       return show({ ...parsed, type: 'info' });
@@ -487,15 +536,15 @@
       const parsed = resolveArgs(message, titleOrDuration, maybeDuration);
       return show({ ...parsed, type: 'warning' });
     },
-    dismiss(toast) {
-      dismissToast(toast);
+    dismiss: dismissToast,
+    dismissAll,
+    getQueueLength() {
+      return toastQueue.length;
     },
-    dismissAll
   };
 
   global.GeoSafeToast = GeoSafeToast;
 
-  // Bridge with GeoSafeUI and GeoSafeResponderUI
   if (global.GeoSafeUI) {
     global.GeoSafeUI.showToast = function (message, type = 'info', duration = DEFAULT_DURATION) {
       return GeoSafeToast.show({ message, type, duration });

@@ -2,17 +2,75 @@
  * GeoSafe - Rescue Requests Dedicated Emergency Page Logic
  */
 
+let rescueRequestsLoadSeq = 0;
+
+function escapeRescueHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeDispatchUpdate(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = String(raw.status || raw.title || '').trim();
+  const note = String(raw.note || raw.message || raw.text || '').trim();
+  const timestamp = raw.timestamp || raw.createdAt || raw.time || null;
+  const author = String(raw.author || '').trim();
+
+  if (!status && !note) {
+    console.warn('[RescueRequests] Skipping incomplete dispatch update record:', raw);
+    return null;
+  }
+
+  return {
+    id: raw.id || null,
+    status: status || 'Dispatch Update',
+    note,
+    timestamp,
+    author,
+  };
+}
+
+function formatDispatchTimestamp(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   GeoSafeUI.init('rescue-requests', 'Rescue Requests');
   setupRescueForm();
   await loadRescueRequests();
 
-  window.addEventListener('geosafe:realtime-update', () => {
-    loadRescueRequests();
+  const rescueRealtimeEvents = new Set([
+    'new-rescue-request',
+    'rescue-assignment-updated',
+    'rescue-status-updated',
+    'status-update',
+    'assignment:outcome',
+    'rescue:transport-updated',
+    'reconnect-sync',
+  ]);
+  window.addEventListener('geosafe:realtime-update', (ev) => {
+    const evtName = ev && ev.detail ? ev.detail.event : '';
+    if (!evtName || rescueRealtimeEvents.has(evtName)) {
+      loadRescueRequests();
+    }
   });
 });
 
 async function loadRescueRequests() {
+  const reqSeq = ++rescueRequestsLoadSeq;
   const loadingEl = document.getElementById('rescue-loading');
   const errorEl = document.getElementById('rescue-error');
   const emptyEl = document.getElementById('rescue-empty');
@@ -25,9 +83,10 @@ async function loadRescueRequests() {
 
   try {
     const list = await window.geoSafeStore.getRescueRequests();
+    if (reqSeq !== rescueRequestsLoadSeq) return;
     if (loadingEl) loadingEl.classList.add('hidden');
 
-    if (!list || list.length === 0) {
+    if (!Array.isArray(list) || list.length === 0) {
       if (emptyEl) emptyEl.classList.remove('hidden');
       return;
     }
@@ -37,6 +96,7 @@ async function loadRescueRequests() {
       renderRescueCards(list);
     }
   } catch (err) {
+    if (reqSeq !== rescueRequestsLoadSeq) return;
     console.error('Failed to load rescue requests:', err);
     if (loadingEl) loadingEl.classList.add('hidden');
     if (errorEl) {
@@ -89,7 +149,7 @@ function renderRescueCards(requests) {
         <div class="space-y-2 bg-slate-50 p-3.5 rounded-md border border-slate-200/60">
           <div>
             <span class="text-slate-500 font-medium">Persons Needing Assistance:</span>
-            <span class="font-bold text-slate-900 ml-1">${r.peopleCount} individuals</span>
+            <span class="font-bold text-slate-900 ml-1">${r.peopleCountDisplay || (r.peopleCountCategory === 'more_than_10' ? 'More than 10' : r.peopleCountCategory === 'unknown' || !r.peopleCount ? 'Unknown' : `${r.peopleCount} individuals`)}</span>
           </div>
           ${r.vulnerableDetails ? `
             <div>
@@ -114,8 +174,16 @@ function renderRescueCards(requests) {
       <div class="p-3.5 bg-brand-50/70 border border-brand-100 rounded-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs mb-4">
         <div>
           <span class="text-[10px] font-bold text-brand-700 uppercase tracking-wider block">Assigned Rescue Unit</span>
-          <span class="text-xs font-bold text-slate-900">${r.assignedUnit || 'Dispatching Unit...'}</span>
-          <p class="text-[11px] text-slate-500">${r.responderContact || 'Pending dispatcher contact'}</p>
+          ${(r.assignedUnit || r.assignedResponderName) ? `
+            <span class="text-xs font-bold text-slate-900">${escapeRescueHtml(r.assignedUnit || 'Barangay Bayanan Response Unit')}</span>
+            <p class="text-[11px] text-slate-600">${escapeRescueHtml(r.responderContact || `Responder: ${r.assignedResponderName}`)}</p>
+          ` : (r.status === 'Completed' || r.status === 'Cancelled') ? `
+            <span class="text-xs font-bold text-slate-900">Operation ${escapeRescueHtml(r.status)}</span>
+            <p class="text-[11px] text-slate-500">No active unit assignment</p>
+          ` : `
+            <span class="text-xs font-bold text-slate-900">Pending Dispatch</span>
+            <p class="text-[11px] text-slate-500">Awaiting responder assignment from Barangay Bayanan EOC</p>
+          `}
         </div>
         <div class="text-[11px] text-slate-500">
           <span class="italic text-[10px] text-slate-400 block sm:text-right">*Official priority assigned by Barangay Bayanan EOC</span>
@@ -125,16 +193,29 @@ function renderRescueCards(requests) {
       <!-- Live Operations Updates -->
       <div>
         <h5 class="text-xs font-bold text-slate-800 mb-2">Live Dispatch Updates</h5>
-        <div class="space-y-2">
-          ${(r.updates || []).map(up => `
-            <div class="flex items-start gap-2.5 text-xs">
-              <span class="w-1.5 h-1.5 rounded-full bg-emergency-500 flex-shrink-0 mt-1.5"></span>
-              <div>
-                <span class="text-slate-700 font-medium">${up.text}</span>
-                <span class="text-[10px] text-slate-400 block">${GeoSafeUI.formatRelative(up.time)}</span>
-              </div>
-            </div>
-          `).join('')}
+        <div class="space-y-2.5">
+          ${(() => {
+            const normalizedUpdates = (Array.isArray(r.updates) ? r.updates : [])
+              .map(normalizeDispatchUpdate)
+              .filter(Boolean);
+            if (normalizedUpdates.length === 0) {
+              return '<p class="text-xs text-slate-500 italic">No dispatch updates yet.</p>';
+            }
+            return normalizedUpdates.map((up) => {
+              const formattedTime = formatDispatchTimestamp(up.timestamp);
+              const metaParts = [formattedTime, up.author].filter(Boolean);
+              return `
+                <div class="flex items-start gap-2.5 text-xs">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emergency-500 flex-shrink-0 mt-1.5"></span>
+                  <div class="min-w-0">
+                    <span class="text-slate-900 font-bold block">${escapeRescueHtml(up.status)}</span>
+                    ${up.note ? `<p class="text-slate-700 leading-snug mt-0.5">${escapeRescueHtml(up.note)}</p>` : ''}
+                    ${metaParts.length > 0 ? `<span class="text-[11px] text-slate-500 block mt-0.5">${escapeRescueHtml(metaParts.join(' · '))}</span>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join('');
+          })()}
         </div>
       </div>
     </div>
@@ -172,10 +253,18 @@ function setupRescueForm() {
     }
 
     try {
+      const rawPeople = String(peopleCount || '').trim().toLowerCase();
+      const peopleCountCategory =
+        rawPeople === 'unknown'
+          ? 'unknown'
+          : rawPeople === 'more_than_10'
+            ? 'more_than_10'
+            : 'exact';
       const payload = {
         emergencyType,
         description,
-        peopleCount: parseInt(peopleCount, 10),
+        peopleCount: peopleCountCategory === 'exact' ? parseInt(rawPeople, 10) : peopleCountCategory,
+        peopleCountCategory,
         vulnerableDetails: vulnerable,
         location,
         landmark,

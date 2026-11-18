@@ -252,7 +252,7 @@ async function getAdminOverview(req, res) {
 
     const [rescueMarkers] = await pool.query(
       `SELECT r.id, r.reference_number, r.emergency_type, r.latitude, r.longitude,
-              r.address, r.landmark, r.people_count, r.status, r.created_at,
+              r.address, r.landmark, r.people_count, r.people_count_category, r.status, r.created_at,
               ra.assignment_status, ra.responder_user_id AS assignment_responder_id,
               resp_ra.name AS assigned_responder_name,
               (SELECT h.work_notes
@@ -301,6 +301,12 @@ async function getAdminOverview(req, res) {
         .filter((r) => isValidLatLng(r.latitude, r.longitude))
         .map((r) => {
           const locMeta = parseLocationProvenance(r.initial_work_notes);
+          const pCat = r.people_count_category || (r.people_count === null ? 'unknown' : 'exact');
+          const pLabel = pCat === 'unknown'
+            ? 'Unknown count'
+            : pCat === 'more_than_10'
+              ? 'More than 10'
+              : `${r.people_count || 1} person${(r.people_count || 1) > 1 ? 's' : ''}`;
           return {
             uid: `rescue-${r.id}`,
             id: r.id,
@@ -308,7 +314,7 @@ async function getAdminOverview(req, res) {
             reportTypeLabel: 'Rescue Request',
             referenceNumber: r.reference_number || `RES-${r.id}`,
             category: r.emergency_type || 'Emergency Rescue',
-            title: `${r.emergency_type || 'Rescue'} (${r.people_count || 1} person${(r.people_count || 1) > 1 ? 's' : ''})`,
+            title: `${r.emergency_type || 'Rescue'} (${pLabel})`,
             status: r.status,
             assignmentStatus: r.assignment_status || null,
             assignedTo: r.assignment_responder_id || null,
@@ -325,6 +331,47 @@ async function getAdminOverview(req, res) {
           };
         }),
     ].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    // Fetch verified hospitals & medical directory records for map display
+    const [hospitalRows] = await pool.query(
+      `SELECT id, name, address, latitude, longitude, emergency_contact, status,
+              facility_type, operating_hours, verification_status, coordinate_flag,
+              last_verified_at, emergency_capable
+       FROM hospitals
+       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+       ORDER BY name ASC`
+    );
+
+    const hospitals = hospitalRows
+      .filter((h) => {
+        const lat = Number(h.latitude);
+        const lng = Number(h.longitude);
+        return (
+          ['Hospital', 'Health Center'].includes(h.facility_type) &&
+          ['Verified', 'Pending Verification'].includes(h.verification_status) &&
+          h.status !== 'Closed' &&
+          isValidLatLng(lat, lng) &&
+          lat >= 14.0 &&
+          lat <= 15.0 &&
+          lng >= 120.5 &&
+          lng <= 121.6
+        );
+      })
+      .map((h) => ({
+        id: h.id,
+        name: h.name,
+        address: h.address,
+        latitude: Number(h.latitude),
+        longitude: Number(h.longitude),
+        emergencyContact: h.emergency_contact || 'Unverified',
+        status: h.status || 'Under Assessment',
+        facilityType: h.facility_type,
+        operatingHours: h.operating_hours || 'Unverified',
+        verificationStatus: h.verification_status,
+        coordinateFlag: h.coordinate_flag || null,
+        lastVerifiedAt: h.last_verified_at || null,
+        emergencyCapable: Boolean(h.emergency_capable),
+      }));
 
     // Fetch live evacuation centers for map display if present
     const [evacCenterRows] = await pool.query(
@@ -394,6 +441,7 @@ async function getAdminOverview(req, res) {
       },
       mapItems,
       evacuationCenters,
+      hospitals,
       eocLocation,
       recentActivities,
       categoryDistribution,
@@ -639,7 +687,11 @@ async function getAdminReportsList(req, res) {
           category: r.emergency_type || 'Emergency Rescue',
           title: `${r.emergency_type || 'Rescue Request'}`,
           description: r.description,
-          peopleCount: r.people_count || 1,
+          peopleCount: (r.people_count_category || 'exact') === 'exact' && r.people_count !== null ? Number(r.people_count) : null,
+          peopleCountCategory: r.people_count_category || (r.people_count === null ? 'unknown' : 'exact'),
+          peopleCountDisplay: (r.people_count_category === 'unknown' || r.people_count === null)
+            ? (r.people_count_category === 'more_than_10' ? 'More than 10' : 'Unknown')
+            : `${r.people_count} ${Number(r.people_count) === 1 ? 'Person' : 'People'}`,
           vulnerableDetails: r.vulnerable_details || null,
           landmark: r.landmark || null,
           reporterName: r.reporter_name || 'Resident',
@@ -1039,6 +1091,16 @@ async function getAdminReportDetail(req, res) {
     const latestRescueAdminHistory = mappedHistory.find((h) => String(h.changedByRole || '').toLowerCase() === 'administrator');
     const savedRescueReviewNotes = latestRescueAdminHistory ? latestRescueAdminHistory.remarks || '' : '';
 
+    const [outcomeRows] = await pool.query(
+      `SELECT * FROM rescue_outcomes WHERE rescue_id = ? LIMIT 1`,
+      [recordId]
+    );
+    const [transportRows] = await pool.query(
+      `SELECT * FROM rescue_transports WHERE rescue_id = ? ORDER BY created_at ASC, id ASC`,
+      [recordId]
+    );
+    const outcomeRow = outcomeRows[0] || null;
+
     const detail = {
       uid: `rescue-${r.id}`,
       id: r.id,
@@ -1046,11 +1108,53 @@ async function getAdminReportDetail(req, res) {
       reportType: 'Rescue Request',
       typeLabel: 'Rescue Request',
       referenceNumber: r.reference_number || `RES-${r.id}`,
+      outcome: outcomeRow
+        ? {
+            primaryOutcome: outcomeRow.primary_outcome,
+            totalRescued: Number(outcomeRow.total_rescued || 0),
+            firstAidCount: Number(outcomeRow.first_aid_count || 0),
+            hospitalTransportCount: Number(outcomeRow.hospital_transport_count || 0),
+            medicalFacilityCount: Number(outcomeRow.medical_facility_count || 0),
+            evacuationCenterCount: Number(outcomeRow.evacuation_center_count || 0),
+            stillAssistingCount: Number(outcomeRow.still_assisting_count || 0),
+            firstAidActions: outcomeRow.first_aid_actions || '',
+            furtherMedicalRecommended: Boolean(outcomeRow.further_medical_recommended),
+            transportRequired: Boolean(outcomeRow.transport_required),
+            otherDescription: outcomeRow.other_description || '',
+            adminCoordinationRequired: Boolean(outcomeRow.admin_coordination_required),
+            operationalNotes: outcomeRow.operational_notes || '',
+            recordedAt: outcomeRow.recorded_at,
+            updatedAt: outcomeRow.updated_at,
+          }
+        : null,
+      transports: transportRows.map((t) => ({
+        id: t.id,
+        destinationCategory: t.destination_category,
+        hospitalId: t.hospital_id,
+        evacuationCenterId: t.evacuation_center_id,
+        destinationName: t.destination_name,
+        destinationFacilityType: t.destination_facility_type,
+        latitude: t.destination_latitude !== null ? Number(t.destination_latitude) : null,
+        longitude: t.destination_longitude !== null ? Number(t.destination_longitude) : null,
+        peopleCount: Number(t.people_count || 1),
+        routeDistanceMeters: t.route_distance_meters !== null ? Number(t.route_distance_meters) : null,
+        routeDurationSeconds: t.route_duration_seconds !== null ? Number(t.route_duration_seconds) : null,
+        transportStatus: t.transport_status,
+        startedAt: t.started_at,
+        arrivedAt: t.arrived_at,
+        handedOverAt: t.handed_over_at,
+        handoverConfirmed: Boolean(t.handover_confirmed),
+        handoverNotes: t.handover_notes || '',
+      })),
       category: r.emergency_type || 'Emergency Rescue',
       incidentType: r.emergency_type || 'Emergency Rescue',
       title: `${r.emergency_type || 'Rescue Request'}`,
       description: r.description || 'No description provided.',
-      peopleCount: r.people_count || 1,
+      peopleCount: (r.people_count_category || 'exact') === 'exact' && r.people_count !== null ? Number(r.people_count) : null,
+      peopleCountCategory: r.people_count_category || (r.people_count === null ? 'unknown' : 'exact'),
+      peopleCountDisplay: (r.people_count_category === 'unknown' || r.people_count === null)
+        ? (r.people_count_category === 'more_than_10' ? 'More than 10' : 'Unknown')
+        : `${r.people_count} ${Number(r.people_count) === 1 ? 'Person' : 'People'}`,
       vulnerableDetails: r.vulnerable_details || 'None specified',
       landmark: r.landmark || 'None specified',
       location: r.address || 'Location not specified',
@@ -1088,7 +1192,11 @@ async function getAdminReportDetail(req, res) {
         accountStatus: r.reporter_account_status || 'active',
       },
       categoryDetails: {
-        peopleCount: r.people_count || 1,
+        peopleCount: (r.people_count_category || 'exact') === 'exact' && r.people_count !== null ? Number(r.people_count) : null,
+        peopleCountCategory: r.people_count_category || (r.people_count === null ? 'unknown' : 'exact'),
+        peopleCountDisplay: (r.people_count_category === 'unknown' || r.people_count === null)
+          ? (r.people_count_category === 'more_than_10' ? 'More than 10' : 'Unknown')
+          : `${r.people_count} ${Number(r.people_count) === 1 ? 'Person' : 'People'}`,
         vulnerableDetails: r.vulnerable_details || 'None specified',
         landmark: r.landmark || 'None specified',
       },
@@ -1189,20 +1297,41 @@ async function reviewAdminReport(req, res) {
       const activeIncAssign = incAssignRows.find((a) =>
         ['Assigned', 'Accepted', 'En Route', 'On Scene'].includes(a.assignment_status)
       ) || null;
+      const currentStatusLow = String(current.status || '').toLowerCase();
+      const isAlreadyRejected = ['false_alarm', 'dismissed'].includes(currentStatusLow);
       const isAlreadyVerifiedOrDispatched = Boolean(
         current.verified_at ||
-        ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(String(current.status || '').toLowerCase()) ||
+        ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(currentStatusLow) ||
         activeIncAssign ||
         current.assigned_to
       );
 
+      if (action === 'verify' && isAlreadyRejected) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: 'This incident report has already been rejected and cannot be verified.',
+          alreadyRejected: true,
+          status: current.status,
+        });
+      }
+
       if (action === 'verify' && isAlreadyVerifiedOrDispatched) {
         await conn.rollback();
         return res.status(409).json({
-          error: 'This incident report has already been verified and assigned.',
+          error: 'This incident report has already been verified.',
           alreadyVerified: true,
           status: current.status,
           hasActiveAssignment: Boolean(activeIncAssign || current.assigned_to),
+        });
+      }
+
+      if (action === 'reject' && (isAlreadyVerifiedOrDispatched || isAlreadyRejected)) {
+        await conn.rollback();
+        return res.status(409).json({
+          error: isAlreadyRejected
+            ? 'This incident report has already been rejected.'
+            : 'This incident report has already been verified and cannot be rejected.',
+          status: current.status,
         });
       }
       const assignmentAcceptedOrBeyond = Boolean(
@@ -2900,11 +3029,15 @@ async function getEmergencyBroadcasts(req, res) {
        LIMIT 100`
     );
 
-    const broadcasts = rows.map((b) => {
+    const seenIds = new Set();
+    const broadcasts = [];
+    for (const b of rows) {
+      if (seenIds.has(Number(b.id))) continue;
+      seenIds.add(Number(b.id));
       const categoryName = b.category_name || b.advisory_type || 'Other';
       const resolvedStatus = b.status || (b.is_active ? 'Active' : 'Cancelled');
       const isActive = Boolean(b.is_active) && resolvedStatus === 'Active';
-      return {
+      broadcasts.push({
         id: b.id,
         referenceNumber: `BRD-${String(b.id).padStart(4, '0')}`,
         title: b.title,
@@ -2934,8 +3067,8 @@ async function getEmergencyBroadcasts(req, res) {
         latitude: b.latitude !== null && b.latitude !== undefined ? Number(b.latitude) : null,
         longitude: b.longitude !== null && b.longitude !== undefined ? Number(b.longitude) : null,
         locationAddress: b.location_address || null,
-      };
-    });
+      });
+    }
 
     return res.json({ broadcasts, total: broadcasts.length });
   } catch (err) {
@@ -2958,10 +3091,30 @@ function parseManilaOrIsoDate(rawValue) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const broadcastIdempotencyCache = new Map();
+
 async function createEmergencyBroadcast(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
+
+  const rawIdempKey = String(
+    (req.headers && (req.headers['x-idempotency-key'] || req.headers['X-Idempotency-Key'])) ||
+    (req.body && req.body.client_request_id) ||
+    ''
+  ).trim();
+  const idempCacheKey = rawIdempKey ? `${req.user.id}:${rawIdempKey}` : '';
+  if (idempCacheKey && broadcastIdempotencyCache.has(idempCacheKey)) {
+    const cached = broadcastIdempotencyCache.get(idempCacheKey);
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+      return res.status(200).json({
+        message: 'Emergency broadcast transmitted successfully.',
+        broadcast: cached.payload,
+        deduplicated: true,
+      });
+    }
+    broadcastIdempotencyCache.delete(idempCacheKey);
   }
 
   const {
@@ -3088,12 +3241,13 @@ async function createEmergencyBroadcast(req, res) {
 
   const validScopes = [
     'Residents',
+    'Residents Only',
     'Responders',
+    'Responders Only',
     'Everyone',
     'All Barangay Bayanan',
     'Lakeshore Zone',
     'Specific Purok',
-    'Responders Only',
   ];
   if (!validScopes.includes(scope)) {
     return res.status(400).json({ error: `Invalid target audience. Must be one of: ${validScopes.join(', ')}` });
@@ -3135,7 +3289,7 @@ async function createEmergencyBroadcast(req, res) {
         [ROLE_IDS.RESPONDER, req.user.id]
       );
       recipientRows = rows;
-    } else if (scope === 'Residents') {
+    } else if (scope === 'Residents' || scope === 'Residents Only') {
       const [rows] = await conn.query(
         "SELECT id FROM users WHERE role_id = ? AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
         [ROLE_IDS.RESIDENT, req.user.id]
@@ -3170,17 +3324,16 @@ async function createEmergencyBroadcast(req, res) {
         );
         residentRows = allResidents;
       }
-      const [responderRows] = await conn.query(
-        "SELECT id FROM users WHERE role_id = ? AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
-        [ROLE_IDS.RESPONDER, req.user.id]
-      );
-      recipientRows = [...residentRows, ...responderRows];
-    } else {
+      recipientRows = residentRows;
+    } else if (scope === 'Everyone' || scope === 'All Barangay Bayanan') {
       const [rows] = await conn.query(
         "SELECT id FROM users WHERE role_id IN (?, ?) AND status = 'active' AND LOWER(account_status) = 'active' AND id <> ?",
         [ROLE_IDS.RESIDENT, ROLE_IDS.RESPONDER, req.user.id]
       );
       recipientRows = rows;
+    } else {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Invalid target audience.' });
     }
     const uniqueRecipientIds = Array.from(new Set(recipientRows.map((u) => Number(u.id)).filter((id) => id > 0)));
     const recipientCount = uniqueRecipientIds.length;
@@ -3280,7 +3433,10 @@ async function createEmergencyBroadcast(req, res) {
     };
 
     emitAlertBroadcast(broadcastPayload);
-    emitAdminAnnouncement(broadcastPayload);
+
+    if (idempCacheKey) {
+      broadcastIdempotencyCache.set(idempCacheKey, { ts: Date.now(), payload: broadcastPayload });
+    }
 
     return res.status(201).json({
       message: 'Emergency broadcast transmitted successfully.',
@@ -3496,50 +3652,62 @@ function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
  * Aggregate genuine incident reports grouped by disaster category via incident_categories join.
  * Prevents join-induced duplicates with COUNT(DISTINCT r.id) and computes exact percentages.
  */
+const CANONICAL_DISASTER_CATEGORIES = [
+  'Flooding / Rising Water',
+  'Fallen Tree / Road Obstruction',
+  'Downed Electrical Power Cable',
+  'Structural / Wall Collapse',
+  'Fire Outbreak',
+  'Severe Drainage Overflow',
+];
+
+function normalizeCanonicalDisasterCategory(rawName) {
+  const s = String(rawName || '').trim().toLowerCase();
+  if (!s) return null;
+  if (s.includes('flood')) return 'Flooding / Rising Water';
+  if (s.includes('fallen tree') || s.includes('road obstruction') || s.includes('blocked road')) return 'Fallen Tree / Road Obstruction';
+  if (s.includes('electrical') || s.includes('power line') || s.includes('power cable') || s.includes('utility')) return 'Downed Electrical Power Cable';
+  if (s.includes('structural') || s.includes('collapse')) return 'Structural / Wall Collapse';
+  if (s.includes('fire')) return 'Fire Outbreak';
+  if (s.includes('drainage')) return 'Severe Drainage Overflow';
+  return null;
+}
+
 async function getReportCategoryDistribution(dateFilter = { clause: '1=1', params: [] }) {
   const [groupedRows] = await pool.query(
     `SELECT
-       COALESCE(ic.name, NULLIF(TRIM(r.incident_type), ''), 'Uncategorized') AS name,
+       COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized') AS name,
        COUNT(DISTINCT r.id)::int AS count
      FROM reports r
      LEFT JOIN incident_categories ic ON ic.id = r.category_id
      WHERE ${dateFilter.clause}
-     GROUP BY COALESCE(ic.name, NULLIF(TRIM(r.incident_type), ''), 'Uncategorized')
+     GROUP BY COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized')
      ORDER BY count DESC, name ASC`,
     dateFilter.params
   );
 
-  const [activeCatRows] = await pool.query(
-    `SELECT name FROM incident_categories WHERE is_active = true ORDER BY id ASC`
-  );
+  const canonicalCounts = new Map(CANONICAL_DISASTER_CATEGORIES.map((name) => [name, 0]));
+  let totalReports = 0;
 
-  const [knownReportTypeRows] = await pool.query(
-    `SELECT DISTINCT COALESCE(ic.name, NULLIF(TRIM(r.incident_type), '')) AS name
-     FROM reports r
-     LEFT JOIN incident_categories ic ON ic.id = r.category_id
-     WHERE COALESCE(ic.name, NULLIF(TRIM(r.incident_type), '')) IS NOT NULL
-     ORDER BY name ASC`
-  );
-
-  const totalReports = groupedRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
-
-  const categories = groupedRows
-    .map((row) => {
-      const count = Number(row.count || 0);
-      const percentage = totalReports > 0 ? Number(((count / totalReports) * 100).toFixed(1)) : 0;
-      return { name: row.name, count, percentage };
-    })
-    .filter((row) => row.count > 0);
-
-  const countMap = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
-  const allCategories = [...categories];
-  for (const cat of [...knownReportTypeRows, ...activeCatRows]) {
-    const key = String(cat.name || '').trim().toLowerCase();
-    if (key && !countMap.has(key)) {
-      countMap.set(key, { name: cat.name, count: 0, percentage: 0 });
-      allCategories.push({ name: cat.name, count: 0, percentage: 0 });
+  for (const row of groupedRows) {
+    const count = Number(row.count || 0);
+    if (count <= 0) continue;
+    totalReports += count;
+    const mapped = normalizeCanonicalDisasterCategory(row.name);
+    if (mapped && canonicalCounts.has(mapped)) {
+      canonicalCounts.set(mapped, canonicalCounts.get(mapped) + count);
     }
   }
+
+  const allCategories = CANONICAL_DISASTER_CATEGORIES.map((name) => {
+    const count = canonicalCounts.get(name) || 0;
+    const percentage = totalReports > 0 ? Number(((count / totalReports) * 100).toFixed(1)) : 0;
+    return { name, count, percentage };
+  });
+
+  const categories = allCategories
+    .filter((c) => c.count > 0)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   return { totalReports, categories, allCategories };
 }
@@ -4297,6 +4465,274 @@ async function closeAdminIncident(req, res) {
   }
 }
 
+async function getAdminFacilities(req, res) {
+  try {
+    const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
+    const whereSql = includeInactive
+      ? ''
+      : `WHERE status <> 'Closed' AND facility_type IN ('Hospital', 'Health Center')`;
+    const [rows] = await pool.query(
+      `SELECT id, name, address, latitude, longitude, emergency_contact, status,
+              capacity, available_slots, facility_type, operating_hours,
+              verification_status, coordinate_flag, last_verified_at, verified_by,
+              emergency_capable, created_at, updated_at
+       FROM hospitals
+       ${whereSql}
+       ORDER BY
+         CASE verification_status WHEN 'Flagged' THEN 0 WHEN 'Unverified' THEN 1 ELSE 2 END,
+         CASE facility_type WHEN 'Hospital' THEN 0 ELSE 1 END,
+         name ASC`
+    );
+    return res.json({ facilities: rows });
+  } catch (err) {
+    console.error('[Admin API] getAdminFacilities failed:', err.message);
+    return res.status(500).json({ error: 'Unable to retrieve healthcare facility directory.' });
+  }
+}
+
+async function createAdminFacility(req, res) {
+  const {
+    name,
+    address,
+    latitude,
+    longitude,
+    facilityType,
+    operatingHours,
+    verificationStatus,
+    emergencyCapable,
+    status,
+    emergencyContact,
+  } = req.body || {};
+
+  const cleanName = String(name || '').trim();
+  const cleanAddress = String(address || '').trim();
+  if (!cleanName || !cleanAddress) {
+    return res.status(400).json({ error: 'Facility name and complete address are required.' });
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
+    return res.status(400).json({ error: 'Valid latitude and longitude are required.' });
+  }
+
+  const validTypes = ['Hospital', 'Health Center', 'Medical Clinic', 'Birthing Home', 'Laboratory'];
+  const validVerification = ['Verified', 'Unverified', 'Flagged', 'Pending Verification'];
+  const validStatuses = ['Operational', 'Full Capacity', 'Critical Supplies', 'Closed', 'Under Assessment'];
+
+  const nextType = validTypes.includes(facilityType) ? facilityType : 'Hospital';
+  const withinMetro = lat >= 14.0 && lat <= 15.0 && lng >= 120.5 && lng <= 121.6;
+  const nextVerification = !withinMetro
+    ? 'Flagged'
+    : (validVerification.includes(verificationStatus) ? verificationStatus : 'Unverified');
+  const nextFlag = !withinMetro
+    ? `Coordinates (${lat}, ${lng}) are outside Metro Manila range; manual verification required.`
+    : null;
+  const nextStatus = validStatuses.includes(status) ? status : (nextVerification === 'Verified' ? 'Operational' : 'Under Assessment');
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [ins] = await conn.query(
+      `INSERT INTO hospitals (
+         name, address, latitude, longitude, emergency_contact, status,
+         capacity, available_slots, facility_type, operating_hours,
+         verification_status, coordinate_flag, last_verified_at, verified_by, emergency_capable
+       ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING *`,
+      [
+        cleanName,
+        cleanAddress,
+        lat,
+        lng,
+        String(emergencyContact || 'Unverified').trim(),
+        nextStatus,
+        nextType,
+        String(operatingHours || 'Unverified').trim(),
+        nextVerification,
+        nextFlag,
+        nextVerification === 'Verified' ? new Date().toISOString() : null,
+        nextVerification === 'Verified' ? req.user.id : null,
+        Boolean(emergencyCapable),
+      ]
+    );
+    const createdId = ins.insertId || (ins.rows && ins.rows[0] && ins.rows[0].id);
+
+    await conn.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+       VALUES (?, 'CREATE_HEALTHCARE_FACILITY', 'hospitals', ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        createdId,
+        JSON.stringify({ name: cleanName, facility_type: nextType, verification_status: nextVerification }),
+        String(req.ip || '0.0.0.0').slice(0, 45),
+        req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null,
+      ]
+    );
+
+    const [createdRows] = await conn.query('SELECT * FROM hospitals WHERE id = ? LIMIT 1', [createdId]);
+    await conn.commit();
+    return res.status(201).json({ success: true, facility: createdRows[0] });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A facility with this name already exists.' });
+    }
+    console.error('[Admin API] createAdminFacility failed:', err.message);
+    return res.status(500).json({ error: 'Unable to create healthcare facility.' });
+  } finally {
+    conn.release();
+  }
+}
+
+async function updateAdminFacility(req, res) {
+  const facilityId = parseInt(req.params.id, 10);
+  if (!Number.isInteger(facilityId) || facilityId <= 0) {
+    return res.status(400).json({ error: 'Invalid facility ID.' });
+  }
+
+  const {
+    name,
+    address,
+    latitude,
+    longitude,
+    facilityType,
+    operatingHours,
+    verificationStatus,
+    emergencyCapable,
+    status,
+    emergencyContact,
+    coordinateFlag,
+  } = req.body || {};
+
+  const validTypes = ['Hospital', 'Health Center', 'Medical Clinic', 'Birthing Home', 'Laboratory'];
+  const validVerification = ['Verified', 'Unverified', 'Flagged', 'Pending Verification'];
+  const validStatuses = ['Operational', 'Full Capacity', 'Critical Supplies', 'Closed', 'Under Assessment'];
+
+  if (facilityType && !validTypes.includes(facilityType)) {
+    return res.status(400).json({ error: 'Invalid facility type.' });
+  }
+  if (verificationStatus && !validVerification.includes(verificationStatus)) {
+    return res.status(400).json({ error: 'Invalid verification status.' });
+  }
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid operational status.' });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [existingRows] = await conn.query('SELECT * FROM hospitals WHERE id = ? LIMIT 1', [facilityId]);
+    if (!existingRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Healthcare facility not found.' });
+    }
+    const existing = existingRows[0];
+
+    const nextLat = latitude !== undefined && latitude !== '' ? Number(latitude) : Number(existing.latitude);
+    const nextLng = longitude !== undefined && longitude !== '' ? Number(longitude) : Number(existing.longitude);
+    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng) || Math.abs(nextLat) > 90 || Math.abs(nextLng) > 180) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Invalid latitude or longitude range.' });
+    }
+
+    const withinMetro = nextLat >= 14.0 && nextLat <= 15.0 && nextLng >= 120.5 && nextLng <= 121.6;
+    let nextVerification = verificationStatus || existing.verification_status;
+    let nextFlag = coordinateFlag !== undefined ? (coordinateFlag || null) : existing.coordinate_flag;
+
+    if (!withinMetro) {
+      nextVerification = 'Flagged';
+      nextFlag =
+        nextFlag ||
+        `Coordinates (${nextLat}, ${nextLng}) are outside Metro Manila range; manual verification required.`;
+    } else if (verificationStatus === 'Verified' && coordinateFlag === undefined) {
+      nextFlag = null;
+    }
+
+    const nextType = facilityType || existing.facility_type;
+    const nextEmergencyCapable =
+      emergencyCapable !== undefined ? Boolean(emergencyCapable) : Boolean(existing.emergency_capable);
+
+    await conn.query(
+      `UPDATE hospitals
+       SET name = ?,
+           address = ?,
+           latitude = ?,
+           longitude = ?,
+           facility_type = ?,
+           operating_hours = ?,
+           verification_status = ?,
+           coordinate_flag = ?,
+           emergency_capable = ?,
+           status = ?,
+           emergency_contact = ?,
+           last_verified_at = CASE WHEN ? = 'Verified' THEN CURRENT_TIMESTAMP ELSE last_verified_at END,
+           verified_by = CASE WHEN ? = 'Verified' THEN ? ELSE verified_by END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        name ? String(name).trim() : existing.name,
+        address ? String(address).trim() : existing.address,
+        nextLat,
+        nextLng,
+        nextType,
+        operatingHours ? String(operatingHours).trim() : existing.operating_hours,
+        nextVerification,
+        nextFlag,
+        nextEmergencyCapable,
+        status || existing.status,
+        emergencyContact ? String(emergencyContact).trim() : existing.emergency_contact,
+        nextVerification,
+        nextVerification,
+        req.user.id,
+        facilityId,
+      ]
+    );
+
+    await conn.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
+       VALUES (?, 'UPDATE_HEALTHCARE_FACILITY', 'hospitals', ?, ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        facilityId,
+        JSON.stringify({
+          name: existing.name,
+          facility_type: existing.facility_type,
+          verification_status: existing.verification_status,
+          latitude: existing.latitude,
+          longitude: existing.longitude,
+        }),
+        JSON.stringify({
+          name: name || existing.name,
+          facility_type: nextType,
+          verification_status: nextVerification,
+          latitude: nextLat,
+          longitude: nextLng,
+        }),
+        String(req.ip || '0.0.0.0').slice(0, 45),
+        req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null,
+      ]
+    );
+
+    const [updatedRows] = await conn.query('SELECT * FROM hospitals WHERE id = ? LIMIT 1', [facilityId]);
+    await conn.commit();
+
+    return res.json({
+      success: true,
+      facility: updatedRows[0],
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A facility with this name already exists.' });
+    }
+    console.error('[Admin API] updateAdminFacility failed:', err.message);
+    return res.status(500).json({ error: 'Unable to update healthcare facility.' });
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   getAdminOverview,
   getAdminStats,
@@ -4324,4 +4760,7 @@ module.exports = {
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,
   updateAdminSystemSetting,
+  getAdminFacilities,
+  createAdminFacility,
+  updateAdminFacility,
 };

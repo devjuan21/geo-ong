@@ -918,6 +918,11 @@
         bgStyle = 'background-color:#D97706;';
         ringClass = isSelected ? 'ring-4 ring-[#202020]/40' : 'ring-4 ring-amber-300';
         iconSvg = `<svg class="${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 9v3.5m0 3.25h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path></svg>`;
+      } else if (type === 'hospital' || type === 'health_center') {
+        return GeoSafeMapping.createMedicalFacilityIcon(
+          type === 'hospital' ? 'Hospital' : 'Health Center',
+          opts
+        );
       } else if (type === 'responder' || type === 'eoc') {
         bgStyle = 'background-color:#4338CA;';
         ringClass = type === 'eoc' ? 'ring-4 ring-[#FDE047]' : 'ring-4 ring-indigo-300';
@@ -944,6 +949,48 @@
         iconSize: [sizePx, sizePx],
         iconAnchor: [anchorPx, anchorPx],
         popupAnchor: [0, -anchorPx - 2]
+      });
+    },
+
+    /**
+     * Create consistent SVG map pin markers for Hospitals (red) and Health Centers (blue).
+     * @param {string} facilityType - 'Hospital' or 'Health Center'
+     * @param {object} [options] - { selected, muted, compact }
+     * @returns {L.DivIcon}
+     */
+    createMedicalFacilityIcon(facilityType, options = {}) {
+      const normalized = String(facilityType || '').trim().toLowerCase();
+      const isHospital = normalized === 'hospital' || !normalized.includes('health center');
+      const isCompact = Boolean(options.compact);
+      const isSelected = Boolean(options.selected);
+      const isMuted = Boolean(options.muted);
+
+      const pinFill = isHospital ? '#DC2626' : '#2563EB';
+      const title = isHospital ? 'Hospital' : 'Health Center';
+      const width = isCompact ? 24 : 30;
+      const height = isCompact ? 30 : 38;
+      const anchorX = Math.round(width / 2);
+      const anchorY = height - 1;
+      const scaleCls = isSelected ? 'scale-110' : '';
+      const opacityStyle = isMuted ? 'opacity:0.62;' : '';
+
+      const svgHtml = `
+        <div class="relative flex items-center justify-center transition-transform ${scaleCls}" style="${opacityStyle}width:${width}px;height:${height}px;filter:drop-shadow(0 2px 4px rgba(15,23,42,0.34));" title="${title}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="${width}" height="${height}" aria-label="${title}">
+            <path d="M16 2C8.82 2 3 7.82 3 15c0 9.75 13 23 13 23s13-13.25 13-23C29 7.82 23.18 2 16 2z" fill="${pinFill}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+            <path d="M8.5 20.5V13h3V9.5h9V13h3v7.5H8.5z" fill="#FFFFFF"/>
+            <path d="M15 11.4h2v2h2v2h-2v2h-2v-2h-2v-2h2v-2z" fill="${pinFill}"/>
+            <rect x="14.75" y="18.2" width="2.5" height="2.3" rx="0.35" fill="${pinFill}"/>
+          </svg>
+        </div>
+      `;
+
+      return L.divIcon({
+        className: isHospital ? 'geosafe-hospital-marker' : 'geosafe-health-center-marker',
+        html: svgHtml,
+        iconSize: [width, height],
+        iconAnchor: [anchorX, anchorY],
+        popupAnchor: [0, -height + 4],
       });
     },
 

@@ -760,7 +760,6 @@ window.handleRescueConditionChange = function () {
   if (countLabel) countLabel.textContent = cfg.countLabel;
   if (countInput) {
     countInput.required = true;
-    countInput.placeholder = `Enter ${cfg.countLabel.toLowerCase()}`;
   }
   if (locLabel) locLabel.textContent = cfg.locationLabel;
 
@@ -775,12 +774,18 @@ window.handleRescueConditionChange = function () {
   }
 };
 
-function parsePositiveWholeCount(rawValue) {
-  const trimmed = String(rawValue ?? '').trim();
+function parseRescueCountSelection(rawValue) {
+  const trimmed = String(rawValue ?? '').trim().toLowerCase();
+  if (trimmed === 'unknown') {
+    return { category: 'unknown', count: null, display: "Don't know" };
+  }
+  if (trimmed === 'more_than_10') {
+    return { category: 'more_than_10', count: null, display: 'More than 10' };
+  }
   if (!/^\d+$/.test(trimmed)) return null;
   const num = Number(trimmed);
   if (!Number.isInteger(num) || num < 1 || num > 50) return null;
-  return num;
+  return { category: 'exact', count: num, display: `${num}` };
 }
 
 window.openRescueConfirmModal = function () {
@@ -795,9 +800,9 @@ window.openRescueConfirmModal = function () {
     return;
   }
 
-  const parsedCount = parsePositiveWholeCount(rawCount);
-  if (parsedCount === null) {
-    GeoSafeUI.showToast(`Please enter a valid whole number (1-50) for ${cfg.countLabel}.`, 'error');
+  const parsedSel = parseRescueCountSelection(rawCount);
+  if (parsedSel === null) {
+    GeoSafeUI.showToast(`Please select a valid option for ${cfg.countLabel}.`, 'error');
     return;
   }
 
@@ -818,7 +823,12 @@ window.openRescueConfirmModal = function () {
   document.getElementById('cfm-res-type').textContent = type;
   const cfmCountLabel = document.getElementById('cfm-res-count-label');
   if (cfmCountLabel) cfmCountLabel.textContent = cfg.confirmLabel;
-  document.getElementById('cfm-res-count').textContent = `${parsedCount} ${cfg.unitLabel}`;
+  document.getElementById('cfm-res-count').textContent =
+    parsedSel.category === 'unknown'
+      ? "Don't know"
+      : parsedSel.category === 'more_than_10'
+        ? 'More than 10'
+        : `${parsedSel.count} ${cfg.unitLabel}`;
   document.getElementById('cfm-res-loc').textContent = loc;
 
   document.getElementById('confirm-rescue-modal')?.classList.remove('hidden');
@@ -832,9 +842,9 @@ window.submitRescueFinal = async function () {
   if (isSubmittingRescue) return;
   const type = document.getElementById('res-type')?.value;
   const cfg = RESCUE_CONDITION_CONFIG[type];
-  const parsedCount = parsePositiveWholeCount(document.getElementById('res-count')?.value);
+  const parsedSel = parseRescueCountSelection(document.getElementById('res-count')?.value);
 
-  if (!cfg || parsedCount === null) {
+  if (!cfg || parsedSel === null) {
     GeoSafeUI.showToast('Please enter valid emergency details before submitting.', 'error');
     return;
   }
@@ -874,7 +884,8 @@ window.submitRescueFinal = async function () {
     photos: rescuePhotoBase64 ? [rescuePhotoBase64] : []
   };
 
-  payload[cfg.countField] = parsedCount;
+  payload[cfg.countField] = parsedSel.category === 'exact' ? parsedSel.count : parsedSel.category;
+  payload.peopleCountCategory = parsedSel.category;
   if (cfg.showVulnerable) {
     const vulnText = document.getElementById('res-vulnerable')?.value.trim();
     if (vulnText) {
@@ -1015,6 +1026,7 @@ window.loadSubmittedReports = async function () {
 
     const normalizedRescues = rescues.map((q) => ({
       kind: 'rescue',
+      dbId: q.dbId || null,
       typeLabel: 'Rescue Request',
       ref: q.referenceNumber || q.id || '',
       title: q.emergencyType || q.emergency_type || 'Rescue Request',
@@ -1022,6 +1034,11 @@ window.loadSubmittedReports = async function () {
       description: q.description || q.vulnerableDetails || '',
       location: q.location || q.address || 'Barangay Bayanan',
       status: q.status || 'Pending',
+      assignedResponderId: q.assignedResponderId || null,
+      assignedResponderName: q.assignedResponderName || null,
+      conversationId: q.conversationId || null,
+      conversationStatus: q.conversationStatus || null,
+      conversationArchived: Boolean(q.conversationArchived),
       submittedAt: q.requestDate || q.created_at || q.createdAt || null,
       fullHref: 'rescue-requests.html'
     }));
@@ -1099,6 +1116,9 @@ window.openSubmissionDetailModal = function (index) {
   const remarksLabel = document.getElementById('sub-detail-remarks-label');
   const remarksEl = document.getElementById('sub-detail-remarks');
   const fullLink = document.getElementById('sub-detail-full-link');
+  const msgBtn = document.getElementById('sub-detail-message-btn');
+  const msgLabel = document.getElementById('sub-detail-message-label');
+  const msgDisabledBtn = document.getElementById('sub-detail-message-disabled');
 
   if (typeBadge) {
     typeBadge.textContent = item.typeLabel;
@@ -1142,6 +1162,33 @@ window.openSubmissionDetailModal = function (index) {
       fullLink.classList.remove('hidden');
     } else {
       fullLink.classList.add('hidden');
+    }
+  }
+  if (msgBtn || msgDisabledBtn) {
+    if (item.kind !== 'rescue') {
+      if (msgBtn) msgBtn.classList.add('hidden');
+      if (msgDisabledBtn) msgDisabledBtn.classList.add('hidden');
+    } else if (item.assignedResponderId) {
+      if (msgDisabledBtn) msgDisabledBtn.classList.add('hidden');
+      if (msgBtn) {
+        const qs = new URLSearchParams({
+          ...(item.conversationId ? { conversationId: String(item.conversationId) } : {}),
+          ...(item.dbId ? { rescueId: String(item.dbId) } : {}),
+          from: 'report-rescue',
+        });
+        msgBtn.href = `messages.html?${qs.toString()}`;
+        if (msgLabel) {
+          if (item.conversationStatus === 'Closed') {
+            msgLabel.textContent = 'Contact Responder (Closed)';
+          } else {
+            msgLabel.textContent = 'Contact Responder';
+          }
+        }
+        msgBtn.classList.remove('hidden');
+      }
+    } else {
+      if (msgBtn) msgBtn.classList.add('hidden');
+      if (msgDisabledBtn) msgDisabledBtn.classList.remove('hidden');
     }
   }
 

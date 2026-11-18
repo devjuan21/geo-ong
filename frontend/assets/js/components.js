@@ -189,9 +189,7 @@ const GeoSafeUI = {
       <!-- Top: Logo & Branding -->
       <div class="h-14 flex items-center px-4 border-b border-slate-200 gap-2.5 flex-shrink-0 bg-white">
         <a href="index.html" class="flex items-center gap-2.5 group">
-          <div class="w-8 h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
-            GS
-          </div>
+          <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" style="border-radius: 50%;">
           <div class="min-w-0">
             <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900 block leading-tight">GeoSafe</span>
             <span class="text-[10px] text-slate-500 font-medium block leading-tight truncate">Barangay Bayanan</span>
@@ -237,9 +235,7 @@ const GeoSafeUI = {
             <!-- Left: Logo (Mobile/Tablet) & Dynamic Resident Greeting -->
             <div class="flex items-center gap-2 sm:gap-2.5 min-w-0">
               <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0 lg:hidden">
-                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xs">
-                  GS
-                </div>
+                <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" style="border-radius: 50%;">
                 <div class="hidden sm:block">
                   <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
                 </div>

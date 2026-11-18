@@ -285,7 +285,8 @@
     analytics: 'Reports & Analytics',
     settings: 'System Settings & Maintenance',
     audit: 'System Audit Logs',
-    messages: 'Rescue Conversation Oversight'
+    messages: 'Rescue Conversation Oversight',
+    facilities: 'Healthcare & Hospital Directory'
   };
 
   function openMobileDrawer() {
@@ -361,7 +362,7 @@
 
     try {
       localStorage.setItem('geosafe_admin_sidebar_collapsed', isDesktopSidebarCollapsed ? 'true' : 'false');
-    } catch (_) {}
+    } catch (_) { }
 
     if (state.mapInstance) {
       setTimeout(() => state.mapInstance.invalidateSize(), 260);
@@ -385,7 +386,7 @@
   }
 
   function switchAdminSection(sectionKey) {
-    const validSections = ['dashboard', 'reports', 'responders', 'users', 'alerts', 'analytics', 'settings', 'audit', 'messages'];
+    const validSections = ['dashboard', 'reports', 'responders', 'users', 'alerts', 'analytics', 'settings', 'audit', 'messages', 'facilities'];
     const target = validSections.includes(sectionKey) ? sectionKey : 'dashboard';
     state.currentSection = target;
 
@@ -439,6 +440,9 @@
       loadAuditLogs();
     } else if (target === 'messages') {
       loadAdminConversationsList();
+    } else if (target === 'facilities') {
+      resetFacilityForm();
+      loadAdminFacilitiesList();
     }
   }
 
@@ -533,7 +537,7 @@
     if (!Number.isInteger(uid) || !state.responderLiveMarkers) return;
     const marker = state.responderLiveMarkers.get(uid);
     if (marker && state.responderLiveLayer) {
-      try { state.responderLiveLayer.removeLayer(marker); } catch (_) {}
+      try { state.responderLiveLayer.removeLayer(marker); } catch (_) { }
     }
     state.responderLiveMarkers.delete(uid);
     if (state.responderLiveData) state.responderLiveData.delete(uid);
@@ -648,7 +652,8 @@
       }
     }
 
-    const visibleItems = filterType === 'responder'
+    const isFacilityFilter = ['facilities', 'hospital', 'health_center'].includes(filterType);
+    const visibleItems = (filterType === 'responder' || isFacilityFilter)
       ? []
       : items.filter((item) => {
         if (filterType !== 'all' && item.recordType !== filterType) return false;
@@ -656,14 +661,28 @@
         return true;
       });
 
-    state.lastVisibleMapItemsCount = visibleItems.length;
+    const allFacilities = Array.isArray(state.overview.hospitals) ? state.overview.hospitals : [];
+    const filteredFacilities = allFacilities.filter((fac) => {
+      if (filterType === 'hospital') return fac.facilityType === 'Hospital';
+      if (filterType === 'health_center') return fac.facilityType === 'Health Center';
+      return true;
+    });
+    const showHospitalsToggle = document.getElementById('map-toggle-hospitals');
+    const showFacilities = isFacilityFilter || (showHospitalsToggle ? showHospitalsToggle.checked : true);
+
+    state.lastVisibleMapItemsCount = isFacilityFilter ? filteredFacilities.length : visibleItems.length;
     updateAdminMapCountBadge();
 
     const emptyOverlay = document.getElementById('admin-map-empty');
     if (emptyOverlay) {
-      emptyOverlay.classList.toggle('hidden', visibleItems.length > 0);
+      const hasVisible = isFacilityFilter ? filteredFacilities.length > 0 : visibleItems.length > 0;
+      emptyOverlay.classList.toggle('hidden', hasVisible);
       const emptyText = document.getElementById('admin-map-empty-text');
-      if (emptyText) emptyText.textContent = 'No incident locations are currently available.';
+      if (emptyText) {
+        emptyText.textContent = isFacilityFilter
+          ? 'No matching facilities are currently available.'
+          : 'No incident locations are currently available.';
+      }
     }
 
     const bounds = L.latLngBounds([]);
@@ -760,6 +779,47 @@
       evacMarker.addTo(state.mapLayerGroup);
       bounds.extend([evac.latitude, evac.longitude]);
     });
+
+    // Render Hospitals and Health Centers on map with consistent red/blue medical pin icons
+    if (showFacilities) {
+      const hospitalIcon = GeoSafeMapping.createMedicalFacilityIcon('Hospital');
+      const healthCenterIcon = GeoSafeMapping.createMedicalFacilityIcon('Health Center');
+
+      filteredFacilities.forEach((fac) => {
+        const hLat = Number(fac.latitude);
+        const hLng = Number(fac.longitude);
+        if (!Number.isFinite(hLat) || !Number.isFinite(hLng)) return;
+
+        const isHospital = fac.facilityType === 'Hospital';
+        const isVerified = fac.verificationStatus === 'Verified';
+        const iconToUse = isHospital ? hospitalIcon : healthCenterIcon;
+        const typeColor = isHospital ? '#DC2626' : '#2563EB';
+        const verBadgeCls = isVerified
+          ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+          : 'bg-amber-50 text-amber-800 border-amber-200';
+
+        const hMarker = L.marker([hLat, hLng], { icon: iconToUse, zIndexOffset: isHospital ? 245 : 235 });
+        hMarker.bindTooltip(`${escapeHtml(fac.facilityType)}: ${escapeHtml(fac.name)} (${escapeHtml(fac.verificationStatus)})`, { direction: 'top' });
+        hMarker.bindPopup(`
+          <div class="p-1.5 text-xs font-sans space-y-1 max-w-[260px]">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[10px] font-bold uppercase tracking-wider" style="color:${typeColor};">${escapeHtml(fac.facilityType || 'Hospital')}</span>
+              <span class="px-1.5 py-0.5 rounded border text-[9px] font-bold ${verBadgeCls}">${escapeHtml(fac.verificationStatus || 'Pending Verification')}</span>
+            </div>
+            <div class="font-bold text-[#0f172a]">${escapeHtml(fac.name)}</div>
+            <div class="text-[11px] text-[#475569]">${escapeHtml(fac.address || 'Address unavailable')}</div>
+            <div class="text-[10px] text-[#334155]">
+              <strong>Hours:</strong> ${escapeHtml(fac.operatingHours || 'Unverified')} &bull;
+              <strong>Status:</strong> ${escapeHtml(fac.status || 'Under Assessment')}
+            </div>
+            <div class="text-[10px] font-mono text-[#64748b]">${hLat.toFixed(6)}, ${hLng.toFixed(6)}</div>
+            ${fac.coordinateFlag ? `<div class="text-[10px] text-amber-800 font-semibold">${escapeHtml(fac.coordinateFlag)}</div>` : ''}
+          </div>
+        `);
+        hMarker.addTo(state.mapLayerGroup);
+        bounds.extend([hLat, hLng]);
+      });
+    }
 
     // Plot Official GeoSafe Emergency Operations Center (EOC) Marker
     const eoc = state.overview.eocLocation || (window.GeoSafeMapping && typeof window.GeoSafeMapping.getEocLocation === 'function' ? window.GeoSafeMapping.getEocLocation() : null);
@@ -859,6 +919,7 @@
         summary: data.summary || {},
         mapItems: data.mapItems || [],
         evacuationCenters: data.evacuationCenters || [],
+        hospitals: data.hospitals || [],
         eocLocation: data.eocLocation || null,
         recentActivities: data.recentActivities || []
       };
@@ -1364,10 +1425,19 @@
       if (catBox) {
         if (data.recordType === 'rescue' || data.categoryDetails || data.peopleCount || data.vulnerableDetails || data.landmark) {
           catBox.classList.remove('hidden');
-          const people = (data.categoryDetails && data.categoryDetails.peopleCount) || data.peopleCount || 1;
+          const peopleDisplay =
+            (data.categoryDetails && data.categoryDetails.peopleCountDisplay) ||
+            data.peopleCountDisplay ||
+            (() => {
+              const pCat = (data.categoryDetails && data.categoryDetails.peopleCountCategory) || data.peopleCountCategory;
+              if (pCat === 'unknown') return 'Unknown';
+              if (pCat === 'more_than_10') return 'More than 10';
+              const people = (data.categoryDetails && data.categoryDetails.peopleCount) || data.peopleCount;
+              return people ? `${people} person(s)` : 'Unknown';
+            })();
           const vul = (data.categoryDetails && data.categoryDetails.vulnerableDetails) || data.vulnerableDetails || 'None specified';
           const lmk = (data.categoryDetails && data.categoryDetails.landmark) || data.landmark || 'None specified';
-          document.getElementById('modal-cat-people').textContent = `${people} person(s)`;
+          document.getElementById('modal-cat-people').textContent = peopleDisplay;
           document.getElementById('modal-cat-vulnerable').textContent = vul;
           document.getElementById('modal-cat-landmark').textContent = lmk;
         } else {
@@ -1437,6 +1507,99 @@
             ${escapeHtml(rep.verificationStatus || 'Unverified Resident')}
           </span>
         `;
+      }
+
+      // Section F2: Rescue Outcome & Optional Transportation (Rescues Only)
+      const outcomeSec = document.getElementById('modal-rescue-outcome-section');
+      const outcomeBadge = document.getElementById('modal-rescue-outcome-badge');
+      const outcomeBody = document.getElementById('modal-rescue-outcome-body');
+      const nearbyHospWrap = document.getElementById('modal-nearby-hospitals-wrap');
+      if (outcomeSec && outcomeBody) {
+        if (recordType !== 'rescue') {
+          outcomeSec.classList.add('hidden');
+          if (nearbyHospWrap) nearbyHospWrap.innerHTML = '';
+        } else {
+          outcomeSec.classList.remove('hidden');
+          if (nearbyHospWrap) {
+            if (Number.isFinite(Number(data.latitude)) && Number.isFinite(Number(data.longitude))) {
+              nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-slate-500">Calculating route distances...</div>`;
+              apiRequest(`/hospitals/recommendations?lat=${encodeURIComponent(data.latitude)}&lng=${encodeURIComponent(data.longitude)}&category=hospital`, {}, true)
+                .then((recData) => {
+                  const recs = Array.isArray(recData && recData.recommendations) ? recData.recommendations : [];
+                  if (recs.length === 0) {
+                    nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-slate-500">No verified hospitals found.</div>`;
+                    return;
+                  }
+                  nearbyHospWrap.innerHTML = `
+                    <div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals (Reference for Coordination)</div>
+                    ${recs.slice(0, 4).map((h) => {
+                    const distKm = Number.isFinite(Number(h.routeDistanceMeters)) ? `${(Number(h.routeDistanceMeters) / 1000).toFixed(2)} km` : '—';
+                    const etaMin = Number.isFinite(Number(h.routeDurationSeconds)) ? ` (~${Math.max(1, Math.round(Number(h.routeDurationSeconds) / 60))} min)` : '';
+                    return `
+                        <div class="p-2 rounded bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <div>
+                            <strong class="text-[#0f172a]">${escapeHtml(h.name)}</strong>
+                            <span class="block text-[10px] text-slate-500">${escapeHtml(h.address || '')} &bull; Hours: ${escapeHtml(h.operatingHours || 'Unverified')}</span>
+                          </div>
+                          <span class="text-[11px] font-bold text-[#0A58CA] tabular-nums">${distKm}${etaMin}</span>
+                        </div>
+                      `;
+                  }).join('')}
+                  `;
+                })
+                .catch(() => {
+                  nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-[#D93636]">Unable to load nearby hospital route distances.</div>`;
+                });
+            } else {
+              nearbyHospWrap.innerHTML = '';
+            }
+          }
+          const out = data.outcome || null;
+          const transports = Array.isArray(data.transports) ? data.transports : [];
+          const outcomeNames = {
+            first_aid: 'First Aid / On-Site Assistance',
+            hospital: 'Transport to Hospital',
+            medical_facility: 'Transport to Medical Facility',
+            evacuation_center: 'Transport to Evacuation Center',
+            other: 'Other / Special Assistance',
+          };
+          if (outcomeBadge) {
+            outcomeBadge.textContent = out ? (outcomeNames[out.primaryOutcome] || out.primaryOutcome) : 'Pending Outcome';
+          }
+          if (!out && transports.length === 0) {
+            outcomeBody.innerHTML = `<p class="text-[11px] text-[#777777]">No rescue outcome or transportation details recorded by responder yet.</p>`;
+          } else {
+            outcomeBody.innerHTML = `
+              ${out ? `
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2.5 rounded border border-slate-200 text-[11px]">
+                  <div><span class="text-[#777777] block">Total Rescued</span><strong class="text-[#202020]">${out.totalRescued}</strong></div>
+                  <div><span class="text-[#777777] block">First Aid</span><strong class="text-[#202020]">${out.firstAidCount}</strong></div>
+                  <div><span class="text-[#777777] block">Transport Required</span><strong class="text-[#202020]">${out.transportRequired ? 'Yes' : 'No (On-Site)'}</strong></div>
+                  <div><span class="text-[#777777] block">Still Assisting</span><strong class="text-[#202020]">${out.stillAssistingCount}</strong></div>
+                </div>
+                ${out.firstAidActions ? `<div class="text-[11px]"><strong>First-Aid Actions:</strong> ${escapeHtml(out.firstAidActions)}</div>` : ''}
+                ${out.furtherMedicalRecommended ? `<div class="text-[11px] font-semibold text-amber-800">Further medical evaluation recommended.</div>` : ''}
+                ${out.otherDescription ? `<div class="text-[11px]"><strong>Special Assistance:</strong> ${escapeHtml(out.otherDescription)}</div>` : ''}
+              ` : ''}
+              ${transports.length > 0 ? `
+                <div class="space-y-1.5">
+                  <div class="text-[10px] font-bold text-[#777777] uppercase">Transport &amp; Handover Legs</div>
+                  ${transports.map((t) => `
+                    <div class="p-2 rounded bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div>
+                        <strong>${escapeHtml(t.destinationName)}</strong>
+                        <span class="ml-1 text-[10px] text-[#777777]">(${escapeHtml(t.destinationFacilityType)}, ${t.peopleCount} person(s))</span>
+                        ${t.arrivedAt ? `<span class="block text-[10px] text-[#64748b]">Arrived: ${formatDateTime(t.arrivedAt)}</span>` : ''}
+                        ${t.handedOverAt ? `<span class="block text-[10px] text-[#278653]">Handed Over: ${formatDateTime(t.handedOverAt)}</span>` : ''}
+                      </div>
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold ${t.transportStatus === 'Handed Over' ? 'bg-emerald-50 text-[#278653] border border-emerald-200' : 'bg-blue-50 text-[#0A58CA] border border-blue-200'}">${escapeHtml(t.transportStatus)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            `;
+          }
+        }
       }
 
       // Section F: Photo Evidence (Separated Resident Report Evidence & Responder Completion Evidence)
@@ -1552,10 +1715,48 @@
         }
         respSelect.appendChild(opt);
       });
+      const rawStLower = String(data.rawStatus || data.status || '').toLowerCase();
+      const isAlreadyRejected = ['false_alarm', 'dismissed', 'cancelled'].includes(rawStLower);
+      const isAlreadyVerified = recordType === 'rescue'
+        ? Boolean(data.hasActiveAssignment || ['assigned', 'accepted', 'en route', 'on scene', 'completed'].includes(rawStLower))
+        : Boolean(data.verifiedAt || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
+      const hasAssignedResponder = Boolean(data.assignedTo || data.hasActiveAssignment);
+      const isClosedOrRejected = isAlreadyRejected || ['resolved', 'completed', 'cancelled', 'false_alarm', 'dismissed'].includes(rawStLower);
+
       const isResponderLocked = Boolean(data.responderLocked);
-      respSelect.disabled = isResponderLocked;
+      const assignBtn = document.getElementById('review-assign-btn');
+      const cannotAssign = isClosedOrRejected || isResponderLocked || hasAssignedResponder;
+      respSelect.disabled = cannotAssign;
+      if (assignBtn) assignBtn.disabled = cannotAssign;
       if (respLockNote) {
-        respLockNote.classList.toggle('hidden', !isResponderLocked);
+        respLockNote.classList.toggle('hidden', !(isResponderLocked || hasAssignedResponder));
+      }
+
+      const verStatusEl = document.getElementById('review-verification-status');
+      if (verStatusEl) {
+        if (isAlreadyRejected) {
+          verStatusEl.textContent = 'Rejected';
+          verStatusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-[#D93636] border border-red-200';
+        } else if (isAlreadyVerified) {
+          verStatusEl.textContent = 'Verified';
+          verStatusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200';
+        } else {
+          verStatusEl.textContent = 'Pending Verification';
+          verStatusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200';
+        }
+      }
+
+      const assignStatusEl = document.getElementById('review-assignment-status');
+      const assignedRespNameEl = document.getElementById('review-assigned-responder-name');
+      const assignStatusText = data.assignmentStatus || (hasAssignedResponder ? 'Assigned' : 'Unassigned');
+      if (assignStatusEl) {
+        assignStatusEl.textContent = assignStatusText;
+        assignStatusEl.className = hasAssignedResponder
+          ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200'
+          : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200';
+      }
+      if (assignedRespNameEl) {
+        assignedRespNameEl.textContent = data.assignedResponderName || 'None';
       }
 
       const reasonInput = document.getElementById('review-reason-input');
@@ -1571,21 +1772,18 @@
       }
       const verifyBtn = document.getElementById('review-verify-btn');
       const rejectBtn = document.getElementById('review-reject-btn');
-      const rawStLower = String(data.rawStatus || data.status || '').toLowerCase();
-      const isAlreadyVerified = recordType === 'rescue'
-        ? Boolean(data.hasActiveAssignment || ['assigned', 'accepted', 'en route', 'on scene', 'completed'].includes(rawStLower))
-        : Boolean(data.verifiedAt || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
-      const hasAssignedResponder = Boolean(data.assignedTo || data.hasActiveAssignment);
 
       if (verifyBtn) {
-        verifyBtn.disabled = isNotesLocked || isAlreadyVerified;
-        if (isAlreadyVerified || isNotesLocked) {
-          verifyBtn.textContent = hasAssignedResponder ? 'Verified and Assigned' : 'Verified';
+        verifyBtn.disabled = isNotesLocked || isAlreadyVerified || isAlreadyRejected;
+        if (isAlreadyVerified) {
+          verifyBtn.textContent = 'Verified';
+        } else if (isAlreadyRejected) {
+          verifyBtn.textContent = 'Rejected';
         } else {
           verifyBtn.textContent = recordType === 'rescue' ? 'Verify Rescue' : 'Verify Report';
         }
       }
-      if (rejectBtn) rejectBtn.disabled = isNotesLocked || isAlreadyVerified;
+      if (rejectBtn) rejectBtn.disabled = isNotesLocked || isAlreadyVerified || isAlreadyRejected;
 
       const closureInfoEl = document.getElementById('modal-report-closure-info');
       const closeIncidentBtn = document.getElementById('review-close-incident-btn');
@@ -1843,7 +2041,6 @@
       const payload = {
         action: actionType,
         status: detail.rawStatus || detail.status,
-        assignedTo: respVal ? Number(respVal) : null,
         reason: reasonVal
       };
 
@@ -1852,17 +2049,17 @@
         body: JSON.stringify(payload)
       });
 
-      showBannerMessage(result.message || 'Report review action completed.');
-      closeReportDetailModal();
+      showBannerMessage(result.message || 'Report verification updated.');
+      await openReportModal(detail.recordType, detail.dbId || detail.id);
       loadReportsList();
       loadDashboardOverview();
     } catch (err) {
       const msg = String((err && err.message) || '');
-      const alreadyDone = /already been verified|already completed|locked/i.test(msg);
+      const alreadyDone = /already been verified|already been rejected|already completed|locked/i.test(msg);
       if (verifyBtn) {
         if (alreadyDone) {
           verifyBtn.disabled = true;
-          verifyBtn.textContent = 'Verified and Assigned';
+          verifyBtn.textContent = /rejected/i.test(msg) ? 'Rejected' : 'Verified';
         } else {
           verifyBtn.disabled = prevVerifyDisabled;
           verifyBtn.textContent = prevVerifyText;
@@ -1878,6 +2075,64 @@
       }
     } finally {
       isReviewSubmitting = false;
+    }
+  }
+
+  let isAssignSubmitting = false;
+  async function assignResponderFromModal() {
+    if (!state.reports.activeDetail || isAssignSubmitting) return;
+    const detail = state.reports.activeDetail;
+    const errEl = document.getElementById('review-form-error');
+    if (errEl) errEl.classList.add('hidden');
+
+    const respSelect = document.getElementById('review-responder-select');
+    const reasonInput = document.getElementById('review-reason-input');
+    const assignBtn = document.getElementById('review-assign-btn');
+    const respVal = respSelect ? respSelect.value : '';
+
+    if (!respVal) {
+      const msg = 'Please select an eligible Responder to assign.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      window.GeoSafeToast?.flagInvalidField?.(respSelect, msg);
+      return;
+    }
+
+    isAssignSubmitting = true;
+    const prevText = assignBtn ? assignBtn.textContent : 'Assign Responder';
+    if (assignBtn) {
+      assignBtn.disabled = true;
+      assignBtn.textContent = 'Assigning...';
+    }
+
+    try {
+      const result = await apiRequest('/responders/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: detail.recordType,
+          targetId: detail.dbId || detail.id,
+          responderUserId: Number(respVal),
+          dispatchInstructions: reasonInput?.value.trim() || null
+        })
+      });
+
+      showBannerMessage(result.message || 'Responder assigned successfully.');
+      await openReportModal(detail.recordType, detail.dbId || detail.id);
+      loadReportsList();
+      loadDashboardOverview();
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = (err && err.message) || 'Failed to assign responder.';
+        errEl.classList.remove('hidden');
+      }
+      if (assignBtn) {
+        assignBtn.disabled = false;
+        assignBtn.textContent = prevText;
+      }
+    } finally {
+      isAssignSubmitting = false;
     }
   }
 
@@ -2972,7 +3227,9 @@
     if (formSubmitBtn) formSubmitBtn.disabled = true;
 
     try {
+      pending.idempotencyKey = pending.idempotencyKey || `brd-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const payload = {
+        client_request_id: pending.idempotencyKey,
         category_id: pending.categoryId,
         advisory_type: pending.advisoryType,
         urgency_level: pending.urgencyLevel,
@@ -2988,9 +3245,11 @@
 
       const result = await apiRequest('/broadcasts', {
         method: 'POST',
+        headers: { 'X-Idempotency-Key': pending.idempotencyKey },
         body: JSON.stringify(payload)
       });
 
+      state.broadcasts.pendingBroadcast = null;
       showBannerMessage(result.message || 'Broadcast alert published successfully.');
       state.broadcasts.isSubmitting = false;
       closeBroadcastConfirmModal();
@@ -3153,17 +3412,30 @@
     const emptyEl = document.getElementById('admin-broadcasts-empty');
     if (!tbody) return;
 
-    tbody.innerHTML = '';
+    const reqSeq = (state.broadcasts.loadSeq = (state.broadcasts.loadSeq || 0) + 1);
     if (loadingEl) loadingEl.classList.remove('hidden');
     if (emptyEl) emptyEl.classList.add('hidden');
 
     try {
       const data = await apiRequest('/broadcasts');
-      state.broadcasts.items = data.broadcasts || [];
+      // Discard stale out-of-order responses so overlapping loads never duplicate rows
+      if (reqSeq !== state.broadcasts.loadSeq) return;
+
+      const dedupedMap = new Map();
+      (data.broadcasts || []).forEach((item) => {
+        if (item && item.id !== undefined && item.id !== null) {
+          dedupedMap.set(Number(item.id), item);
+        }
+      });
+      state.broadcasts.items = Array.from(dedupedMap.values());
+
       const statusFilter = document.getElementById('admin-broadcasts-status-filter')?.value || 'Active';
       const filteredItems = statusFilter === 'all'
         ? state.broadcasts.items
         : state.broadcasts.items.filter((b) => String(b.status || (b.isActive ? 'Active' : 'Cancelled')) === statusFilter);
+
+      // Clear tbody immediately before rendering (after await) to prevent duplicate row appending
+      tbody.innerHTML = '';
 
       if (emptyEl) {
         emptyEl.classList.toggle('hidden', filteredItems.length > 0);
@@ -3229,15 +3501,12 @@
   // SECTION 6: REPORTS & ANALYTICS
   // ============================================================================
   const CATEGORY_CHART_COLOR_MAP = {
-    flooding: '#3478C7',
-    flood: '#3478C7',
-    fire: '#D93636',
-    'medical emergency': '#278653',
-    'road obstruction / fallen tree': '#F5B900',
-    'power line / utility hazard': '#8B5CF6',
-    'structural damage': '#EA580C',
-    earthquake: '#7C3AED',
-    landslide: '#B45309'
+    'flooding / rising water': '#2563EB',
+    'fallen tree / road obstruction': '#D97706',
+    'downed electrical power cable': '#8B5CF6',
+    'structural / wall collapse': '#EA580C',
+    'fire outbreak': '#DC2626',
+    'severe drainage overflow': '#0D9488'
   };
   const CATEGORY_CHART_PALETTE = ['#3478C7', '#D93636', '#278653', '#F5B900', '#8B5CF6', '#EA580C', '#0D9488', '#DB2777', '#4F46E5'];
 
@@ -3760,8 +4029,8 @@
       yTicks.push(v);
     }
 
-    const svgWidth = 920;
-    const svgHeight = 290;
+    const svgWidth = Math.max(560, Math.round(chartEl.clientWidth || 920));
+    const svgHeight = Math.max(260, Math.round(chartEl.clientHeight || 440));
     const padLeft = 56;
     const padRight = 18;
     const padTop = 22;
@@ -3828,7 +4097,8 @@
     }).join('');
 
     chartEl.innerHTML = `
-      <svg viewBox="0 0 ${svgWidth} ${svgHeight}" class="w-full h-auto select-none" role="img"
+      <svg viewBox="0 0 ${svgWidth} ${svgHeight}" preserveAspectRatio="xMidYMid meet"
+        class="w-full h-full block select-none" role="img"
         aria-label="Incidents by Day bar chart">
         ${gridLinesSvg}
         ${yAxisLineSvg}
@@ -4094,6 +4364,12 @@
     if (mapStatusSelect) {
       mapStatusSelect.addEventListener('change', (e) => {
         state.mapFilters.status = e.target.value;
+        renderMapMarkers();
+      });
+    }
+    const mapHospitalsToggle = document.getElementById('map-toggle-hospitals');
+    if (mapHospitalsToggle) {
+      mapHospitalsToggle.addEventListener('change', () => {
         renderMapMarkers();
       });
     }
@@ -4464,7 +4740,7 @@
           if (savedCollapsed) {
             toggleDesktopSidebar(true);
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       window.addEventListener('geosafe:realtime-update', (ev) => {
@@ -4487,7 +4763,19 @@
         } else if (state.currentSection === 'responders') {
           loadRespondersList();
         } else if (state.currentSection === 'alerts') {
-          loadBroadcastsList();
+          const alertEvents = new Set([
+            'new-hazard-alert',
+            'alert-broadcast',
+            'hazard-alert-expired',
+            'alert-expired',
+            'hazard-alert-cancelled',
+            'alert-cancelled',
+            'reconnect-sync',
+            'admin-sync',
+          ]);
+          if (alertEvents.has(detail.event)) {
+            loadBroadcastsList();
+          }
         } else if (state.currentSection === 'messages') {
           loadAdminConversationsList({ silent: true });
           if (state.messages.activeConversationId) {
@@ -4505,6 +4793,20 @@
           openAssignResponderModal();
         }
       });
+
+      if (window.geoSafeStore && window.geoSafeStore.socket) {
+        const sock = window.geoSafeStore.socket;
+        const refreshRescueMonitor = () => {
+          if (state.currentSection === 'reports') loadReportsTable();
+          if (state.currentSection === 'dashboard') loadDashboardOverview();
+          const reportModal = document.getElementById('admin-report-modal');
+          if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
+            openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
+          }
+        };
+        sock.on('assignment:outcome', refreshRescueMonitor);
+        sock.on('rescue:transport-updated', refreshRescueMonitor);
+      }
     } catch (err) {
       console.error('[Admin] Session authorization verification failed:', err);
       if (loadingEl) loadingEl.classList.add('hidden');
@@ -4551,36 +4853,34 @@
             c.conversationStatus === 'Active'
               ? 'bg-emerald-50 text-[#278653] border-emerald-200'
               : c.conversationStatus === 'Completed'
-              ? 'bg-slate-100 text-slate-700 border-slate-200'
-              : 'bg-rose-50 text-rose-700 border-rose-200';
+                ? 'bg-slate-100 text-slate-700 border-slate-200'
+                : 'bg-rose-50 text-rose-700 border-rose-200';
 
           return `
             <button type="button" onclick="window.GeoSafeAdmin.selectAdminConversation(${c.id})"
-              class="w-full p-3.5 text-left transition-colors flex items-start justify-between gap-2.5 ${
-                isSelected ? 'bg-slate-50 border-l-4 border-l-[#F5B900]' : 'hover:bg-slate-50'
-              }">
+              class="w-full p-3.5 text-left transition-colors flex items-start justify-between gap-2.5 ${isSelected ? 'bg-slate-50 border-l-4 border-l-[#F5B900]' : 'hover:bg-slate-50'
+            }">
               <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <span class="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-50 text-[#8A6800] border border-[#FFE872]">${escapeHtml(
-                    c.rescueReference
-                  )}</span>
+              c.rescueReference
+            )}</span>
                   <span class="text-xs font-bold text-[#202020] truncate">${escapeHtml(
-                    c.emergencyType
-                  )}</span>
+              c.emergencyType
+            )}</span>
                 </div>
                 <p class="text-[11px] text-[#202020]">
                   Resident: <strong>${escapeHtml(c.resident.name)}</strong> • Responder: <strong>${escapeHtml(
-                    c.responder.name
-                  )}</strong>
+              c.responder.name
+            )}</strong>
                 </p>
                 <p class="text-[11px] text-[#555555] truncate">${preview}</p>
-                <span class="block text-[10px] text-[#777777]">${escapeHtml(timeStr)} • ${
-                  c.totalMessages
-                } msg${c.totalMessages === 1 ? '' : 's'}</span>
+                <span class="block text-[10px] text-[#777777]">${escapeHtml(timeStr)} • ${c.totalMessages
+            } msg${c.totalMessages === 1 ? '' : 's'}</span>
               </div>
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusCls} flex-shrink-0">${escapeHtml(
-                c.conversationStatus
-              )}</span>
+              c.conversationStatus
+            )}</span>
             </button>
           `;
         })
@@ -4625,8 +4925,8 @@
           conv.conversationStatus === 'Active'
             ? 'bg-emerald-50 text-[#278653] border-emerald-200'
             : conv.conversationStatus === 'Completed'
-            ? 'bg-slate-100 text-slate-700 border-slate-200'
-            : 'bg-rose-50 text-rose-700 border-rose-200';
+              ? 'bg-slate-100 text-slate-700 border-slate-200'
+              : 'bg-rose-50 text-rose-700 border-rose-200';
         statusEl.innerHTML = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${sCls}">${escapeHtml(
           conv.conversationStatus
         )}</span>`;
@@ -4642,18 +4942,16 @@
         .map((m) => {
           const isResponder = m.senderRole === 'Responder';
           return `
-            <div class="p-3 rounded-md border ${
-              isResponder
-                ? 'bg-slate-50 border-[#FFE872]'
-                : 'bg-white border-slate-200'
+            <div class="p-3 rounded-md border ${isResponder
+              ? 'bg-slate-50 border-[#FFE872]'
+              : 'bg-white border-slate-200'
             } text-xs space-y-1">
               <div class="flex items-center justify-between gap-2 text-[10px] text-[#777777]">
                 <span class="font-bold text-[#202020]">${escapeHtml(m.senderName)} <span class="text-[#8A6800]">(${escapeHtml(
-                  m.senderRole
-                )})</span></span>
-                <span>${escapeHtml(formatManilaDateTime(m.createdAt))}${
-                  m.isRead ? ' • Read' : ' • Sent'
-                }</span>
+              m.senderRole
+            )})</span></span>
+                <span>${escapeHtml(formatManilaDateTime(m.createdAt))}${m.isRead ? ' • Read' : ' • Sent'
+            }</span>
               </div>
               <p class="text-[#202020] whitespace-pre-line leading-relaxed">${escapeHtml(m.body)}</p>
             </div>
@@ -4675,6 +4973,189 @@
     }
     window.location.replace('/login.html');
   };
+
+  // ============================================================================
+  // HEALTHCARE & HOSPITAL DIRECTORY MANAGEMENT
+  // ============================================================================
+  const adminFacilityMap = new Map();
+  let isSavingFacility = false;
+
+  function resetFacilityForm() {
+    document.getElementById('fac-edit-id').value = '';
+    document.getElementById('fac-form-title').textContent = 'Add Verified Hospital / Facility';
+    const submitBtn = document.getElementById('fac-submit-btn');
+    if (submitBtn) {
+      submitBtn.textContent = 'Save Facility Record';
+      submitBtn.disabled = false;
+    }
+    document.getElementById('fac-cancel-btn')?.classList.add('hidden');
+    document.getElementById('fac-name').value = '';
+    document.getElementById('fac-type').value = 'Hospital';
+    document.getElementById('fac-verification').value = 'Verified';
+    document.getElementById('fac-address').value = '';
+    document.getElementById('fac-hours').value = '';
+    document.getElementById('fac-lat').value = '';
+    document.getElementById('fac-lng').value = '';
+    document.getElementById('fac-status').value = 'Operational';
+    document.getElementById('fac-emergency-capable').checked = false;
+  }
+
+  async function loadAdminFacilitiesList() {
+    const listEl = document.getElementById('admin-facility-list');
+    if (!listEl) return;
+    listEl.innerHTML = '<div class="p-4 text-center text-slate-500">Loading facility directory from PostgreSQL...</div>';
+    try {
+      const data = await apiRequest('/facilities');
+      const items = Array.isArray(data && data.facilities) ? data.facilities : [];
+      adminFacilityMap.clear();
+      items.forEach((f) => adminFacilityMap.set(Number(f.id), f));
+
+      if (items.length === 0) {
+        listEl.innerHTML = '<div class="p-4 text-center text-slate-500">No facility records found.</div>';
+        return;
+      }
+      listEl.innerHTML = items.map((f) => {
+        const badgeCls =
+          f.verification_status === 'Verified'
+            ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+            : f.verification_status === 'Flagged'
+              ? 'bg-red-50 text-[#b91c1c] border-red-200'
+              : 'bg-amber-50 text-amber-800 border-amber-200';
+        const isClosed = f.status === 'Closed';
+        return `
+          <div class="p-3 rounded border border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <strong class="text-xs text-[#0f172a]">${escapeHtml(f.name)}</strong>
+                <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">${escapeHtml(f.facility_type)}</span>
+                <span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${badgeCls}">${escapeHtml(f.verification_status)}</span>
+                <span class="px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] font-medium text-slate-700">${escapeHtml(f.status)}</span>
+              </div>
+              <div class="text-[11px] text-slate-600 mt-0.5">${escapeHtml(f.address)}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 font-mono">
+                ${Number(f.latitude).toFixed(6)}, ${Number(f.longitude).toFixed(6)} &bull; Hours: ${escapeHtml(f.operating_hours || 'Unverified')}
+              </div>
+              ${f.coordinate_flag ? `<div class="text-[10px] text-[#b91c1c] font-semibold mt-0.5">${escapeHtml(f.coordinate_flag)}</div>` : ''}
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" onclick="window.GeoSafeAdmin.editAdminFacility(${Number(f.id)})"
+                class="h-7 px-2.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-[11px] font-semibold">
+                Edit
+              </button>
+              <button type="button" onclick="window.GeoSafeAdmin.toggleFacilityActiveStatus(${Number(f.id)}, '${isClosed ? 'Operational' : 'Closed'}')"
+                class="h-7 px-2.5 rounded border ${isClosed ? 'border-emerald-300 text-[#278653] hover:bg-emerald-50' : 'border-red-200 text-[#b91c1c] hover:bg-red-50'} text-[11px] font-semibold">
+                ${isClosed ? 'Reactivate' : 'Deactivate'}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      listEl.innerHTML = `<div class="p-4 text-center text-[#D93636]">${escapeHtml(err.message || 'Unable to load facilities.')}</div>`;
+    }
+  }
+
+  function editAdminFacility(idOrObj) {
+    const f = typeof idOrObj === 'object' && idOrObj !== null
+      ? idOrObj
+      : adminFacilityMap.get(Number(idOrObj));
+    if (!f) {
+      showBannerMessage('Unable to load the selected facility record.', 'error');
+      return;
+    }
+    document.getElementById('fac-edit-id').value = String(f.id);
+    document.getElementById('fac-form-title').textContent = 'Edit Healthcare Facility';
+    const submitBtn = document.getElementById('fac-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Update Facility';
+    document.getElementById('fac-cancel-btn')?.classList.remove('hidden');
+
+    document.getElementById('fac-name').value = f.name || '';
+    document.getElementById('fac-type').value = f.facility_type || 'Hospital';
+    document.getElementById('fac-verification').value = f.verification_status || 'Unverified';
+    document.getElementById('fac-address').value = f.address || '';
+    document.getElementById('fac-hours').value = f.operating_hours || 'Unverified';
+    document.getElementById('fac-lat').value = f.latitude !== null && f.latitude !== undefined ? String(f.latitude) : '';
+    document.getElementById('fac-lng').value = f.longitude !== null && f.longitude !== undefined ? String(f.longitude) : '';
+    document.getElementById('fac-status').value = f.status || 'Under Assessment';
+    document.getElementById('fac-emergency-capable').checked = Boolean(f.emergency_capable);
+
+    document.getElementById('admin-facility-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function saveAdminFacility(event) {
+    event.preventDefault();
+    if (isSavingFacility) return;
+
+    const editId = document.getElementById('fac-edit-id').value.trim();
+    const name = document.getElementById('fac-name').value.trim();
+    const address = document.getElementById('fac-address').value.trim();
+    const lat = Number(document.getElementById('fac-lat').value);
+    const lng = Number(document.getElementById('fac-lng').value);
+
+    if (!name || !address) {
+      showBannerMessage('Facility name and complete address are required.', 'error');
+      return;
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
+      showBannerMessage('Valid latitude and longitude are required.', 'error');
+      return;
+    }
+
+    const payload = {
+      name,
+      facilityType: document.getElementById('fac-type').value,
+      verificationStatus: document.getElementById('fac-verification').value,
+      address,
+      operatingHours: document.getElementById('fac-hours').value.trim() || 'Unverified',
+      latitude: lat,
+      longitude: lng,
+      status: document.getElementById('fac-status').value,
+      emergencyCapable: document.getElementById('fac-emergency-capable').checked,
+    };
+
+    const submitBtn = document.getElementById('fac-submit-btn');
+    isSavingFacility = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = editId ? 'Updating...' : 'Saving...';
+    }
+
+    try {
+      let res;
+      if (editId) {
+        res = await apiRequest(`/facilities/${encodeURIComponent(editId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        if (!res || !res.success) throw new Error((res && res.error) || 'Failed to update facility record.');
+        showBannerMessage(`Updated "${res.facility?.name || name}" in PostgreSQL.`, 'success');
+      } else {
+        res = await apiRequest('/facilities', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res || !res.success) throw new Error((res && res.error) || 'Failed to add facility record.');
+        showBannerMessage(`Added "${res.facility?.name || name}" to PostgreSQL.`, 'success');
+      }
+      resetFacilityForm();
+      await loadAdminFacilitiesList();
+      await loadDashboardOverview();
+    } catch (err) {
+      showBannerMessage(err.message || 'Unable to save facility record.', 'error');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = editId ? 'Update Facility' : 'Save Facility Record';
+      }
+    } finally {
+      isSavingFacility = false;
+    }
+  }
+
+  async function toggleFacilityActiveStatus(id, nextStatus) {
+    try {
+      const res = await apiRequest(`/facilities/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus }) });
+      if (!res || !res.success) throw new Error((res && res.error) || 'Unable to update facility status.');
+      showBannerMessage(`Facility status updated to ${nextStatus}.`, 'success');
+      await loadAdminFacilitiesList();
+      await loadDashboardOverview();
+    } catch (err) {
+      showBannerMessage(err.message || 'Unable to update facility status.', 'error');
+    }
+  }
 
   window.GeoSafeAdmin = {
     handleSidebarToggle,
@@ -4700,6 +5181,7 @@
     resetAttachmentZoom,
     closeAttachmentPreviewModal,
     submitReportReviewAction,
+    assignResponderFromModal,
     openCloseIncidentModal,
     closeCloseIncidentModal,
     handleCloseIncidentPresetChange,
@@ -4746,7 +5228,12 @@
     saveSetting,
     loadAuditLogs,
     loadAdminConversationsList,
-    selectAdminConversation
+    selectAdminConversation,
+    loadAdminFacilitiesList,
+    resetFacilityForm,
+    editAdminFacility,
+    saveAdminFacility,
+    toggleFacilityActiveStatus
   };
 
   document.addEventListener('DOMContentLoaded', initAdminPortal);

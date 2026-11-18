@@ -262,26 +262,31 @@ function renderMapMarkers() {
     });
   }
 
-  // 3. Render Emergency Facilities (EOC, Boat Dock, Fire, Hospital)
+  // 3. Render Medical Facilities (Hospitals & Health Centers from PostgreSQL) and EOC
   if (activeFilter === 'All') {
     (allMapData.barangayFacilities || []).forEach(fac => {
-      const facIcon = L.divIcon({
-        className: 'geosafe-fac-marker',
-        html: `
-          <div class="w-6 h-6 rounded-lg bg-[#202020] text-[#F5B900] flex items-center justify-center border border-white shadow-md">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-          </div>
-        `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
+      const fLat = Number(fac.coordinates ? fac.coordinates.lat : fac.latitude);
+      const fLng = Number(fac.coordinates ? fac.coordinates.lng : fac.longitude);
+      if (!Number.isFinite(fLat) || !Number.isFinite(fLng)) return;
 
-      const m = L.marker([fac.coordinates.lat, fac.coordinates.lng], { icon: facIcon });
+      const facType = fac.type || fac.facility_type || 'Hospital';
+      const isHospital = String(facType).toLowerCase() === 'hospital';
+      const facIcon = GeoSafeMapping.createMedicalFacilityIcon(facType);
+      const typeColor = isHospital ? '#DC2626' : '#2563EB';
+
+      const m = L.marker([fLat, fLng], { icon: facIcon, zIndexOffset: isHospital ? 245 : 235 });
+      m.bindTooltip(`${facType}: ${fac.name}`, { direction: 'top' });
       m.bindPopup(`
-        <div class="text-xs p-1">
-          <strong class="text-[#202020] block">${fac.name}</strong>
-          <span class="text-[10px] text-[#8A6800] font-bold">${fac.category}</span><br>
-          <span class="text-[10px] text-[#777777]">${fac.contact}</span>
+        <div class="text-xs p-1 space-y-1 max-w-[240px]">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-bold uppercase tracking-wider" style="color:${typeColor};">${facType}</span>
+            <span class="text-[9px] font-bold text-[#278653] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">${fac.verificationStatus || fac.verification_status || 'Verified'}</span>
+          </div>
+          <strong class="text-[#0f172a] block">${fac.name}</strong>
+          ${fac.address ? `<span class="text-[10px] text-[#475569] block">${fac.address}</span>` : ''}
+          ${fac.operating_hours ? `<span class="text-[10px] text-[#334155] block"><strong>Hours:</strong> ${fac.operating_hours}</span>` : ''}
+          ${fac.emergency_contact ? `<span class="text-[10px] text-[#334155] block"><strong>Contact:</strong> ${fac.emergency_contact}</span>` : ''}
+          <span class="text-[10px] font-mono text-[#64748b] block">${fLat.toFixed(6)}, ${fLng.toFixed(6)}</span>
         </div>
       `);
       markerLayerGroup.addLayer(m);

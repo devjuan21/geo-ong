@@ -56,6 +56,12 @@ function assert(condition, message) {
 }
 
 async function runTestSuite() {
+  const dbName = String(process.env.DB_NAME || '').toLowerCase();
+  if (process.env.GEOSAFE_ALLOW_TEST_FIXTURES !== 'true' && !dbName.includes('test')) {
+    throw new Error(
+      `Refusing to run test fixture insertions against non-test database "${process.env.DB_NAME || 'unknown'}". Set GEOSAFE_ALLOW_TEST_FIXTURES=true or point DB_NAME to a dedicated test database.`
+    );
+  }
   console.log('\n======================================================================');
   console.log('   GEOSAFE — VERIFYING LOADING STATES & EMPTY STATE DETECTION');
   console.log('======================================================================\n');

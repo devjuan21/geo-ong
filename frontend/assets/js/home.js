@@ -10,6 +10,7 @@
 let incidentMap = null;
 let incidentMarkersGroup = null;
 let shelterMarkersGroup = null;
+let medicalMarkersGroup = null;
 const homeGpsMarkerState = { marker: null, accuracyCircle: null };
 let homeGpsTracker = null;
 let hasCenteredHomeGps = false;
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadCommunityReports();
     loadHazardAlerts();
     loadEvacuationSummary();
+    loadMedicalFacilities();
     loadMyReportsSummary();
   });
 });
@@ -53,6 +55,7 @@ function initIncidentMap() {
     });
 
     shelterMarkersGroup = L.layerGroup().addTo(incidentMap);
+    medicalMarkersGroup = L.layerGroup().addTo(incidentMap);
     incidentMarkersGroup = L.layerGroup().addTo(incidentMap);
 
     const refreshMapSize = () => {
@@ -83,7 +86,8 @@ async function loadHomepageData() {
   await Promise.all([
     loadCommunityReports(),
     loadHazardAlerts(),
-    loadEvacuationSummary()
+    loadEvacuationSummary(),
+    loadMedicalFacilities()
   ]);
 }
 
@@ -384,6 +388,62 @@ function renderShelterMarkers(centers) {
 
     marker.bindPopup(popupHtml);
     shelterMarkersGroup.addLayer(marker);
+  });
+}
+
+async function loadMedicalFacilities() {
+  if (!incidentMap || !medicalMarkersGroup) return;
+  try {
+    const res = await fetch('/api/hospitals?verifiedOnly=true');
+    if (!res.ok) return;
+    const data = await res.json();
+    const facilities = Array.isArray(data.hospitals) ? data.hospitals : [];
+    renderMedicalFacilityMarkers(facilities);
+  } catch (err) {
+    console.warn('Unable to load medical facilities for resident map:', err);
+  }
+}
+
+function renderMedicalFacilityMarkers(facilities) {
+  if (!incidentMap || !medicalMarkersGroup) return;
+  medicalMarkersGroup.clearLayers();
+
+  const list = Array.isArray(facilities) ? facilities : [];
+  list.forEach((fac) => {
+    const lat = Number(fac.latitude);
+    const lng = Number(fac.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return;
+
+    const facType = fac.facility_type || fac.facilityType || 'Hospital';
+    const isHospital = String(facType).toLowerCase() === 'hospital';
+    const icon = GeoSafeMapping.createMedicalFacilityIcon(facType);
+    const typeColor = isHospital ? '#DC2626' : '#2563EB';
+    const badgeCls = isHospital
+      ? 'text-[#DC2626] bg-red-50 border-red-200'
+      : 'text-[#2563EB] bg-blue-50 border-blue-200';
+
+    const marker = L.marker([lat, lng], { icon, zIndexOffset: isHospital ? 160 : 150 });
+    marker.bindTooltip(`${escapeHtmlSafe(facType)}: ${escapeHtmlSafe(fac.name || '')}`, { direction: 'top' });
+
+    const popupHtml = `
+      <div class="p-2 text-xs font-sans max-w-xs space-y-1">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${badgeCls}">${escapeHtmlSafe(facType)}</span>
+          <span class="text-[10px] font-semibold text-emerald-700">${escapeHtmlSafe(fac.verification_status || 'Verified')}</span>
+        </div>
+        <h4 class="font-semibold text-slate-900 text-xs sm:text-sm">${escapeHtmlSafe(fac.name || 'Medical Facility')}</h4>
+        <div class="bg-slate-50 p-2 rounded-md border border-slate-200 text-[10px] text-slate-600 space-y-0.5">
+          <div><strong class="text-slate-900">Address:</strong> ${escapeHtmlSafe(fac.address || 'Barangay Bayanan, Muntinlupa')}</div>
+          ${fac.operating_hours ? `<div><strong class="text-slate-900">Hours:</strong> ${escapeHtmlSafe(fac.operating_hours)}</div>` : ''}
+          ${fac.emergency_contact ? `<div><strong class="text-slate-900">Contact:</strong> ${escapeHtmlSafe(fac.emergency_contact)}</div>` : ''}
+          <div class="font-mono text-slate-500">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+        </div>
+        <div class="text-[10px] font-semibold" style="color:${typeColor};">${escapeHtmlSafe(fac.status || 'Operational')}</div>
+      </div>
+    `;
+
+    marker.bindPopup(popupHtml);
+    medicalMarkersGroup.addLayer(marker);
   });
 }
 

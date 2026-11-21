@@ -88,4 +88,69 @@ UPDATE incident_categories SET name = 'Fallen Tree / Road Obstruction', is_activ
 UPDATE incident_categories SET name = 'Downed Electrical Power Cable', is_active = TRUE WHERE id = 5;
 UPDATE incident_categories SET name = 'Structural / Wall Collapse', is_active = TRUE WHERE id = 6;
 
+-- ----------------------------------------------------------------------------
+-- 4. Broadcast Categories & Advisory Columns
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS broadcast_categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  slug VARCHAR(120) NOT NULL UNIQUE,
+  badge_color VARCHAR(30) NOT NULL DEFAULT 'blue',
+  priority INTEGER NOT NULL DEFAULT 10,
+  description TEXT DEFAULT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO broadcast_categories (name, slug, badge_color, priority, description, is_active)
+VALUES
+  ('Weather Advisory', 'weather-advisory', 'blue', 10, 'Rainfall, typhoon, and weather advisories', TRUE),
+  ('Flood Warning', 'flood-warning', 'red', 20, 'Rising water levels and flood evacuation advisories', TRUE),
+  ('Fire Emergency', 'fire-emergency', 'red', 30, 'Fire hazard and smoke advisories', TRUE),
+  ('Road & Utility Advisory', 'road-utility-advisory', 'amber', 40, 'Road closures, fallen trees, and power line advisories', TRUE),
+  ('Evacuation Notice', 'evacuation-notice', 'red', 50, 'Mandatory or voluntary evacuation instructions', TRUE),
+  ('General Announcement', 'general-announcement', 'slate', 60, 'General Barangay Bayanan EOC notices', TRUE)
+ON CONFLICT (slug) DO NOTHING;
+
+ALTER TABLE emergency_broadcast_logs
+  ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES broadcast_categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS advisory_type VARCHAR(100) DEFAULT 'General Announcement',
+  ADD COLUMN IF NOT EXISTS urgency_level VARCHAR(40) DEFAULT 'Advisory';
+
+ALTER TABLE notifications
+  ADD COLUMN IF NOT EXISTS advisory_type VARCHAR(100) DEFAULT NULL;
+
+-- ----------------------------------------------------------------------------
+-- 5. Approved Hospitals & Health Centers Directory (from 013-016)
+-- ----------------------------------------------------------------------------
+INSERT INTO hospitals (id, name, address, latitude, longitude, emergency_contact, status, capacity, available_slots, facility_type, operating_hours, verification_status, emergency_capable, last_verified_at)
+VALUES
+  (1, 'Ospital ng Muntinlupa (OsMun)', 'Civic Drive, Filinvest Corporate City, Alabang, Muntinlupa City', 14.41425000, 121.04417000, '(02) 8771-0457', 'Operational', 200, 45, 'Hospital', '24/7', 'Verified', TRUE, CURRENT_TIMESTAMP),
+  (4, 'Asian Hospital and Medical Center', '2205 Civic Drive, Filinvest Corporate City, Alabang, Muntinlupa City', 14.41325000, 121.04371000, '(02) 8771-9000', 'Operational', 300, 62, 'Hospital', '24/7', 'Verified', TRUE, CURRENT_TIMESTAMP),
+  (5, 'Bayanan Main Health Center', 'Bayanan Road, Barangay Bayanan, Muntinlupa City', 14.41058940, 121.05004360, '(02) 8862-0115', 'Operational', 30, 18, 'Health Center', 'Mon-Fri 8:00 AM - 5:00 PM', 'Verified', FALSE, CURRENT_TIMESTAMP),
+  (6, 'Bayanan Annex Health Center', 'Purok 2, Barangay Bayanan, Muntinlupa City', 14.40738400, 121.04278870, '(02) 8862-0115', 'Operational', 20, 12, 'Health Center', 'Mon-Fri 8:00 AM - 5:00 PM', 'Verified', FALSE, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE
+SET
+  name = EXCLUDED.name,
+  latitude = EXCLUDED.latitude,
+  longitude = EXCLUDED.longitude,
+  status = EXCLUDED.status,
+  facility_type = EXCLUDED.facility_type,
+  operating_hours = EXCLUDED.operating_hours,
+  verification_status = EXCLUDED.verification_status,
+  emergency_capable = EXCLUDED.emergency_capable,
+  coordinate_flag = NULL,
+  last_verified_at = CURRENT_TIMESTAMP,
+  updated_at = CURRENT_TIMESTAMP;
+
+UPDATE hospitals
+SET status = 'Closed',
+    verification_status = 'Unverified',
+    emergency_capable = FALSE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id NOT IN (1, 4, 5, 6);
+
+SELECT setval(pg_get_serial_sequence('hospitals', 'id'), GREATEST((SELECT MAX(id) FROM hospitals), 6), true);
+
 COMMIT;

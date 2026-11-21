@@ -11,6 +11,10 @@
 BEGIN;
 
 -- Drop existing tables in reverse dependency order if re-initializing
+DROP TABLE IF EXISTS message_read_status CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS conversation_participants CASCADE;
+DROP TABLE IF EXISTS conversations CASCADE;
 DROP TABLE IF EXISTS system_settings CASCADE;
 DROP TABLE IF EXISTS emergency_broadcast_logs CASCADE;
 DROP TABLE IF EXISTS alerts CASCADE;
@@ -22,6 +26,8 @@ DROP TABLE IF EXISTS hospitals CASCADE;
 DROP TABLE IF EXISTS evacuation_center_facilities CASCADE;
 DROP TABLE IF EXISTS evacuation_centers CASCADE;
 DROP TABLE IF EXISTS responder_assignment_history CASCADE;
+DROP TABLE IF EXISTS rescue_transports CASCADE;
+DROP TABLE IF EXISTS rescue_outcomes CASCADE;
 DROP TABLE IF EXISTS rescue_status_history CASCADE;
 DROP TABLE IF EXISTS rescue_updates CASCADE;
 DROP TABLE IF EXISTS rescue_attachments CASCADE;
@@ -396,39 +402,6 @@ CREATE TABLE rescue_outcomes (
 CREATE INDEX idx_rescue_outcomes_rescue ON rescue_outcomes(rescue_id);
 CREATE INDEX idx_rescue_outcomes_outcome ON rescue_outcomes(primary_outcome);
 
--- 3.8 Rescue Transports Table (Single or Multi-Destination Patient Transport & Handover)
-CREATE TABLE rescue_transports (
-  id SERIAL PRIMARY KEY,
-  rescue_id INTEGER NOT NULL REFERENCES rescue_requests(id) ON DELETE CASCADE,
-  responder_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  destination_category VARCHAR(30) NOT NULL CHECK (
-    destination_category IN ('hospital', 'medical_facility', 'evacuation_center')
-  ),
-  hospital_id INTEGER DEFAULT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
-  evacuation_center_id INTEGER DEFAULT NULL REFERENCES evacuation_centers(id) ON DELETE RESTRICT,
-  destination_name VARCHAR(180) NOT NULL,
-  destination_facility_type VARCHAR(50) NOT NULL,
-  destination_latitude NUMERIC(10, 8) DEFAULT NULL,
-  destination_longitude NUMERIC(11, 8) DEFAULT NULL,
-  people_count SMALLINT DEFAULT NULL CHECK (people_count IS NULL OR people_count >= 1),
-  people_count_category VARCHAR(20) NOT NULL DEFAULT 'exact' CHECK (people_count_category IN ('exact', 'more_than_10', 'unknown')),
-  route_distance_meters INTEGER DEFAULT NULL,
-  route_duration_seconds INTEGER DEFAULT NULL,
-  transport_status VARCHAR(30) NOT NULL DEFAULT 'Pending' CHECK (
-    transport_status IN ('Pending', 'In Transit', 'Arrived', 'Handed Over', 'Cancelled')
-  ),
-  started_at TIMESTAMPTZ DEFAULT NULL,
-  arrived_at TIMESTAMPTZ DEFAULT NULL,
-  handed_over_at TIMESTAMPTZ DEFAULT NULL,
-  handover_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-  handover_notes TEXT DEFAULT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_rescue_transports_rescue ON rescue_transports(rescue_id);
-CREATE INDEX idx_rescue_transports_status ON rescue_transports(transport_status);
-
 -- ============================================================================
 -- MODULE 4: EVACUATION CENTERS, ROUTES & MEDICAL FACILITIES (MODULE E)
 -- ============================================================================
@@ -492,6 +465,39 @@ CREATE INDEX idx_hospitals_status ON hospitals(status);
 CREATE INDEX idx_hospitals_coords ON hospitals(latitude, longitude);
 CREATE INDEX idx_hospitals_facility_type ON hospitals(facility_type);
 CREATE INDEX idx_hospitals_verification_status ON hospitals(verification_status);
+
+-- 3.8 Rescue Transports Table (Single or Multi-Destination Patient Transport & Handover)
+CREATE TABLE rescue_transports (
+  id SERIAL PRIMARY KEY,
+  rescue_id INTEGER NOT NULL REFERENCES rescue_requests(id) ON DELETE CASCADE,
+  responder_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  destination_category VARCHAR(30) NOT NULL CHECK (
+    destination_category IN ('hospital', 'medical_facility', 'evacuation_center')
+  ),
+  hospital_id INTEGER DEFAULT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
+  evacuation_center_id INTEGER DEFAULT NULL REFERENCES evacuation_centers(id) ON DELETE RESTRICT,
+  destination_name VARCHAR(180) NOT NULL,
+  destination_facility_type VARCHAR(50) NOT NULL,
+  destination_latitude NUMERIC(10, 8) DEFAULT NULL,
+  destination_longitude NUMERIC(11, 8) DEFAULT NULL,
+  people_count SMALLINT DEFAULT NULL CHECK (people_count IS NULL OR people_count >= 1),
+  people_count_category VARCHAR(20) NOT NULL DEFAULT 'exact' CHECK (people_count_category IN ('exact', 'more_than_10', 'unknown')),
+  route_distance_meters INTEGER DEFAULT NULL,
+  route_duration_seconds INTEGER DEFAULT NULL,
+  transport_status VARCHAR(30) NOT NULL DEFAULT 'Pending' CHECK (
+    transport_status IN ('Pending', 'In Transit', 'Arrived', 'Handed Over', 'Cancelled')
+  ),
+  started_at TIMESTAMPTZ DEFAULT NULL,
+  arrived_at TIMESTAMPTZ DEFAULT NULL,
+  handed_over_at TIMESTAMPTZ DEFAULT NULL,
+  handover_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+  handover_notes TEXT DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_rescue_transports_rescue ON rescue_transports(rescue_id);
+CREATE INDEX idx_rescue_transports_status ON rescue_transports(transport_status);
 
 -- 4.4 Evacuation Routes Table
 CREATE TABLE evacuation_routes (

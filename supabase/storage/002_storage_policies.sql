@@ -12,7 +12,8 @@
 --   restricted strictly to their own auth.uid() folder prefix.
 -- ============================================================================
 
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- Note: Supabase enables RLS on storage.objects by default (owned by supabase_storage_admin).
+-- Do NOT run ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY as postgres.
 
 -- Remove previous GeoSafe storage policies if re-running
 DROP POLICY IF EXISTS "geosafe_incident_evidence_owner_select" ON storage.objects;

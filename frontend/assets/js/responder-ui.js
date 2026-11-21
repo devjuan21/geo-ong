@@ -26,8 +26,8 @@ const GeoSafeResponderUI = {
     },
     {
       id: 'assignments',
-      label: 'Assignments',
-      shortLabel: 'Assignments',
+      label: 'Reports/ Request',
+      shortLabel: 'Reports/ Request',
       href: 'responder-assignments.html',
       icon: 'clipboard-list'
     },
@@ -277,17 +277,81 @@ const GeoSafeResponderUI = {
         'alert-expired',
         'hazard-alert-cancelled',
         'alert-cancelled',
+        'new-incident-report',
+        'new-report',
         'new-rescue-request',
         'rescue-assignment-updated',
         'rescue-status-updated',
+        'assignment-updated',
+        'report-verification-result',
         'status-update',
         'incident-resolved',
         'administrator-announcement',
         'reconnect-sync'
       ]);
+      if (!this._seenNotifToastKeys) this._seenNotifToastKeys = new Set();
       window.addEventListener('geosafe:realtime-update', (ev) => {
         const evt = ev && ev.detail ? ev.detail.event : '';
         if (!headerSyncEvents.has(evt)) return;
+        const payload = (ev && ev.detail && (ev.detail.data || ev.detail.payload)) || {};
+        const refKey = payload.referenceNumber || payload.reference_number || payload.id || payload.reportId || payload.rescueId || '';
+        const isCurrentlyViewingRef = (() => {
+          if (!refKey) return false;
+          try {
+            const urlId = new URLSearchParams(window.location.search).get('id');
+            if (urlId && String(urlId).toUpperCase() === String(refKey).toUpperCase()) {
+              const dtlModal = document.getElementById('assign-details-modal');
+              if (dtlModal && !dtlModal.classList.contains('hidden')) return true;
+            }
+            const dtlRefEl = document.getElementById('dtl-ref');
+            const dtlModal = document.getElementById('assign-details-modal');
+            if (dtlModal && !dtlModal.classList.contains('hidden') && dtlRefEl && dtlRefEl.textContent.trim().toUpperCase() === String(refKey).toUpperCase()) {
+              return true;
+            }
+          } catch (_) {}
+          return false;
+        })();
+
+        if (refKey && !isCurrentlyViewingRef) {
+          const timeStr = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+          if (evt === 'new-incident-report' || evt === 'new-report') {
+            const incKey = `incoming-inc:${refKey}`;
+            if (!this._seenNotifToastKeys.has(incKey)) {
+              this._seenNotifToastKeys.add(incKey);
+              const cat = payload.incidentType || payload.incident_type || payload.category || 'Incident';
+              const loc = payload.location || payload.address || 'Barangay Bayanan';
+              const targetUrl = `./responder-assignments.html?id=${encodeURIComponent(refKey)}`;
+              this.showToast(`${refKey} • ${cat} at ${loc} (${timeStr})`, 'warning', 7000, {
+                title: 'New Incident Report Received',
+                key: incKey,
+                onClick: () => { window.location.href = targetUrl; },
+              });
+            }
+          } else if (evt === 'new-rescue-request') {
+            const resKey = `incoming-res:${refKey}`;
+            if (!this._seenNotifToastKeys.has(resKey)) {
+              this._seenNotifToastKeys.add(resKey);
+              const cat = payload.emergencyType || payload.emergency_type || payload.category || 'Rescue Request';
+              const loc = payload.location || payload.address || 'Barangay Bayanan';
+              const targetUrl = `./responder-assignments.html?id=${encodeURIComponent(refKey)}`;
+              this.showToast(`${refKey} • ${cat} at ${loc} (${timeStr})`, 'critical', 8000, {
+                title: 'New Rescue Request Received',
+                key: resKey,
+                onClick: () => { window.location.href = targetUrl; },
+              });
+            }
+          } else if (evt === 'assignment-updated') {
+            const assignKey = `${evt}:${refKey}:${payload.responderId || ''}`;
+            if (!this._seenNotifToastKeys.has(assignKey)) {
+              this._seenNotifToastKeys.add(assignKey);
+              if (Number(payload.responderId) === Number(this._currentUserId || 0)) {
+                this.showToast(`Accepted & assigned to ${refKey}`, 'success');
+              } else {
+                this.showToast(`${refKey} was accepted by ${payload.responderName || 'another responder'}`, 'info');
+              }
+            }
+          }
+        }
         this.syncHeaderResponderData();
         const modal = document.getElementById('responder-notif-modal');
         if (modal && !modal.classList.contains('hidden')) {
@@ -693,6 +757,9 @@ const GeoSafeResponderUI = {
         }
       }
 
+      // Ensure live GPS sync runs across all responder pages (including Messages & Profile)
+      this.startGlobalResponderGpsSync();
+
       // Sync unread messages badge
       await this.refreshMessagesUnreadBadge();
       if (!this._respMsgUnreadListenerBound) {
@@ -724,6 +791,48 @@ const GeoSafeResponderUI = {
         el.textContent = unreadMsgCount > 99 ? '99+' : String(unreadMsgCount);
         el.classList.toggle('hidden', unreadMsgCount <= 0);
       });
+    } catch (_) {}
+  },
+
+  startGlobalResponderGpsSync() {
+    if (
+      this._globalGpsWatchId !== undefined ||
+      typeof navigator === 'undefined' ||
+      !navigator.geolocation ||
+      window.isSecureContext === false
+    ) {
+      return;
+    }
+
+    const pushReading = (pos) => {
+      if (!pos || !pos.coords || !window.geoSafeStore || typeof window.geoSafeStore.syncResponderLocation !== 'function') return;
+      let sharingEnabled = true;
+      try { sharingEnabled = localStorage.getItem('geosafe_responder_location_sharing') !== 'false'; } catch (_) {}
+      if (!sharingEnabled) return;
+
+      const now = Date.now();
+      if (now - Number(window.__geosafeLastRespGpsSyncAt || 0) < 9500) return;
+      window.__geosafeLastRespGpsSyncAt = now;
+
+      window.geoSafeStore.syncResponderLocation({
+        lat: Number(pos.coords.latitude),
+        lng: Number(pos.coords.longitude),
+        accuracy: Number.isFinite(Number(pos.coords.accuracy)) ? Number(pos.coords.accuracy) : null,
+        sharingEnabled: true,
+      }).catch(() => {});
+    };
+
+    try {
+      this._globalGpsWatchId = navigator.geolocation.watchPosition(
+        pushReading,
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      );
+      window.addEventListener('beforeunload', () => {
+        if (this._globalGpsWatchId !== undefined && navigator.geolocation) {
+          try { navigator.geolocation.clearWatch(this._globalGpsWatchId); } catch (_) {}
+        }
+      }, { once: true });
     } catch (_) {}
   },
 
@@ -854,9 +963,14 @@ const GeoSafeResponderUI = {
   /**
    * Trigger a modern viewport-centered notification toast
    */
-  showToast(message, type = 'info', duration = 4000) {
+  showToast(message, type = 'info', duration = 4000, extra = {}) {
     if (typeof window !== 'undefined' && window.GeoSafeToast) {
-      return window.GeoSafeToast.show({ message, type, duration });
+      return window.GeoSafeToast.show({
+        message,
+        type,
+        duration,
+        ...(extra && typeof extra === 'object' ? extra : {}),
+      });
     }
     this.setupToastContainer();
     const container = document.getElementById('geosafe-toast-container');
@@ -1000,6 +1114,16 @@ const GeoSafeResponderUI = {
     }
 
     const badgeLabel = n.advisoryType || (n.category ? n.category.toUpperCase() : 'ALERT');
+    let targetActionUrl = n.actionUrl || '';
+    if (!targetActionUrl) {
+      const refMatch = `${n.title || ''} ${n.description || ''}`.match(/\b(?:INC|RES|REP)-\d{4}-\d+\b/i);
+      if (refMatch) {
+        targetActionUrl = `./responder-assignments.html?id=${encodeURIComponent(refMatch[0].toUpperCase())}`;
+      }
+    } else if (targetActionUrl.startsWith('/')) {
+      targetActionUrl = `.${targetActionUrl}`;
+    }
+
     listEl.innerHTML = `
       <div class="space-y-3">
         <button type="button" onclick="GeoSafeResponderUI.openNotificationsModal()"
@@ -1013,6 +1137,15 @@ const GeoSafeResponderUI = {
           </div>
           <h4 class="text-sm font-bold text-[#202020]">${escapeTxt(n.title)}</h4>
           <p class="text-xs text-[#333333] whitespace-pre-line leading-relaxed">${escapeTxt(n.description)}</p>
+          ${targetActionUrl ? `
+            <div class="pt-2">
+              <a href="${escapeTxt(targetActionUrl)}" onclick="GeoSafeResponderUI.closeNotificationsModal()"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-colors">
+                <span>Open Operational Details</span>
+                <span>→</span>
+              </a>
+            </div>
+          ` : ''}
         </div>
       </div>
     `;

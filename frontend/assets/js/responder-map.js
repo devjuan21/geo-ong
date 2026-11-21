@@ -522,11 +522,12 @@ window.selectTaskForNavigation = function (task) {
   }
   const viewBtn = document.getElementById('sheet-btn-view');
   if (viewBtn) {
-    if (task.isPublicIncident) {
-      viewBtn.classList.add('hidden');
+    viewBtn.classList.remove('hidden');
+    viewBtn.href = `responder-assignments.html?id=${encodeURIComponent(task.referenceNumber || task.id)}`;
+    if (task.isUnassignedIncoming || task.isPublicIncident) {
+      viewBtn.textContent = 'Open & Respond';
     } else {
-      viewBtn.classList.remove('hidden');
-      viewBtn.href = `responder-assignments.html?id=${encodeURIComponent(task.id)}`;
+      viewBtn.textContent = 'View Assignment';
     }
   }
   document.getElementById('sheet-title').textContent = task.title || task.category;

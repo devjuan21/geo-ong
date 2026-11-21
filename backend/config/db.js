@@ -125,14 +125,30 @@ function formatPgResult(rawSql, pgResult) {
 }
 
 function createPostgresAdapter() {
-  const pgPool = new PgPool({
-    host: process.env.DB_HOST || 'localhost',
-    port: dbPort || 5432,
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'geosafe_db',
-    max: 10,
-  });
+  const dbHost = process.env.DB_HOST || 'localhost';
+  const connStr = process.env.DATABASE_URL || '';
+  const useSsl =
+    String(process.env.DB_SSL || '').toLowerCase() === 'true' ||
+    dbHost.includes('supabase.') ||
+    connStr.includes('supabase.');
+
+  const poolConfig = connStr
+    ? {
+        connectionString: connStr,
+        max: 10,
+        ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+      }
+    : {
+        host: dbHost,
+        port: dbPort || 5432,
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'geosafe_db',
+        max: 10,
+        ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+      };
+
+  const pgPool = new PgPool(poolConfig);
 
   async function runQuery(clientOrPool, rawSql, params = []) {
     const { sql, values } = translateSqlForPostgres(rawSql, params);

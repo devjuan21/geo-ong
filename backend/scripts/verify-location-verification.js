@@ -9,6 +9,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+if ((process.env.DB_NAME || 'geosafe_db') === 'geosafe_db' && process.env.ALLOW_LIVE_DB_TEST !== 'true') {
+  throw new Error('Refusing to run test fixtures against live database geosafe_db. Configure a separate test DB in DB_NAME.');
+}
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 

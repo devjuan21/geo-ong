@@ -29,7 +29,7 @@
             class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872] mb-1">
             Bayanan Emergency Operations
           </div>
-          <h1 class="text-lg sm:text-xl font-bold text-[#202020] tracking-tight">Assigned Incidents & Rescues</h1>
+          <h1 class="text-lg sm:text-xl font-bold text-[#202020] tracking-tight">Active Incident & Rescue Request</h1>
         </div>
 
         <!-- Search Bar -->
@@ -271,15 +271,65 @@
           <p id="dtl-instructions" class="text-[11px] text-amber-800 leading-relaxed">Directive instructions...</p>
         </div>
 
+        <!-- Responder Incident Verification Panel (shown for incident reports after claiming) -->
+        <div id="dtl-incident-verify-section"
+          class="hidden rounded-lg border border-slate-200 bg-white p-3.5 space-y-2.5 text-xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+            <div>
+              <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Incident Verification</h4>
+              <p class="text-[11px] text-[#64748b]">Verify on-scene findings to publish to Residents, or reject if false
+                alarm.</p>
+            </div>
+            <span id="dtl-verify-status-badge"
+              class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              Pending Verification
+            </span>
+          </div>
+
+          <div id="dtl-verify-pending-box" class="space-y-2.5">
+            <div id="dtl-verify-hazard-wrap" class="hidden space-y-1">
+              <label for="dtl-verify-hazard-type" class="block text-[11px] font-bold text-[#202020]">
+                Verified Public Hazard Type <span class="text-[#D93636]">*</span>
+              </label>
+              <select id="dtl-verify-hazard-type"
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]">
+                <option value="">-- Select Verified Hazard (Fire or Flood) --</option>
+                <option value="Fire">Fire</option>
+                <option value="Flood">Flood</option>
+              </select>
+            </div>
+            <textarea id="dtl-verify-reason" rows="2"
+              placeholder="Optional verification notes, or required reason if rejecting as false alarm..."
+              class="w-full px-3 py-2 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"></textarea>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-verify-incident" onclick="submitIncidentVerification('verify')"
+                class="flex-1 py-2 px-3 rounded-lg bg-[#278653] hover:bg-[#1f6e43] text-white font-bold text-xs shadow-subtle transition-all">
+                Verify Situation
+              </button>
+              <button type="button" id="btn-reject-incident" onclick="submitIncidentVerification('reject')"
+                class="flex-1 py-2 px-3 rounded-lg bg-[#FFF1F1] hover:bg-[#FFE4E4] text-[#D93636] border border-[#FFC2C2] font-bold text-xs transition-all">
+                Reject / False Alarm
+              </button>
+            </div>
+          </div>
+
+          <div id="dtl-verify-done-box"
+            class="hidden rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-[11px] font-semibold text-[#278653]">
+            This incident report is verified and visible on the public safety map.
+          </div>
+        </div>
+
         <!-- Optional Patient / Evacuee Transport & Handover Tracking -->
         <div id="dtl-rescue-outcome-section"
           class="hidden rounded-lg border border-slate-200 bg-white p-3.5 space-y-3 text-xs">
           <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
             <div>
               <h4 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Patient / Evacuee Transport</h4>
-              <p class="text-[11px] text-[#64748b]">Optional. Only add a destination if patient or evacuee transport is required.</p>
+              <p class="text-[11px] text-[#64748b]">Optional. Only add a destination if patient or evacuee transport is
+                required.</p>
             </div>
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Optional</span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Optional</span>
           </div>
 
           <!-- Active Transport & Handover Legs -->
@@ -296,7 +346,8 @@
               class="hidden rounded-md border border-blue-200 bg-blue-50/40 p-3 space-y-2.5">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label for="out-transport-type" class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Destination Type</label>
+                  <label for="out-transport-type"
+                    class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Destination Type</label>
                   <select id="out-transport-type" onchange="handleTransportTypeChange()"
                     class="w-full h-9 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-semibold text-[#0f172a]">
                     <option value="">Select destination type...</option>
@@ -307,7 +358,8 @@
                 </div>
                 <div>
                   <div class="flex items-center justify-between mb-1">
-                    <label for="out-rec-destination" class="text-[10px] font-bold text-slate-600 uppercase">Recommended Transport Destination</label>
+                    <label for="out-rec-destination" class="text-[10px] font-bold text-slate-600 uppercase">Recommended
+                      Transport Destination</label>
                     <button type="button" onclick="loadOutcomeFacilityRecommendations()"
                       class="text-[10px] font-semibold text-[#0A58CA] hover:underline">Refresh</button>
                   </div>
@@ -404,7 +456,7 @@
       </div>
       <input type="hidden" id="confirm-target-status" value="">
 
-      <!-- Completion Summary & Mandatory Camera Evidence (shown when completing) -->
+      <!-- Completion Summary (for Incident Reports) -->
       <div id="confirm-completion-section" class="hidden space-y-3 text-left pt-2 border-t border-slate-200">
         <div>
           <label for="confirm-completion-summary" class="block text-xs font-bold text-[#202020] mb-1">
@@ -414,67 +466,68 @@
             placeholder="Summarize actions taken and final site condition..."
             class="w-full px-3 py-2 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"></textarea>
         </div>
+      </div>
 
-        <div id="confirm-completion-photo-section"
-          class="hidden space-y-2 p-3 rounded-lg bg-slate-50 border border-[#FFE872]">
-          <div class="flex items-center justify-between gap-2">
-            <label class="text-xs font-bold text-[#202020]">
-              Completion Photo Evidence <span class="text-[#D93636]">*</span>
-            </label>
-            <span id="completion-photo-badge"
-              class="hidden text-[10px] font-bold text-[#278653] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              Captured
-            </span>
-          </div>
-          <p class="text-[11px] text-[#777777]">
-            Capture at least one genuine photo using your device camera before completing this incident category.
-          </p>
+      <!-- Mandatory Camera Evidence (shown when completing Incidents or Rescues) -->
+      <div id="confirm-completion-photo-section"
+        class="hidden space-y-2 p-3 rounded-lg bg-slate-50 border border-[#FFE872] text-left">
+        <div class="flex items-center justify-between gap-2">
+          <label class="text-xs font-bold text-[#202020]">
+            Completion Evidence (Required) <span class="text-[#D93636]">*</span>
+          </label>
+          <span id="completion-photo-badge"
+            class="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+            0 captured
+          </span>
+        </div>
+        <p class="text-[11px] text-[#777777]">
+          Capture at least one genuine completion photo using your device camera before confirming completion.
+        </p>
 
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="openCompletionCamera()"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#FFE872] bg-slate-50 hover:bg-[#FFF3D0] text-xs font-bold text-[#202020] transition-colors">
+            <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
+              </path>
+              <circle cx="12" cy="13" r="3"></circle>
+            </svg>
+            <span>Take Photo</span>
+          </button>
+        </div>
+
+        <div id="completion-camera-box" class="hidden space-y-2">
+          <video id="completion-camera-video" autoplay playsinline muted
+            class="w-full h-44 object-cover rounded-md bg-black"></video>
+          <canvas id="completion-camera-canvas" class="hidden"></canvas>
           <div class="flex items-center gap-2">
-            <button type="button" onclick="openCompletionCamera()"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#FFE872] bg-slate-50 hover:bg-[#FFF3D0] text-xs font-bold text-[#202020] transition-colors">
-              <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" stroke-width="2"
-                viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z">
-                </path>
-                <circle cx="12" cy="13" r="3"></circle>
-              </svg>
-              <span>Take Photo</span>
+            <button type="button" id="btn-snap-completion-photo" onclick="captureCompletionPhoto()"
+              class="flex-1 py-1.5 px-3 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs">
+              Capture Photo
+            </button>
+            <button type="button" onclick="closeCompletionCamera()"
+              class="py-1.5 px-3 rounded-md bg-slate-100 hover:bg-slate-200 text-[#202020] font-bold text-xs">
+              Close
             </button>
           </div>
+        </div>
 
-          <div id="completion-camera-box" class="hidden space-y-2">
-            <video id="completion-camera-video" autoplay playsinline muted
-              class="w-full h-44 object-cover rounded-md bg-black"></video>
-            <canvas id="completion-camera-canvas" class="hidden"></canvas>
-            <div class="flex items-center gap-2">
-              <button type="button" id="btn-snap-completion-photo" onclick="captureCompletionPhoto()"
-                class="flex-1 py-1.5 px-3 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs">
-                Capture Photo
-              </button>
-              <button type="button" onclick="closeCompletionCamera()"
-                class="py-1.5 px-3 rounded-md bg-slate-100 hover:bg-slate-200 text-[#202020] font-bold text-xs">
-                Close
-              </button>
-            </div>
-          </div>
+        <p id="completion-camera-error" class="hidden text-[11px] font-semibold text-[#D93636]"></p>
 
-          <p id="completion-camera-error" class="hidden text-[11px] font-semibold text-[#D93636]"></p>
-
-          <div id="completion-photo-preview-wrap" class="hidden space-y-2">
-            <img id="completion-photo-preview" src="" alt="Completion Evidence"
-              class="w-full h-44 rounded-md border border-slate-200 object-cover bg-black">
-            <div class="flex items-center gap-2">
-              <button type="button" onclick="openCompletionCamera()"
-                class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-[#FFF3D0] border border-[#FFE872] text-[11px] font-bold text-[#202020]">
-                Retake Photo
-              </button>
-              <button type="button" onclick="removeCompletionPhoto()"
-                class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF1F1] border border-slate-200 text-[11px] font-bold text-[#D93636]">
-                Remove Photo
-              </button>
-            </div>
+        <div id="completion-photo-preview-wrap" class="hidden space-y-2">
+          <img id="completion-photo-preview" src="" alt="Completion Evidence"
+            class="w-full h-44 rounded-md border border-slate-200 object-cover bg-black">
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="openCompletionCamera()"
+              class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-[#FFF3D0] border border-[#FFE872] text-[11px] font-bold text-[#202020]">
+              Retake Photo
+            </button>
+            <button type="button" onclick="removeCompletionPhoto()"
+              class="px-2.5 py-1 rounded-lg bg-white hover:bg-[#FFF1F1] border border-slate-200 text-[11px] font-bold text-[#D93636]">
+              Remove Photo
+            </button>
           </div>
         </div>
       </div>
@@ -588,12 +641,12 @@
 
   <!-- Scripts -->
   <script src="./assets/vendor/leaflet/leaflet.js"></script>
-  <script src="./assets/js/mapping-service.js?v=20261117c"></script>
+  <script src="./assets/js/mapping-service.js?v=20261121l"></script>
   <script src="./assets/js/mock-data.js?v=20261117c"></script>
   <script src="./assets/js/store.js?v=20261117c"></script>
   <script src="./assets/js/toast.js?v=20261117c"></script>
-  <script src="./assets/js/responder-ui.js?v=20261117c"></script>
-  <script src="./assets/js/responder-assignments.js?v=20261118c"></script>
+  <script src="./assets/js/responder-ui.js?v=20261121n"></script>
+  <script src="./assets/js/responder-assignments.js?v=20261121h"></script>
 </body>
 
 </html>

@@ -22,6 +22,7 @@ const DASHBOARD_REALTIME_EVENTS = new Set([
   'new-rescue-request',
   'rescue-assignment-updated',
   'rescue-status-updated',
+  'assignment-updated',
   'status-update',
   'incident-resolved',
   'new-incident-report',

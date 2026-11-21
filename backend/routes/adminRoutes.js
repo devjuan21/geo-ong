@@ -24,6 +24,7 @@ const {
   getBroadcastCategories,
   createBroadcastCategory,
   getAdminAnalytics,
+  getMonthlyIncidentsByCategory,
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,
   updateAdminSystemSetting,
@@ -33,6 +34,10 @@ const {
 } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
+const {
+  previewAdminExport,
+  generateAdminExport,
+} = require('../controllers/adminExportController');
 
 const router = express.Router();
 
@@ -147,7 +152,10 @@ router.patch('/broadcasts/:id/cancel', cancelEmergencyBroadcast);
 
 // 6. Reports & Analytics
 router.get('/analytics', getAdminAnalytics);
-router.get('/analytics/export', exportAdminAnalyticsCsv);
+router.get('/analytics/monthly-categories', getMonthlyIncidentsByCategory);
+router.post('/analytics/export/preview', previewAdminExport);
+router.post('/analytics/export', generateAdminExport);
+router.get('/analytics/export', generateAdminExport);
 
 // 7. System Settings & Maintenance
 router.get('/settings', getAdminSystemSettings);

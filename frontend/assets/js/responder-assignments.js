@@ -169,6 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'new-rescue-request',
     'rescue-assignment-updated',
     'rescue-status-updated',
+    'assignment-updated',
     'status-update',
     'incident-resolved',
     'new-incident-report',
@@ -353,7 +354,13 @@ function renderFilteredAssignments() {
             </span>
           </div>
 
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap justify-end">
+            ${a.isUnassignedIncoming
+        ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-50 text-[#8A6800] border-[#FFE872]">Incoming • Unclaimed</span>`
+        : ''}
+            ${!isRescue && a.verificationStatus
+        ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${a.isPublic ? 'bg-emerald-50 text-[#278653] border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}">${a.verificationStatus}</span>`
+        : ''}
             <span class="text-[10px] px-2 py-0.5 rounded-full border ${statusBadge}">
               ${a.status || 'Pending'}
             </span>
@@ -407,7 +414,12 @@ window.openAssignmentDetails = async function (id) {
     // Populate Fields
     document.getElementById('dtl-ref').textContent = assignment.referenceNumber || assignment.id;
     document.getElementById('dtl-type-badge').textContent = assignment.assignmentType === 'rescue' ? 'Rescue Request' : 'Incident Report';
-    if (document.getElementById('dtl-prio-badge')) document.getElementById('dtl-prio-badge').textContent = '';
+    const prioBadgeEl = document.getElementById('dtl-prio-badge');
+    if (prioBadgeEl) {
+      prioBadgeEl.textContent = assignment.isUnassignedIncoming
+        ? 'Incoming • Unclaimed'
+        : (assignment.verificationStatus || '');
+    }
     document.getElementById('dtl-status-badge').textContent = assignment.status || 'Pending';
     document.getElementById('dtl-title').textContent = assignment.title || assignment.category;
     document.getElementById('dtl-desc').textContent = assignment.description || 'No detailed description submitted.';
@@ -511,6 +523,9 @@ window.openAssignmentDetails = async function (id) {
     // Rescue Outcome & Optional Transportation Panel
     renderRescueOutcomePanel(assignment);
 
+    // Responder Incident Verification Panel
+    renderIncidentVerificationPanel(assignment);
+
     // Dynamic Action Buttons
     renderActionButtons(assignment.status);
 
@@ -518,7 +533,7 @@ window.openAssignmentDetails = async function (id) {
 
     // Initialize or re-center detail Leaflet Map & automatic navigation for Accepted / En Route
     setTimeout(() => {
-      initDetailMap(assignment);
+      initDetailMap(resolveActiveMapTarget(assignment));
     }, 150);
 
   } catch (err) {
@@ -528,6 +543,7 @@ window.openAssignmentDetails = async function (id) {
 
 window.closeAssignmentDetails = function () {
   stopAssignmentNavigation({ clearRoute: true });
+  stopAmbientAssignmentGps();
   document.getElementById('assign-details-modal')?.classList.add('hidden');
   activeAssignmentDetail = null;
 };
@@ -537,32 +553,31 @@ function renderActionButtons(currentStatus) {
   if (!container) return;
 
   const s = (currentStatus || '').toLowerCase();
+  const isUnassignedIncoming = Boolean(
+    activeAssignmentDetail &&
+    activeAssignmentDetail.isUnassignedIncoming
+  );
 
   let buttonsHtml = '';
 
-  if (s === 'pending' || s === 'pending dispatch' || s === 'assigned') {
+  if (isUnassignedIncoming) {
+    buttonsHtml = `
+      <button type="button" id="btn-accept-respond-incident" onclick="claimAndRespondIncident()" class="flex-1 py-2.5 px-4 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
+        <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        <span>Accept &amp; Respond</span>
+      </button>
+    `;
+  } else if (s === 'pending' || s === 'pending dispatch' || s === 'assigned') {
     buttonsHtml = `
       <button type="button" onclick="confirmStatusChange('Accepted')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
         <svg class="w-4 h-4 text-[#202020]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
         <span>Accept Assignment</span>
       </button>
     `;
-  } else if (s === 'accepted') {
-    buttonsHtml = `
-      <div class="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        <button type="button" onclick="confirmStatusChange('En Route')" class="flex-1 py-2.5 px-4 rounded-lg bg-[#3478C7] hover:bg-[#2764AB] text-white font-bold text-xs shadow-subtle transition-all flex items-center justify-center gap-1.5">
-          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="1" stroke-width="2"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8" stroke-width="2"></polygon><circle cx="5.5" cy="18.5" r="2.5" stroke-width="2"></circle><circle cx="18.5" cy="18.5" r="2.5" stroke-width="2"></circle></svg>
-          <span>Mark as En Route</span>
-        </button>
-        <span class="px-3 py-2 rounded-lg bg-slate-50 border border-[#FFE872] text-[11px] font-bold text-[#8A6800] text-center">
-          Auto On Scene on GPS Arrival
-        </span>
-      </div>
-    `;
-  } else if (s === 'en route' || s === 'responding') {
+  } else if (s === 'accepted' || s === 'en route' || s === 'responding') {
     buttonsHtml = `
       <div class="w-full py-2.5 px-4 rounded-lg bg-blue-50 border border-blue-200 text-[#3478C7] text-center text-xs font-bold">
-        Automatic Arrival Detection Active — Status updates to On Scene upon arrival at the location
+        Live GPS Navigation Active — Status updates to On Scene automatically upon GPS arrival
       </div>
     `;
   } else if (s === 'on scene' || s === 'on site' || s === 'in progress') {
@@ -595,6 +610,166 @@ function renderActionButtons(currentStatus) {
   container.innerHTML = buttonsHtml;
 }
 
+function renderIncidentVerificationPanel(assignment) {
+  const section = document.getElementById('dtl-incident-verify-section');
+  if (!section) return;
+
+  if (!assignment || assignment.isUnassignedIncoming) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  const badgeEl = document.getElementById('dtl-verify-status-badge');
+  const pendingBox = document.getElementById('dtl-verify-pending-box');
+  const doneBox = document.getElementById('dtl-verify-done-box');
+  const reasonEl = document.getElementById('dtl-verify-reason');
+
+  const isVerified = Boolean(assignment.isPublic || assignment.verifiedAt);
+  const rawStatus = String(assignment.rawStatus || '').toLowerCase();
+  const isRejected = rawStatus === 'false_alarm' || rawStatus === 'dismissed' || rawStatus === 'cancelled' || String(assignment.status || '').toLowerCase() === 'cancelled';
+  const isRescue = assignment.assignmentType === 'rescue';
+  const hazardWrap = document.getElementById('dtl-verify-hazard-wrap');
+  const hazardSelect = document.getElementById('dtl-verify-hazard-type');
+
+  if (badgeEl) {
+    if (isVerified) {
+      badgeEl.textContent = isRescue ? 'Verified • Linked Hazard Public' : 'Verified • Public';
+      badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200';
+    } else if (isRejected) {
+      badgeEl.textContent = 'Rejected • Private';
+      badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2]';
+    } else {
+      badgeEl.textContent = 'Pending Verification';
+      badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200';
+    }
+  }
+
+  if (hazardWrap && hazardSelect) {
+    hazardWrap.classList.toggle('hidden', !isRescue || isVerified || isRejected);
+    if (isRescue && !isVerified && !isRejected) {
+      const catLower = `${assignment.category || ''} ${assignment.title || ''}`.toLowerCase();
+      hazardSelect.value = catLower.includes('fire') ? 'Fire' : (catLower.includes('flood') ? 'Flood' : '');
+    }
+  }
+
+  const verifyBtnEl = document.getElementById('btn-verify-incident');
+  const statusNorm = String(assignment.status || '').toLowerCase();
+  const isRescueOnScene = Boolean(
+    assignment.onSceneAt ||
+    ['on scene', 'on site', 'in progress', 'completed', 'resolved'].includes(statusNorm)
+  );
+  if (verifyBtnEl) {
+    if (isRescue) {
+      verifyBtnEl.textContent = 'Verify & Publish Public Awareness';
+      verifyBtnEl.disabled = !isRescueOnScene;
+      verifyBtnEl.title = isRescueOnScene ? '' : 'Arrive On Scene to verify and publish public awareness';
+    } else {
+      verifyBtnEl.textContent = 'Verify Situation';
+      verifyBtnEl.disabled = false;
+      verifyBtnEl.title = '';
+    }
+  }
+
+  if (isVerified || isRejected) {
+    if (pendingBox) pendingBox.classList.add('hidden');
+    if (doneBox) {
+      doneBox.classList.remove('hidden');
+      doneBox.textContent = isVerified
+        ? (isRescue
+          ? 'Public Flood/Fire Awareness Incident published (awareness only — no separate responder assignment created).'
+          : 'This incident report is verified and visible on the public safety map.')
+        : 'This report was rejected as unverified and kept private.';
+    }
+  } else {
+    if (pendingBox) pendingBox.classList.remove('hidden');
+    if (doneBox) doneBox.classList.add('hidden');
+    if (reasonEl) reasonEl.value = '';
+  }
+}
+
+window.claimAndRespondIncident = async function () {
+  if (!activeAssignmentDetail) return;
+  const btn = document.getElementById('btn-accept-respond-incident');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Claiming...';
+  }
+  try {
+    const targetId = activeAssignmentDetail.referenceNumber || activeAssignmentDetail.id;
+    const res = await window.geoSafeStore.request(`/responder/assignments/${encodeURIComponent(targetId)}/claim`, {
+      method: 'POST',
+      body: JSON.stringify({
+        assignmentType: activeAssignmentDetail.assignmentType || 'incident',
+      }),
+    });
+    GeoSafeResponderUI.showToast(res.message || 'Accepted! Live GPS navigation started.', 'success');
+    await loadAssignments({ background: true });
+    await openAssignmentDetails(targetId);
+  } catch (err) {
+    GeoSafeResponderUI.showToast(err.message || 'Unable to claim incident report.', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Accept & Respond';
+    }
+    await loadAssignments({ background: true });
+  }
+};
+
+window.submitIncidentVerification = async function (action) {
+  if (!activeAssignmentDetail) return;
+  const reasonEl = document.getElementById('dtl-verify-reason');
+  const reason = reasonEl ? reasonEl.value.trim() : '';
+  const isRescue = activeAssignmentDetail.assignmentType === 'rescue';
+  const hazardEl = document.getElementById('dtl-verify-hazard-type');
+  const hazardType = hazardEl ? hazardEl.value.trim() : '';
+
+  if (action === 'verify' && isRescue && !['Fire', 'Flood'].includes(hazardType)) {
+    GeoSafeResponderUI.showToast('Please select the verified hazard type (Fire or Flood).', 'warning');
+    if (hazardEl) hazardEl.focus();
+    return;
+  }
+
+  if (action === 'reject' && !reason) {
+    GeoSafeResponderUI.showToast('Please enter a rejection reason before rejecting.', 'warning');
+    if (reasonEl) reasonEl.focus();
+    return;
+  }
+
+  const verifyBtn = document.getElementById('btn-verify-incident');
+  const rejectBtn = document.getElementById('btn-reject-incident');
+  if (verifyBtn) verifyBtn.disabled = true;
+  if (rejectBtn) rejectBtn.disabled = true;
+
+  try {
+    const targetId = activeAssignmentDetail.referenceNumber || activeAssignmentDetail.id;
+    const res = await window.geoSafeStore.request(`/responder/assignments/${encodeURIComponent(targetId)}/verify`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        action,
+        reason,
+        hazardType: isRescue ? hazardType : undefined,
+        assignmentType: activeAssignmentDetail.assignmentType || 'incident',
+      }),
+    });
+    GeoSafeResponderUI.showToast(
+      res.message || (action === 'verify' ? 'Incident report verified.' : 'Incident report rejected.'),
+      action === 'verify' ? 'success' : 'info'
+    );
+    await loadAssignments({ background: true });
+    if (action === 'reject') {
+      closeAssignmentDetails();
+    } else {
+      await openAssignmentDetails(targetId);
+    }
+  } catch (err) {
+    GeoSafeResponderUI.showToast(err.message || 'Verification request failed.', 'error');
+  } finally {
+    if (verifyBtn) verifyBtn.disabled = false;
+    if (rejectBtn) rejectBtn.disabled = false;
+  }
+};
+
 function parseValidCoords(coords) {
   if (!coords) return null;
   const lat = Number(coords.lat);
@@ -611,7 +786,55 @@ function parseValidCoords(coords) {
   return { lat, lng };
 }
 
+function resolveActiveMapTarget(assignment) {
+  if (!assignment || assignment.assignmentType !== 'rescue') return assignment;
+  const transports = Array.isArray(assignment.transports) ? assignment.transports : [];
+  const activeLegs = transports.filter((t) => t && t.transportStatus !== 'Cancelled');
+
+  const inTransitLeg = activeLegs.find(
+    (t) =>
+      ['In Transit', 'En Route'].includes(String(t.transportStatus || '')) &&
+      Number.isFinite(Number(t.latitude)) &&
+      Number.isFinite(Number(t.longitude))
+  );
+  if (inTransitLeg) {
+    return {
+      ...assignment,
+      _isTransportNavigation: true,
+      _isTransportCompletedStage: false,
+      _transportLeg: inTransitLeg,
+      coordinates: { lat: Number(inTransitLeg.latitude), lng: Number(inTransitLeg.longitude) },
+      location: inTransitLeg.destinationName || assignment.location,
+    };
+  }
+
+  const s = String(assignment.status || '').toLowerCase();
+  if (s !== 'completed' && s !== 'resolved') {
+    const arrivedOrHandedOverLeg = activeLegs.find(
+      (t) =>
+        ['Arrived', 'Handed Over'].includes(String(t.transportStatus || '')) &&
+        Number.isFinite(Number(t.latitude)) &&
+        Number.isFinite(Number(t.longitude))
+    );
+    if (arrivedOrHandedOverLeg) {
+      return {
+        ...assignment,
+        _isTransportNavigation: true,
+        _isTransportCompletedStage: true,
+        _transportLeg: arrivedOrHandedOverLeg,
+        coordinates: { lat: Number(arrivedOrHandedOverLeg.latitude), lng: Number(arrivedOrHandedOverLeg.longitude) },
+        location: arrivedOrHandedOverLeg.destinationName || assignment.location,
+      };
+    }
+  }
+
+  return assignment;
+}
+
 function isNavigableStatus(status, assignment) {
+  if (assignment && assignment._isTransportCompletedStage) {
+    return false;
+  }
   if (navState.activeTransportLeg || (assignment && assignment._isTransportNavigation)) {
     return true;
   }
@@ -629,7 +852,8 @@ function initDetailMap(assignment) {
   stopAssignmentNavigation({ clearRoute: true });
 
   const isTransportNav = Boolean(assignment && assignment._isTransportNavigation && assignment._transportLeg);
-  navState.activeTransportLeg = isTransportNav ? assignment._transportLeg : null;
+  const isTransportCompletedStage = Boolean(assignment && assignment._isTransportCompletedStage);
+  navState.activeTransportLeg = isTransportNav && !isTransportCompletedStage ? assignment._transportLeg : null;
 
   const destCoords = parseValidCoords(assignment && assignment.coordinates);
   const statusStr = assignment ? assignment.status : '';
@@ -652,18 +876,14 @@ function initDetailMap(assignment) {
 
   const targetCoords = [destCoords.lat, destCoords.lng];
   const destLabel = (assignment && (assignment.location || assignment.referenceNumber)) || 'Assigned Location';
-  if (isTransportNav) {
-    const locEl = document.getElementById('dtl-location');
-    if (locEl) locEl.textContent = `${destLabel} (${assignment._transportLeg.destinationFacilityType || 'Transport Destination'})`;
-  }
 
   const isRescueTarget =
     (assignment && (assignment.assignmentType === 'rescue' || assignment.recordType === 'rescue')) ||
     String((assignment && (assignment.referenceNumber || assignment.id)) || '').startsWith('RES-');
   const targetIcon = isTransportNav
     ? (assignment._transportLeg.destinationCategory === 'evacuation_center'
-        ? GeoSafeMapping.createCustomIcon('evacuation')
-        : GeoSafeMapping.createMedicalFacilityIcon(assignment._transportLeg.destinationFacilityType || 'Hospital'))
+      ? GeoSafeMapping.createCustomIcon('evacuation')
+      : GeoSafeMapping.createMedicalFacilityIcon(assignment._transportLeg.destinationFacilityType || 'Hospital'))
     : GeoSafeMapping.createCustomIcon(isRescueTarget ? 'rescue' : 'incident');
 
   if (!detailMap) {
@@ -691,15 +911,18 @@ function initDetailMap(assignment) {
   }
 
   if (detailMarker) {
-    detailMarker.bindPopup(`<strong>Assigned Destination</strong><br><span style="font-size:11px;">${escapeHtmlNav(destLabel)}</span>`);
+    const popupTitle = isTransportNav
+      ? `Transport Destination (${escapeHtmlNav(assignment._transportLeg.destinationFacilityType || 'Facility')})`
+      : 'Assigned Destination';
+    detailMarker.bindPopup(`<strong>${popupTitle}</strong><br><span style="font-size:11px;">${escapeHtmlNav(destLabel)}</span>`);
   }
 
-  startAmbientAssignmentGps();
+  stopAmbientAssignmentGps();
 
   const arrivedBanner = document.getElementById('dtl-nav-arrived-banner');
   const toggleBtn = document.getElementById('dtl-nav-toggle-btn');
   const statusLower = String(statusStr || '').toLowerCase();
-  const isArrived = !isTransportNav && (statusLower === 'on scene' || statusLower === 'on site');
+  const isArrived = isTransportCompletedStage || (!isTransportNav && (statusLower === 'on scene' || statusLower === 'on site'));
 
   if (shouldNavigate) {
     navState.arrived = false;
@@ -718,6 +941,7 @@ function initDetailMap(assignment) {
     arrivedBanner?.classList.add('hidden');
     if (controlsEl) controlsEl.classList.add('hidden');
     if (navPanel) navPanel.classList.add('hidden');
+    startAmbientAssignmentGps();
   }
 }
 
@@ -906,6 +1130,7 @@ function stopAssignmentNavigation({ clearRoute = true, userPaused = false, prese
 
 function updateResponderGpsMarker(gps) {
   if (!detailMap || typeof L === 'undefined') return;
+  clearAmbientGpsMarker();
   const latLng = [gps.lat, gps.lng];
 
   const hasLayer = typeof detailMap.hasLayer === 'function';
@@ -968,8 +1193,10 @@ function renderCalculatedRoute(route) {
     lineJoin: 'round',
     lineCap: 'round',
   }).addTo(detailMap);
+  try { navState.routePolyline.bringToBack(); } catch (_) { }
 
   if (!navState.hasFittedInitialBounds) {
+    try { detailMap.invalidateSize(); } catch (_) { }
     const bounds = navState.routePolyline.getBounds();
     if (navState.currentGps) bounds.extend([navState.currentGps.lat, navState.currentGps.lng]);
     if (navState.destCoords) bounds.extend([navState.destCoords.lat, navState.destCoords.lng]);
@@ -1415,6 +1642,7 @@ function startAssignmentNavigation(assignment) {
     return;
   }
 
+  stopAmbientAssignmentGps();
   stopAssignmentNavigation({ clearRoute: false, userPaused: false, preserveArrived: false });
   navState.sessionId += 1;
   const currentSessionId = navState.sessionId;
@@ -1446,6 +1674,34 @@ function startAssignmentNavigation(assignment) {
 const ambientAssignGpsState = { marker: null, accuracyCircle: null };
 let ambientAssignGpsTracker = null;
 let lastAssignRespSyncAt = 0;
+
+function clearAmbientGpsMarker() {
+  if (detailMap && ambientAssignGpsState.marker) {
+    try { detailMap.removeLayer(ambientAssignGpsState.marker); } catch (_) { }
+  }
+  if (detailMap && ambientAssignGpsState.accuracyCircle) {
+    try { detailMap.removeLayer(ambientAssignGpsState.accuracyCircle); } catch (_) { }
+  }
+  ambientAssignGpsState.marker = null;
+  ambientAssignGpsState.accuracyCircle = null;
+}
+
+function stopAmbientAssignmentGps() {
+  if (ambientAssignGpsTracker && typeof ambientAssignGpsTracker.stop === 'function') {
+    try { ambientAssignGpsTracker.stop(); } catch (_) { }
+  }
+  ambientAssignGpsTracker = null;
+  clearAmbientGpsMarker();
+}
+
+if (typeof document !== 'undefined' && !window.__geosafeNavVisibilityBound) {
+  window.__geosafeNavVisibilityBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navState && navState.active && !navState.arrived) {
+      runTenSecondNavigationSync();
+    }
+  });
+}
 
 function syncResponderAssignmentGps(reading) {
   if (!reading || reading.isStale || !window.geoSafeStore || typeof window.geoSafeStore.syncResponderLocation !== 'function') return;
@@ -1543,13 +1799,20 @@ function updateCompletionConfirmButtonState() {
 
   const hasPhoto = isValidCompletionPhoto(completionPhotoBase64);
   const badge = document.getElementById('completion-photo-badge');
-  if (badge) badge.classList.toggle('hidden', !hasPhoto);
+  if (badge) {
+    badge.classList.remove('hidden');
+    badge.textContent = hasPhoto ? '1 captured' : '0 captured';
+    badge.className = hasPhoto
+      ? 'text-[10px] font-bold text-[#278653] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full'
+      : 'text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full';
+  }
 
   if (hasPhoto) {
     window.GeoSafeToast?.clearInvalidField?.(document.getElementById('confirm-completion-photo-section'));
   }
 
-  confirmBtn.disabled = statusUpdateInFlight;
+  const requiresPhoto = isCompletionPhotoRequiredForAssignment(activeAssignmentDetail);
+  confirmBtn.disabled = statusUpdateInFlight || (requiresPhoto && !hasPhoto);
 }
 
 window.openCompletionCamera = async function () {
@@ -1697,9 +1960,12 @@ window.confirmStatusChange = function (newStatus) {
 
   targetEl.value = newStatus;
   if (newStatus === 'Completed') {
-    if (titleEl) titleEl.textContent = 'Complete Assignment';
-    msgEl.textContent = `Provide a completion summary for ${activeAssignmentDetail.referenceNumber || activeAssignmentDetail.id}.`;
-    if (compSection) compSection.classList.remove('hidden');
+    const isRescue = activeAssignmentDetail.assignmentType === 'rescue';
+    if (titleEl) titleEl.textContent = isRescue ? 'Complete Rescue Task' : 'Complete Assignment';
+    msgEl.textContent = isRescue
+      ? `Confirm completion of rescue task ${activeAssignmentDetail.referenceNumber || activeAssignmentDetail.id}.`
+      : `Provide a completion summary for ${activeAssignmentDetail.referenceNumber || activeAssignmentDetail.id}.`;
+    if (compSection) compSection.classList.toggle('hidden', isRescue);
     if (summaryInput) {
       summaryInput.value = '';
       summaryInput.oninput = updateCompletionConfirmButtonState;
@@ -1731,10 +1997,11 @@ window.executeStatusChange = async function () {
   let photoToSend = null;
 
   if (targetStatus === 'Completed') {
+    const isRescue = activeAssignmentDetail.assignmentType === 'rescue';
     const summaryEl = document.getElementById('confirm-completion-summary');
     const photoSectionEl = document.getElementById('confirm-completion-photo-section');
     const summary = summaryEl?.value?.trim() || '';
-    if (!summary) {
+    if (!isRescue && !summary) {
       if (window.GeoSafeToast?.flagInvalidField) {
         window.GeoSafeToast.flagInvalidField(summaryEl, 'Please enter a completion summary.');
       } else {
@@ -1752,7 +2019,7 @@ window.executeStatusChange = async function () {
       updateCompletionConfirmButtonState();
       return;
     }
-    workNotes = summary;
+    workNotes = summary || 'Rescue task completed by responder.';
     photoToSend = isValidCompletionPhoto(completionPhotoBase64) ? completionPhotoBase64 : null;
   }
 
@@ -2045,15 +2312,15 @@ function renderRescueOutcomePanel(assignment) {
       legsContainer.innerHTML = `
         <div class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">Transport &amp; Handover Tracking</div>
         ${transports.map((tr) => {
-          const statusColor =
-            tr.transportStatus === 'Handed Over'
-              ? 'bg-emerald-50 text-[#278653] border-emerald-200'
-              : tr.transportStatus === 'Arrived'
-                ? 'bg-blue-50 text-[#0A58CA] border-blue-200'
-                : tr.transportStatus === 'In Transit'
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                  : 'bg-slate-50 text-slate-600 border-slate-200';
-          return `
+        const statusColor =
+          tr.transportStatus === 'Handed Over'
+            ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+            : tr.transportStatus === 'Arrived'
+              ? 'bg-blue-50 text-[#0A58CA] border-blue-200'
+              : tr.transportStatus === 'In Transit'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-slate-50 text-slate-600 border-slate-200';
+        return `
             <div class="p-2.5 rounded-md border border-slate-200 bg-white space-y-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -2099,7 +2366,7 @@ function renderRescueOutcomePanel(assignment) {
               ` : ''}
             </div>
           `;
-        }).join('')}
+      }).join('')}
       `;
     } else {
       legsContainer.classList.add('hidden');

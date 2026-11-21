@@ -912,10 +912,6 @@
               <p class="text-xs text-[#777777]">Manage active personnel, duty status, and emergency operations.</p>
             </div>
             <div class="flex items-center gap-2">
-              <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal()"
-                class="h-9 px-3.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle transition-colors">
-                Assign Dispatch
-              </button>
               <button type="button" onclick="window.GeoSafeAdmin.loadRespondersList()"
                 class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020]">
                 Refresh
@@ -1267,15 +1263,8 @@
           <!-- Compact Single-Row EOC Toolbar -->
           <div
             class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <!-- Left: Back + Title + Date Range Selector -->
+            <!-- Left: Title + Date Range Selector -->
             <div class="flex flex-wrap items-center gap-2">
-              <button type="button" onclick="window.GeoSafeAdmin.navigateTo('dashboard')"
-                class="inline-flex items-center justify-center w-7 h-7 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-[#0f172a] transition-colors"
-                title="Back to Dashboard" aria-label="Back to Dashboard">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-                </svg>
-              </button>
               <h2 class="text-[15px] font-bold text-[#0f172a] tracking-tight">Incident Count</h2>
               <span class="hidden sm:inline-block h-4 w-px bg-slate-300 mx-0.5"></span>
               <div>
@@ -1322,7 +1311,7 @@
                 </svg>
                 <span>Email</span>
               </button>
-              <button type="button" onclick="window.GeoSafeAdmin.downloadAnalyticsCsv()"
+              <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsExportModal()"
                 class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-[#0f172a] bg-[#0f172a] hover:bg-[#1e293b] text-xs font-medium text-white transition-colors">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
@@ -1455,6 +1444,49 @@
               <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location
                 data
                 recorded.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Separate Card: Monthly Incidents by Category (Stacked Vertical Column Chart) -->
+        <div id="analytics-monthly-stacked-card"
+          class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
+          <div
+            class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+              <h3 class="text-sm font-bold text-[#0f172a]">Monthly Incidents by Category</h3>
+              <p class="text-xs text-slate-500">Stacked incident report counts by category (January–December)</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="analytics-monthly-year-select" class="sr-only">Year</label>
+              <select id="analytics-monthly-year-select"
+                class="h-7 pl-2 pr-6 rounded-[3px] border border-slate-300 bg-white text-xs font-semibold text-[#0f172a] hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-[#0A58CA] focus:border-[#0A58CA]">
+              </select>
+              <span id="analytics-monthly-total-badge"
+                class="inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
+                0 Total Reports
+              </span>
+            </div>
+          </div>
+
+          <div class="px-4 pt-3 pb-4">
+            <div id="analytics-monthly-stacked-legend"
+              style="gap: 8px 16px;"
+              class="flex flex-wrap items-center pb-2.5 border-b border-slate-100 text-[11px] text-slate-700">
+            </div>
+
+            <div class="relative pt-3 overflow-x-auto overflow-y-hidden h-[320px] sm:h-[360px]">
+              <div id="analytics-monthly-stacked-chart" class="w-full h-full min-w-[640px]"></div>
+              <div id="analytics-monthly-stacked-empty"
+                class="hidden w-full h-full flex items-center justify-center text-center text-xs text-slate-500">
+                No incident reports recorded for the selected year.
+              </div>
+              <div id="analytics-monthly-stacked-error"
+                class="hidden w-full h-full flex items-center justify-center text-center text-xs text-red-700">
+              </div>
+              <div id="analytics-monthly-stacked-tooltip"
+                class="hidden pointer-events-none fixed z-50 px-2.5 py-1.5 rounded-[3px] bg-[#0f172a] text-white text-xs font-medium shadow-md whitespace-nowrap">
+              </div>
             </div>
           </div>
         </div>
@@ -2097,29 +2129,20 @@
               </div>
             </div>
 
-            <!-- 2. Responder Assignment (Independent Operation) -->
-            <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2.5 mt-auto">
+            <!-- 2. Responder Response Monitoring (Automatic Distribution / Self-Claim) -->
+            <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2 mt-auto">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">2. Responder
-                  Assignment</span>
+                  Response</span>
                 <span id="review-assignment-status"
-                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Unassigned</span>
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Unclaimed</span>
               </div>
               <div class="text-[11px] text-[#475569]">
-                Assigned Responder: <strong id="review-assigned-responder-name" class="text-[#0f172a]">None</strong>
+                Assigned Responder: <strong id="review-assigned-responder-name" class="text-[#0f172a]">Awaiting Responder Acceptance</strong>
               </div>
-              <div>
-                <label for="review-responder-select"
-                  class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Select Responder</label>
-                <select id="review-responder-select"
-                  class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] disabled:bg-[#F7F7F7] disabled:text-[#555555] disabled:cursor-not-allowed"></select>
-                <p id="review-responder-lock-note" class="hidden mt-1 text-[11px] font-medium text-[#8A6800]">Responder
-                  already assigned to this operation.</p>
-              </div>
-              <button type="button" id="review-assign-btn" onclick="window.GeoSafeAdmin.assignResponderFromModal()"
-                class="w-full h-9 px-4 rounded-md bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-bold transition-colors shadow-subtle disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-                Assign Responder
-              </button>
+              <p class="text-[11px] text-[#64748b] leading-relaxed">
+                Incoming reports and rescue requests are distributed automatically to active Responders via <strong>Accept &amp; Respond</strong>.
+              </p>
             </div>
 
             <button type="button" id="review-close-incident-btn" onclick="window.GeoSafeAdmin.openCloseIncidentModal()"
@@ -2631,61 +2654,6 @@
     </form>
   </div>
 
-  <!-- MODAL 5: ASSIGN RESPONDER DISPATCH -->
-  <div id="admin-assign-responder-modal"
-    class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-    <form onsubmit="window.GeoSafeAdmin.submitAssignResponder(event)"
-      class="bg-white rounded-lg border border-slate-200 shadow-subtle max-w-md w-full p-5 sm:p-6 space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
-        <div>
-          <h3 class="text-sm font-bold text-[#202020]">Dispatch Responder</h3>
-          <p class="text-[11px] text-[#777777]">Assign an active unit to an open incident or rescue operation.</p>
-        </div>
-      </div>
-
-      <div id="assign-responder-error"
-        class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]"></div>
-
-      <div>
-        <label for="assign-target-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Target
-          Operation *</label>
-        <select id="assign-target-select" required
-          class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs font-bold text-[#202020]"></select>
-      </div>
-
-      <div>
-        <label for="assign-responder-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Eligible
-          On-Duty Responder *</label>
-        <select id="assign-responder-select" required
-          class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020]"></select>
-      </div>
-
-      <div id="assign-proximity-panel" class="space-y-1.5">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] font-bold text-[#777777] uppercase">Proximity Recommendations</span>
-          <span id="assign-proximity-excluded" class="text-[10px] text-[#777777]"></span>
-        </div>
-        <div id="assign-proximity-list" class="max-h-44 overflow-y-auto space-y-1.5 pr-0.5"></div>
-      </div>
-
-      <div>
-        <label for="assign-instructions-input"
-          class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Dispatch Instructions</label>
-        <textarea id="assign-instructions-input" rows="2"
-          placeholder="e.g. Deploy with rubber boat to Purok 1 Lakeshore..."
-          class="w-full p-2.5 rounded-md border border-slate-200 text-xs text-[#202020]"></textarea>
-      </div>
-
-      <div class="flex items-center justify-end gap-2 pt-2">
-        <button type="button" onclick="window.GeoSafeAdmin.closeAssignResponderModal()"
-          class="h-9 px-4 rounded-md border border-slate-200 text-xs font-bold text-[#555555]">Cancel</button>
-        <button type="submit"
-          class="h-9 px-4 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] text-xs font-bold shadow-subtle">Dispatch
-          Responder</button>
-      </div>
-    </form>
-  </div>
-
   <!-- MODAL 6: EMERGENCY BROADCAST CONFIRMATION -->
   <div id="admin-broadcast-confirm-modal"
     class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2882,13 +2850,192 @@
     </div>
   </div>
 
+  <!-- Modal: Analytics & Reports Export Configuration -->
+  <div id="modal-analytics-export" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-5 bg-slate-900/50 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+    <div class="bg-white border border-slate-300 rounded-md shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 id="export-modal-title" class="text-sm font-bold text-[#0f172a]">Configure Reports &amp; Analytics Export</h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">Select report categories, reporting period, filters, and output format.</p>
+        </div>
+        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()" class="p-1.5 rounded hover:bg-slate-200/70 text-slate-500" aria-label="Close export modal">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4 text-xs">
+        <!-- 1. Categories -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">1. Report Categories <span id="export-selected-count" class="ml-1 text-[#0A58CA] font-semibold">(1 selected)</span></span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="window.GeoSafeAdmin.selectAllExportCategories()" class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Select All</button>
+              <span class="text-slate-300">|</span>
+              <button type="button" onclick="window.GeoSafeAdmin.clearExportCategories()" class="text-[11px] font-semibold text-slate-600 hover:underline">Clear Selection</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="incidents" checked>
+              <div>
+                <div class="font-semibold text-[#0f172a]">Incident Reports</div>
+                <div class="text-[11px] text-slate-500">ID, category, location, reported time, verification &amp; resolution status, timestamps</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="rescues">
+              <div>
+                <div class="font-semibold text-[#0f172a]">Rescue Requests</div>
+                <div class="text-[11px] text-slate-500">ID, rescue type, location, requested time, acceptance, responder, status, completion</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="operations">
+              <div>
+                <div class="font-semibold text-[#0f172a]">Operations</div>
+                <div class="text-[11px] text-slate-500">Combined incident &amp; rescue records, type, reference ID, location, responder, timestamps</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="dispatches">
+              <div>
+                <div class="font-semibold text-[#0f172a]">Dispatches</div>
+                <div class="text-[11px] text-slate-500">Dispatch ID, related request, assigned responder, creation/acceptance/completion times</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer sm:col-span-2">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="analytics">
+              <div>
+                <div class="font-semibold text-[#0f172a]">Analytics Summary</div>
+                <div class="text-[11px] text-slate-500">Total incidents, rescues, operations, active dispatches, daily counts, category &amp; status breakdowns</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. Filters -->
+        <div class="pt-2 border-t border-slate-200">
+          <div class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px] mb-2">2. Reporting Period &amp; Filters</div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div>
+              <label for="export-period-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Reporting Period</label>
+              <select id="export-period-select" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="today">Today</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="this_month">This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="this_year">This Year</option>
+                <option value="all">All Available Records</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+            </div>
+            <div>
+              <label for="export-date-from" class="block text-[11px] font-semibold text-slate-600 mb-1">Start Date</label>
+              <input id="export-date-from" type="date" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+            </div>
+            <div>
+              <label for="export-date-to" class="block text-[11px] font-semibold text-slate-600 mb-1">End Date</label>
+              <input id="export-date-to" type="date" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+            </div>
+            <div>
+              <label for="export-status-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Status (if applicable)</label>
+              <select id="export-status-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="">All Statuses</option>
+                <option value="Pending Verification">Pending Verification</option>
+                <option value="Verified">Verified</option>
+                <option value="Assigned">Assigned</option>
+                <option value="Accepted">Accepted</option>
+                <option value="En Route">En Route</option>
+                <option value="On Scene">On Scene</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Completed">Completed</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div>
+              <label for="export-category-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Incident Category</label>
+              <select id="export-category-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="">All Categories</option>
+                <option value="Flooding / Rising Water">Flooding / Rising Water</option>
+                <option value="Fallen Tree / Road Obstruction">Fallen Tree / Road Obstruction</option>
+                <option value="Downed Electrical Power Cable">Downed Electrical Power Cable</option>
+                <option value="Structural / Wall Collapse">Structural / Wall Collapse</option>
+                <option value="Fire Outbreak">Fire Outbreak</option>
+                <option value="Severe Drainage Overflow">Severe Drainage Overflow</option>
+              </select>
+            </div>
+            <div>
+              <label for="export-operation-type-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Operation Type</label>
+              <select id="export-operation-type-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="all">All Operations</option>
+                <option value="incident">Incident Only</option>
+                <option value="rescue">Rescue Only</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. File Format -->
+        <div class="pt-2 border-t border-slate-200">
+          <div class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px] mb-2">3. File Format</div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="radio" name="export-format" value="xlsx" class="text-[#0A58CA]" checked>
+              <div>
+                <div class="font-semibold text-[#0f172a]">Excel (.xlsx)</div>
+                <div class="text-[10.5px] text-slate-500">Multi-sheet workbook</div>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="radio" name="export-format" value="csv" class="text-[#0A58CA]">
+              <div>
+                <div class="font-semibold text-[#0f172a]">CSV (.csv / .zip)</div>
+                <div class="text-[10.5px] text-slate-500">ZIP if multi-category</div>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="radio" name="export-format" value="pdf" class="text-[#0A58CA]">
+              <div>
+                <div class="font-semibold text-[#0f172a]">PDF (.pdf)</div>
+                <div class="text-[10.5px] text-slate-500">Printable EOC report</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 4. Live Export Preview -->
+        <div class="pt-2 border-t border-slate-200">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">4. Export Preview (Live Database Counts)</span>
+            <span id="export-preview-status" class="text-[11px] text-slate-500">Calculating...</span>
+          </div>
+          <div id="export-preview-box" class="p-3 rounded bg-slate-50 border border-slate-200 space-y-1.5">
+            <div class="text-slate-500">Select categories to preview record counts.</div>
+          </div>
+          <div id="export-modal-error" class="hidden mt-2 p-2.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs font-medium"></div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()" class="h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700">
+          Cancel
+        </button>
+        <button type="button" id="btn-generate-export" onclick="window.GeoSafeAdmin.generateAnalyticsExport()" class="h-8 px-4 rounded bg-[#0f172a] hover:bg-[#1e293b] disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white inline-flex items-center gap-1.5">
+          <span id="btn-generate-export-label">Generate Export</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="./assets/vendor/leaflet/leaflet.js"></script>
-  <script src="./assets/js/mapping-service.js"></script>
+  <script src="./assets/js/mapping-service.js?v=20261121l"></script>
   <script src="./assets/js/mock-data.js"></script>
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
-  <script src="./assets/js/admin.js"></script>
+  <script src="./assets/js/admin.js?v=20261121c"></script>
 </body>
 
 </html>

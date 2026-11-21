@@ -175,22 +175,24 @@ async function createReport(req, res) {
     // Create notification for Administrators
     try {
       const [notifRes] = await conn.query(
-        `INSERT INTO notifications (title, message, category, created_by)
-         VALUES (?, ?, 'Alert', ?)`,
+        `INSERT INTO notifications (title, message, category, related_entity_type, related_entity_id, action_url, created_by)
+         VALUES (?, ?, 'Alert', 'report', ?, ?, ?)`,
         [
           `New Incident Report: ${referenceNumber}`,
-          `${incident_type} reported at ${address}.`,
+          `${incident_type} reported at ${address} • Status: Pending`,
+          result.insertId,
+          `/responder-assignments.html?id=${encodeURIComponent(referenceNumber)}`,
           req.user.id,
         ]
       );
-      const [admins] = await conn.query(
-        "SELECT id FROM users WHERE role_id = ? AND status = 'active'",
-        [ROLE_IDS.ADMINISTRATOR]
+      const [recipients] = await conn.query(
+        "SELECT id FROM users WHERE role_id IN (?, ?) AND status = 'active'",
+        [ROLE_IDS.ADMINISTRATOR, ROLE_IDS.RESPONDER]
       );
-      for (const admin of admins) {
+      for (const recipient of recipients) {
         await conn.query(
           'INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)',
-          [notifRes.insertId, admin.id]
+          [notifRes.insertId, recipient.id]
         );
       }
     } catch (notifErr) {
@@ -243,6 +245,7 @@ async function createReport(req, res) {
     };
 
     emitNewReport(report);
+
     return res.status(201).json({
       message: 'Report submitted successfully',
       id: referenceNumber,
@@ -268,10 +271,10 @@ async function getReports(req, res) {
     const params = [];
 
     if (req.user.role === 'resident') {
-      query += ' WHERE r.user_id = ?';
+      query += ' WHERE r.user_id = ? AND r.source_rescue_id IS NULL';
       params.push(req.user.id);
     } else if (req.user.role === 'responder') {
-      query += " WHERE r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND (r.assigned_to = ? OR r.status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress'))";
+      query += " WHERE r.source_rescue_id IS NULL AND r.status NOT IN ('resolved', 'false_alarm', 'dismissed') AND (r.assigned_to = ? OR (r.assigned_to IS NULL AND r.status IN ('pending', 'verified')))";
       params.push(req.user.id);
     }
 

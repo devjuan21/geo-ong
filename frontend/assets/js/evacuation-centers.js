@@ -39,18 +39,12 @@ function startEvacCentersLiveGps() {
 
 function initEvacMap() {
   const mapEl = document.getElementById('evac-map');
-  if (!mapEl || typeof L === 'undefined') return;
+  if (!mapEl || !window.GeoSafeMapping) return;
 
   try {
-    evacMap = L.map('evac-map').setView([14.4075, 121.0475], 14);
-    if (window.GeoSafeMapping && typeof window.GeoSafeMapping.addBaseTileLayer === 'function') {
-      window.GeoSafeMapping.addBaseTileLayer(evacMap);
-    } else {
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors | Barangay Bayanan Evac Map'
-      }).addTo(evacMap);
-    }
+    evacMap = window.GeoSafeMapping.createMap('evac-map', {
+      fitBoundary: true
+    });
   } catch (err) {
     console.warn('Evac map init warning:', err);
   }

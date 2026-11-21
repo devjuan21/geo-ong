@@ -13,6 +13,8 @@ const {
   emitResponderLocationOffline,
   emitRescueOutcomeUpdated,
   emitRescueTransportUpdated,
+  emitReportVerificationResult,
+  emitPublicVerifiedReport,
 } = require('../services/socketService');
 const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
 const { getEocLocation } = require('../config/eocConfig');
@@ -296,7 +298,7 @@ router.get('/dashboard/summary', requireRole('resident', 'admin'), async (req, r
 router.get('/reports/public', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, status, created_at FROM reports WHERE is_public = 1 AND status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress') ORDER BY created_at DESC LIMIT 50"
+      "SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, status, created_at FROM reports WHERE is_public = TRUE AND status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress') ORDER BY created_at DESC LIMIT 50"
     );
     return res.json(rows.map((r) => formatReportForPortal(r)));
   } catch (err) {
@@ -834,19 +836,36 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
       );
     }
 
-    // Notify all active Administrators
+    // Notify all active Administrators and Responders
     try {
-      const adminIds = await getActiveAdminIds(conn);
+      const [opUsers] = await conn.query(
+        `SELECT u.id
+         FROM users u
+         JOIN roles r ON u.role_id = r.id
+         WHERE u.status = 'active'
+           AND LOWER(r.name) IN ('admin', 'administrator', 'responder')`
+      );
+      const opUserIds = [...new Set(opUsers.map((u) => Number(u.id)).filter(Boolean))];
       const countText = formatPeopleCountDisplay(validatedCount, peopleCountCategory);
-      await createNotificationForUsers(conn, {
-        title: `Emergency Rescue Request: ${refNum}`,
-        message: `${emergencyLabel} rescue requested at ${addrText} (${countText}).`,
-        category: 'Alert',
-        createdBy: req.user.id,
-        userIds: adminIds,
-      });
+      const [notifRes] = await conn.query(
+        `INSERT INTO notifications (title, message, category, related_entity_type, related_entity_id, action_url, created_by)
+         VALUES (?, ?, 'Alert', 'rescue_request', ?, ?, ?)`,
+        [
+          `New Rescue Request: ${refNum}`,
+          `${emergencyLabel} at ${addrText} (${countText}) • Status: Pending Dispatch`,
+          result.insertId,
+          `/responder-assignments.html?id=${encodeURIComponent(refNum)}`,
+          req.user.id,
+        ]
+      );
+      for (const uid of opUserIds) {
+        await conn.query(
+          `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
+          [notifRes.insertId, uid]
+        );
+      }
     } catch (notifErr) {
-      console.warn('[Portal API] Admin notification warning on rescue request:', notifErr.message);
+      console.warn('[Portal API] Operational notification warning on rescue request:', notifErr.message);
     }
 
     await conn.commit();
@@ -891,8 +910,9 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
 router.get('/notifications', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT n.id, n.title, n.message AS description, n.category, n.advisory_type, n.created_at AS timestamp,
-              nr.is_read
+      `SELECT n.id, n.title, n.message AS description, n.category, n.advisory_type,
+              n.action_url, n.related_entity_type, n.related_entity_id,
+              n.created_at AS timestamp, nr.is_read
        FROM notification_recipients nr
        JOIN notifications n ON n.id = nr.notification_id
        WHERE nr.user_id = ?
@@ -905,6 +925,9 @@ router.get('/notifications', async (req, res) => {
       description: r.description,
       category: String(r.category || 'alert').toLowerCase(),
       advisoryType: r.advisory_type || null,
+      actionUrl: r.action_url || null,
+      relatedEntityType: r.related_entity_type || null,
+      relatedEntityId: r.related_entity_id || null,
       timestamp: r.timestamp,
       read: Boolean(r.is_read),
     }));
@@ -1315,7 +1338,12 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
          WHERE r.status NOT IN ('false_alarm', 'dismissed')
-           AND (ia.responder_user_id IS NOT NULL OR r.assigned_to IS NOT NULL)
+           AND r.source_rescue_id IS NULL
+           AND (
+             ia.responder_user_id IS NOT NULL
+             OR r.assigned_to IS NOT NULL
+             OR (r.assigned_to IS NULL AND ia.id IS NULL AND r.status IN ('pending', 'verified'))
+           )
          ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`
       : `SELECT r.*, ia.id AS assignment_id, ia.responder_user_id, ia.assignment_status,
                 ia.dispatch_instructions, ia.assigned_at, ia.accepted_at, ia.en_route_at,
@@ -1333,38 +1361,57 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
          WHERE r.status NOT IN ('false_alarm', 'dismissed')
-           AND COALESCE(ia.responder_user_id, r.assigned_to) = ?
+           AND r.source_rescue_id IS NULL
+           AND (
+             COALESCE(ia.responder_user_id, r.assigned_to) = ?
+             OR (r.assigned_to IS NULL AND ia.id IS NULL AND r.status IN ('pending', 'verified'))
+           )
          ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`,
     isAdmin ? [] : [userId]
   );
 
   const [rescueRows] = await pool.query(
     isAdmin
-      ? `SELECT * FROM (
-           SELECT DISTINCT ON (ra.rescue_id)
-                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
-                  ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
-                  u.name AS resident_name, up.phone_number AS resident_phone
-           FROM rescue_assignments ra
-           JOIN rescue_requests rr ON rr.id = ra.rescue_id
-           LEFT JOIN users u ON rr.user_id = u.id
-           LEFT JOIN user_profiles up ON rr.user_id = up.user_id
-           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
-         ) latest
-         ORDER BY latest.assigned_at DESC`
-      : `SELECT * FROM (
-           SELECT DISTINCT ON (ra.rescue_id)
-                  rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
-                  ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
-                  u.name AS resident_name, up.phone_number AS resident_phone
-           FROM rescue_assignments ra
-           JOIN rescue_requests rr ON rr.id = ra.rescue_id
-           LEFT JOIN users u ON rr.user_id = u.id
-           LEFT JOIN user_profiles up ON rr.user_id = up.user_id
-           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
-         ) latest
-         WHERE latest.responder_user_id = ?
-         ORDER BY latest.assigned_at DESC`,
+      ? `SELECT rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
+                ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
+                u.name AS resident_name, up.phone_number AS resident_phone
+         FROM rescue_requests rr
+         LEFT JOIN LATERAL (
+           SELECT id, responder_user_id, assignment_status, dispatch_instructions,
+                  assigned_at, accepted_at, en_route_at, on_scene_at, completed_at
+           FROM rescue_assignments
+           WHERE rescue_id = rr.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ra ON TRUE
+         LEFT JOIN users u ON rr.user_id = u.id
+         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+         WHERE rr.status <> 'Cancelled'
+           AND (
+             ra.responder_user_id IS NOT NULL
+             OR (ra.id IS NULL AND rr.status <> 'Completed')
+           )
+         ORDER BY COALESCE(ra.assigned_at, rr.created_at) DESC`
+      : `SELECT rr.*, ra.id AS assignment_id, ra.responder_user_id, ra.assignment_status, ra.dispatch_instructions,
+                ra.assigned_at, ra.accepted_at, ra.en_route_at, ra.on_scene_at, ra.completed_at,
+                u.name AS resident_name, up.phone_number AS resident_phone
+         FROM rescue_requests rr
+         LEFT JOIN LATERAL (
+           SELECT id, responder_user_id, assignment_status, dispatch_instructions,
+                  assigned_at, accepted_at, en_route_at, on_scene_at, completed_at
+           FROM rescue_assignments
+           WHERE rescue_id = rr.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ra ON TRUE
+         LEFT JOIN users u ON rr.user_id = u.id
+         LEFT JOIN user_profiles up ON rr.user_id = up.user_id
+         WHERE rr.status <> 'Cancelled'
+           AND (
+             ra.responder_user_id = ?
+             OR (ra.id IS NULL AND rr.status <> 'Completed')
+           )
+         ORDER BY COALESCE(ra.assigned_at, rr.created_at) DESC`,
     isAdmin ? [] : [userId]
   );
 
@@ -1570,7 +1617,8 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
     ...rescueRows.map((r) => ({
       id: r.reference_number || `RES-${r.id}`,
       dbId: r.id,
-      assignmentId: r.assignment_id,
+      rescueId: r.id,
+      assignmentId: r.assignment_id || null,
       assignmentType: 'rescue',
       referenceNumber: r.reference_number || `RES-${r.id}`,
       title: r.emergency_type || 'Rescue Request',
@@ -1579,13 +1627,24 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       location: r.address || 'Barangay Bayanan, Muntinlupa City',
       landmark: r.landmark || '',
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
-      completionPhotoRequired: false,
-      status:
-        r.status === 'Completed' || r.assignment_status === 'Completed'
-          ? 'Completed'
-          : r.status === 'In Progress'
-            ? 'In Progress'
-            : r.assignment_status || r.status || 'Assigned',
+      completionPhotoRequired: true,
+      verifiedAt: r.verified_at || null,
+      verifiedBy: r.verified_by || null,
+      isPublic: Boolean(r.is_public),
+      verificationStatus: String(r.status || '') === 'Cancelled'
+        ? 'Rejected'
+        : (r.verified_at || r.is_public)
+          ? 'Verified'
+          : 'Pending Verification',
+      isUnassignedIncoming: !r.assignment_id,
+      canClaim: !r.assignment_id && !['Completed', 'Cancelled'].includes(String(r.status || '')),
+      status: !r.assignment_id
+        ? (r.status === 'Completed' ? 'Completed' : 'Pending')
+        : (r.status === 'Completed' || r.assignment_status === 'Completed'
+            ? 'Completed'
+            : r.status === 'In Progress'
+              ? 'In Progress'
+              : r.assignment_status || r.status || 'Assigned'),
       peopleCount: (r.people_count_category || 'exact') === 'exact' && r.people_count !== null ? Number(r.people_count) : null,
       peopleCountCategory: r.people_count_category || (r.people_count === null ? 'unknown' : 'exact'),
       peopleCountDisplay: formatPeopleCountDisplay(r.people_count, r.people_count_category || (r.people_count === null ? 'unknown' : 'exact')),
@@ -1593,6 +1652,7 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       residentName: r.resident_name || 'Resident',
       residentPhone: r.resident_phone || '',
       assignedAt: r.assigned_at || r.created_at,
+      submittedAt: r.created_at,
       acceptedAt: r.accepted_at || null,
       enRouteAt: r.en_route_at || null,
       onSceneAt: r.on_scene_at || null,
@@ -1601,13 +1661,16 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       photos: rescuePhotosMap.get(r.id) || [],
       residentEvidence: rescueResidentEvidenceMap.get(r.id) || [],
       responderCompletionEvidence: rescueCompletionEvidenceMap.get(r.id) || [],
-      dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to EOC.',
+      dispatchInstructions: r.dispatch_instructions || (!r.assignment_id
+        ? 'Incoming rescue request. Review details and click Accept & Respond to claim.'
+        : 'Proceed to assigned scene and report status to EOC.'),
       outcome: rescueOutcomeMap.get(r.id) || null,
       transports: rescueTransportsMap.get(r.id) || [],
     })),
     ...reportRows.map((r) => ({
       id: r.reference_number || `REP-${r.id}`,
       dbId: r.id,
+      reportId: r.id,
       assignmentId: r.assignment_id || null,
       assignmentType: 'incident',
       referenceNumber: r.reference_number || `REP-${r.id}`,
@@ -1618,9 +1681,21 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       coordinates: { lat: Number(r.latitude), lng: Number(r.longitude) },
       completionPhotoRequired: isCompletionPhotoRequired('incident', r),
       status: mapUnifiedIncidentStatus(r.status, r.assignment_status),
+      rawStatus: r.status,
+      verifiedAt: r.verified_at || null,
+      verifiedBy: r.verified_by || null,
+      isPublic: Boolean(r.is_public),
+      verificationStatus: ['false_alarm', 'dismissed'].includes(String(r.status || '').toLowerCase())
+        ? 'Rejected'
+        : (r.verified_at || r.is_public || String(r.status || '').toLowerCase() === 'verified')
+          ? 'Verified'
+          : 'Pending Verification',
+      isUnassignedIncoming: !r.assignment_id && !r.assigned_to,
+      canClaim: !r.assignment_id && !r.assigned_to && !['resolved', 'false_alarm', 'dismissed'].includes(String(r.status || '').toLowerCase()),
       residentName: r.reporter_name || 'Resident',
       residentPhone: r.reporter_phone || '',
       assignedAt: r.assigned_at || r.created_at,
+      submittedAt: r.created_at,
       acceptedAt: r.accepted_at || null,
       enRouteAt: r.en_route_at || null,
       onSceneAt: r.on_scene_at || null,
@@ -1629,7 +1704,9 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
       photos: reportPhotosMap.get(r.id) || [],
       residentEvidence: reportResidentEvidenceMap.get(r.id) || [],
       responderCompletionEvidence: reportCompletionEvidenceMap.get(r.id) || [],
-      dispatchInstructions: r.dispatch_instructions || 'Proceed to assigned scene and report status to Barangay Bayanan EOC.',
+      dispatchInstructions: r.dispatch_instructions || ((!r.assignment_id && !r.assigned_to)
+        ? 'Incoming incident report. Review details and click Accept & Respond to claim.'
+        : 'Proceed to assigned scene and report status to Barangay Bayanan EOC.'),
     })),
   ];
 }
@@ -1646,7 +1723,7 @@ router.get('/responder/assignments', requireRole('responder', 'admin'), async (r
 
 router.get('/responder/assignments/:id', requireRole('responder', 'admin'), async (req, res) => {
   try {
-    const assignments = await loadResponderAssignmentsForUser(req.user.id, true);
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
     const paramId = String(req.params.id || '').trim();
     const match = assignments.find(
       (a) =>
@@ -1934,7 +2011,7 @@ async function handleResponderAssignmentUpdate(req, res) {
         await conn.rollback();
         return res.status(409).json({ error: 'This assignment has already been completed.' });
       }
-      if (!workNotes || !String(workNotes).trim()) {
+      if (targetKind !== 'rescue' && (!workNotes || !String(workNotes).trim())) {
         await conn.rollback();
         return res.status(400).json({ error: 'Please enter a completion summary.' });
       }
@@ -2342,6 +2419,855 @@ async function handleResponderAssignmentUpdate(req, res) {
 router.patch('/responder/assignments/:id/status', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
 router.put('/responder/assignments/:id/status', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
 router.post('/responder/assignments/:id/updates', requireRole('responder', 'admin'), handleResponderAssignmentUpdate);
+
+router.post('/responder/assignments/:id/claim', requireRole('responder', 'admin'), async (req, res) => {
+  const paramId = String(req.params.id || '').trim();
+  const numericId = /^\d+$/.test(paramId) ? parseInt(paramId, 10) : -1;
+  const requestedType = String((req.body && req.body.assignmentType) || '').trim().toLowerCase();
+  const isRescueTarget = requestedType === 'rescue' || paramId.toUpperCase().startsWith('RES-');
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    if (req.user.role !== 'admin') {
+      const [profRows] = await conn.query(
+        `SELECT availability_status FROM responder_profiles WHERE user_id = ? LIMIT 1`,
+        [req.user.id]
+      );
+      if (profRows.length && ['Off Duty', 'Off-Duty'].includes(String(profRows[0].availability_status || ''))) {
+        await conn.rollback();
+        return res.status(403).json({ error: 'Off-Duty responders cannot claim assignments.' });
+      }
+    }
+
+    if (isRescueTarget) {
+      const [rescueRows] = await conn.query(
+        `SELECT *
+         FROM rescue_requests
+         WHERE reference_number = ? OR id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [paramId, numericId]
+      );
+
+      if (!rescueRows.length) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Rescue request not found.' });
+      }
+
+      const rescueRow = rescueRows[0];
+      if (['Completed', 'Cancelled'].includes(String(rescueRow.status || ''))) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Completed or cancelled rescue requests cannot be claimed.' });
+      }
+
+      const [activeAssignRows] = await conn.query(
+        `SELECT id, responder_user_id, assignment_status
+         FROM rescue_assignments
+         WHERE rescue_id = ?
+           AND assignment_status <> 'Completed'
+         ORDER BY assigned_at DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [rescueRow.id]
+      );
+
+      if (activeAssignRows.length > 0) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This rescue request has already been claimed by another responder.' });
+      }
+
+      const [assignResult] = await conn.query(
+        `INSERT INTO rescue_assignments (
+           rescue_id, responder_user_id, assigned_by, assignment_status, dispatch_instructions,
+           assigned_at, accepted_at, en_route_at
+         )
+         VALUES (?, ?, ?, 'En Route', 'Direct responder response initiated. Live GPS navigation active.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [rescueRow.id, req.user.id, req.user.id]
+      );
+
+      await conn.query(
+        `UPDATE rescue_requests
+         SET status = 'En Route',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [rescueRow.id]
+      );
+
+      await conn.query(
+        `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, is_internal_only)
+         VALUES (?, ?, 'Accepted', ?, FALSE)`,
+        [rescueRow.id, req.user.id, `${req.user.name || 'Responder'} accepted and is responding directly to the rescue request.`]
+      );
+
+      await conn.query(
+        `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
+         VALUES (?, ?, 'Accepted', ?, ?)`,
+        [rescueRow.id, rescueRow.status, req.user.id, 'Direct responder claim (Accept & Respond)']
+      );
+
+      const refCode = rescueRow.reference_number || `RES-${rescueRow.id}`;
+      const [notifRes] = await conn.query(
+        `INSERT INTO notifications (title, message, category, created_by)
+         VALUES (?, ?, 'Alert', ?)`,
+        [
+          `Responder Responding: ${refCode}`,
+          `${req.user.name || 'A responder'} accepted rescue request ${refCode} and is preparing to navigate to your location.`,
+          req.user.id,
+        ]
+      );
+
+      const [adminUsers] = await conn.query(
+        `SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id WHERE LOWER(r.name) IN ('admin', 'administrator') AND u.status = 'active'`
+      );
+      const recipientIds = new Set(adminUsers.map((u) => Number(u.id)));
+      if (rescueRow.user_id) recipientIds.add(Number(rescueRow.user_id));
+
+      for (const recipientId of recipientIds) {
+        await conn.query(
+          `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
+          [notifRes.insertId, recipientId]
+        );
+      }
+
+      await conn.query(
+        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+         VALUES (?, 'RESPONDER_CLAIM_RESCUE', 'rescue_requests', ?, ?, ?, ?)`,
+        [
+          req.user.id,
+          rescueRow.id,
+          JSON.stringify({ assignment_id: assignResult.insertId, responder_user_id: req.user.id, status: 'Accepted' }),
+          req.ip || null,
+          req.headers['user-agent'] || null,
+        ]
+      );
+
+      await conn.commit();
+
+      emitAssignmentUpdate({
+        assignmentId: assignResult.insertId,
+        rescueId: rescueRow.id,
+        assignmentType: 'rescue',
+        referenceNumber: refCode,
+        responderId: req.user.id,
+        responderName: req.user.name || 'Responder',
+        assignmentStatus: 'Accepted',
+        status: 'Accepted',
+        userId: rescueRow.user_id,
+      });
+
+      emitStatusUpdate({
+        rescueId: rescueRow.id,
+        assignmentType: 'rescue',
+        referenceNumber: refCode,
+        userId: rescueRow.user_id,
+        status: 'Accepted',
+        assignmentStatus: 'Accepted',
+        updatedBy: req.user.name || 'Responder',
+      });
+
+      const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
+      const updatedAssignment = assignments.find((a) => Number(a.dbId) === Number(rescueRow.id) && a.assignmentType === 'rescue');
+
+      return res.json({
+        message: 'Rescue request claimed successfully. Ready to start navigation.',
+        assignmentId: assignResult.insertId,
+        rescueId: rescueRow.id,
+        assignment: updatedAssignment || {
+          id: refCode,
+          dbId: rescueRow.id,
+          rescueId: rescueRow.id,
+          assignmentId: assignResult.insertId,
+          assignmentType: 'rescue',
+          status: 'Accepted',
+        },
+      });
+    }
+
+    const [reportRows] = await conn.query(
+      `SELECT *
+       FROM reports
+       WHERE reference_number = ? OR id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [paramId, numericId]
+    );
+
+    if (!reportRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Incident report not found.' });
+    }
+
+    const reportRow = reportRows[0];
+    if (reportRow.source_rescue_id) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Public awareness incidents generated from verified rescue requests cannot be claimed as separate assignments.' });
+    }
+    const currentStatus = String(reportRow.status || '').toLowerCase();
+    if (['resolved', 'false_alarm', 'dismissed'].includes(currentStatus)) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'Closed or rejected incident reports cannot be claimed.' });
+    }
+
+    const [activeAssignRows] = await conn.query(
+      `SELECT id, responder_user_id, assignment_status
+       FROM incident_assignments
+       WHERE report_id = ?
+         AND assignment_status NOT IN ('Completed', 'Cancelled')
+       ORDER BY assigned_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [reportRow.id]
+    );
+
+    if (reportRow.assigned_to || activeAssignRows.length > 0) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'This incident report has already been claimed by another responder.' });
+    }
+
+    if (req.user.role !== 'admin') {
+      const [profRows] = await conn.query(
+        `SELECT availability_status FROM responder_profiles WHERE user_id = ? LIMIT 1`,
+        [req.user.id]
+      );
+      if (profRows.length && ['Off Duty', 'Off-Duty'].includes(String(profRows[0].availability_status || ''))) {
+        await conn.rollback();
+        return res.status(403).json({ error: 'Off-Duty responders cannot claim incident reports.' });
+      }
+    }
+
+    const [assignResult] = await conn.query(
+      `INSERT INTO incident_assignments (
+         report_id, responder_user_id, assigned_by, assignment_status, dispatch_instructions,
+         assigned_at, accepted_at, en_route_at
+       )
+       VALUES (?, ?, ?, 'En Route', 'Direct responder response initiated. Live GPS navigation active.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [reportRow.id, req.user.id, req.user.id]
+    );
+
+    const nextReportStatus = ['pending', 'verified'].includes(currentStatus) ? 'responding' : reportRow.status;
+
+    await conn.query(
+      `UPDATE reports
+       SET assigned_to = ?,
+           status = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [req.user.id, nextReportStatus, reportRow.id]
+    );
+
+    await conn.query(
+      `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, is_internal_only)
+       VALUES (?, ?, 'Accepted', ?, FALSE)`,
+      [reportRow.id, req.user.id, `${req.user.name || 'Responder'} accepted and is responding directly to the incident.`]
+    );
+
+    await conn.query(
+      `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+       VALUES (?, ?, ?, ?, ?)`,
+      [reportRow.id, reportRow.status, nextReportStatus, req.user.id, 'Direct responder claim (Accept & Respond)']
+    );
+
+    const refCode = reportRow.reference_number || `REP-${reportRow.id}`;
+    const [notifRes] = await conn.query(
+      `INSERT INTO notifications (title, message, category, created_by)
+       VALUES (?, ?, 'Alert', ?)`,
+      [
+        `Responder Responding: ${refCode}`,
+        `${req.user.name || 'A responder'} accepted ${refCode} and is preparing to navigate to the scene.`,
+        req.user.id,
+      ]
+    );
+
+    const [adminUsers] = await conn.query(
+      `SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id WHERE LOWER(r.name) IN ('admin', 'administrator') AND u.status = 'active'`
+    );
+    const recipientIds = new Set(adminUsers.map((u) => Number(u.id)));
+    if (reportRow.user_id) recipientIds.add(Number(reportRow.user_id));
+
+    for (const recipientId of recipientIds) {
+      await conn.query(
+        `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
+        [notifRes.insertId, recipientId]
+      );
+    }
+
+    await conn.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+       VALUES (?, 'RESPONDER_CLAIM_INCIDENT', 'reports', ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        reportRow.id,
+        JSON.stringify({ assignment_id: assignResult.insertId, responder_user_id: req.user.id, status: nextReportStatus }),
+        req.ip || null,
+        req.headers['user-agent'] || null,
+      ]
+    );
+
+    await conn.commit();
+
+    emitAssignmentUpdate({
+      assignmentId: assignResult.insertId,
+      reportId: reportRow.id,
+      referenceNumber: refCode,
+      responderId: req.user.id,
+      responderName: req.user.name || 'Responder',
+      assignmentStatus: 'Accepted',
+      status: 'Accepted',
+      userId: reportRow.user_id,
+    });
+
+    emitStatusUpdate({
+      reportId: reportRow.id,
+      referenceNumber: refCode,
+      userId: reportRow.user_id,
+      status: nextReportStatus,
+      assignmentStatus: 'Accepted',
+      updatedBy: req.user.name || 'Responder',
+    });
+
+    const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
+    const updatedAssignment = assignments.find((a) => Number(a.dbId) === Number(reportRow.id) && a.assignmentType === 'incident');
+
+    return res.json({
+      message: 'Incident claimed successfully. Ready to start navigation.',
+      assignmentId: assignResult.insertId,
+      reportId: reportRow.id,
+      assignment: updatedAssignment || {
+        id: refCode,
+        dbId: reportRow.id,
+        reportId: reportRow.id,
+        assignmentId: assignResult.insertId,
+        assignmentType: 'incident',
+        status: 'Accepted',
+        rawStatus: nextReportStatus,
+        isPublic: Boolean(reportRow.is_public),
+        verifiedAt: reportRow.verified_at || null,
+      },
+    });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_e) {}
+    console.error('[Portal API] POST /responder/assignments/:id/claim failed:', err.message);
+    return res.status(503).json({ error: 'Unable to claim incident report' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.patch('/responder/assignments/:id/verify', requireRole('responder', 'admin'), async (req, res) => {
+  const paramId = String(req.params.id || '').trim();
+  const numericId = /^\d+$/.test(paramId) ? parseInt(paramId, 10) : -1;
+  const requestedType = String((req.body && req.body.assignmentType) || '').trim().toLowerCase();
+  const isRescueTarget = requestedType === 'rescue' || paramId.toUpperCase().startsWith('RES-');
+  const action = String((req.body && req.body.action) || '').trim().toLowerCase();
+  const reason = String((req.body && (req.body.reason || req.body.notes)) || '').trim();
+
+  if (!['verify', 'reject'].includes(action)) {
+    return res.status(400).json({ error: "Invalid verification action. Expected 'verify' or 'reject'." });
+  }
+  if (action === 'reject' && !reason) {
+    return res.status(400).json({ error: 'A rejection reason is required when rejecting.' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    if (isRescueTarget) {
+      const [rescueRows] = await conn.query(
+        `SELECT rr.*
+         FROM rescue_requests rr
+         WHERE rr.reference_number = ?
+            OR rr.id = ?
+            OR rr.id IN (SELECT rescue_id FROM rescue_assignments WHERE id = ?)
+         LIMIT 1
+         FOR UPDATE`,
+        [paramId, numericId, numericId]
+      );
+
+      if (!rescueRows.length) {
+        await conn.rollback();
+        return res.status(404).json({ error: 'Rescue request not found.' });
+      }
+
+      const rescueRow = rescueRows[0];
+      const [latestAssignRows] = await conn.query(
+        `SELECT id, responder_user_id, assignment_status, on_scene_at
+         FROM rescue_assignments
+         WHERE rescue_id = ?
+         ORDER BY assigned_at DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [rescueRow.id]
+      );
+
+      const assignedResponderId = latestAssignRows[0] ? latestAssignRows[0].responder_user_id : null;
+      if (req.user.role !== 'admin' && Number(assignedResponderId) !== Number(req.user.id)) {
+        await conn.rollback();
+        return res.status(403).json({ error: 'Only the assigned responder or an administrator can verify this rescue request.' });
+      }
+
+      const isOnScene = Boolean(
+        (latestAssignRows[0] && latestAssignRows[0].on_scene_at) ||
+        ['on scene', 'on_site', 'completed'].includes(String(rescueRow.status || '').toLowerCase()) ||
+        ['on scene', 'completed'].includes(String((latestAssignRows[0] && latestAssignRows[0].assignment_status) || '').toLowerCase())
+      );
+      if (action === 'verify' && req.user.role !== 'admin' && !isOnScene) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'Please arrive On Scene before verifying and publishing a public hazard awareness incident.' });
+      }
+
+      if (String(rescueRow.status || '') === 'Cancelled') {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This rescue request has already been rejected.' });
+      }
+      if (rescueRow.verified_at || rescueRow.is_public) {
+        await conn.rollback();
+        return res.status(409).json({ error: 'This rescue request has already been verified.' });
+      }
+
+      const refCode = rescueRow.reference_number || `RES-${rescueRow.id}`;
+      let nextRescueStatus = rescueRow.status;
+      const nextIsPublic = false;
+      let linkedPublicReport = null;
+
+      if (action === 'verify') {
+        const rawHazard = String((req.body && req.body.hazardType) || '').trim().toLowerCase();
+        const emLower = String(rescueRow.emergency_type || '').toLowerCase();
+        let resolvedHazard = '';
+        if (rawHazard === 'fire' || rawHazard === 'fire incident') resolvedHazard = 'Fire';
+        else if (rawHazard === 'flood' || rawHazard === 'flood incident') resolvedHazard = 'Flood';
+        else if (emLower.includes('fire')) resolvedHazard = 'Fire';
+        else if (emLower.includes('flood')) resolvedHazard = 'Flood';
+
+        if (!resolvedHazard) {
+          await conn.rollback();
+          return res.status(400).json({ error: 'Please select the verified hazard type (Fire or Flood).' });
+        }
+
+        const publicIncidentType = resolvedHazard === 'Fire' ? 'Fire Incident' : 'Flood Incident';
+        const safeAddress = rescueRow.address || 'Barangay Bayanan, Muntinlupa City';
+        const publicTitle = `${publicIncidentType} — ${safeAddress}`;
+        const publicDescription = `Verified ${resolvedHazard.toLowerCase()} hazard reported in ${safeAddress}. Emergency responders on scene.`;
+
+        await conn.query(
+          `UPDATE rescue_requests
+           SET verified_by = ?,
+               verified_at = CURRENT_TIMESTAMP,
+               is_public = FALSE,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [req.user.id, rescueRow.id]
+        );
+
+        const verifyNote = reason || `${req.user.name || 'Responder'} verified the ${resolvedHazard.toLowerCase()} rescue situation on scene.`;
+        await conn.query(
+          `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, is_internal_only)
+           VALUES (?, ?, 'On Scene', ?, FALSE)`,
+          [rescueRow.id, req.user.id, verifyNote]
+        );
+        await conn.query(
+          `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
+           VALUES (?, ?, ?, ?, ?)`,
+          [rescueRow.id, rescueRow.status, rescueRow.status, req.user.id, verifyNote]
+        );
+
+        const [existingLinked] = await conn.query(
+          `SELECT * FROM reports WHERE source_rescue_id = ? LIMIT 1 FOR UPDATE`,
+          [rescueRow.id]
+        );
+
+        if (existingLinked.length > 0) {
+          await conn.query(
+            `UPDATE reports
+             SET incident_type = ?,
+                 title = ?,
+                 description = ?,
+                 latitude = ?,
+                 longitude = ?,
+                 address = ?,
+                 status = CASE WHEN status = 'pending' THEN 'verified' ELSE status END,
+                 is_public = TRUE,
+                 verified_by = ?,
+                 verified_at = COALESCE(verified_at, CURRENT_TIMESTAMP),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [
+              publicIncidentType,
+              publicTitle,
+              publicDescription,
+              rescueRow.latitude,
+              rescueRow.longitude,
+              safeAddress,
+              req.user.id,
+              existingLinked[0].id,
+            ]
+          );
+          const [refreshedLinked] = await conn.query(`SELECT * FROM reports WHERE id = ? LIMIT 1`, [existingLinked[0].id]);
+          linkedPublicReport = refreshedLinked[0];
+        } else {
+          const year = new Date().getFullYear();
+          const tempIncRef = `INC-TMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          const [incIns] = await conn.query(
+            `INSERT INTO reports (
+               reference_number, user_id, incident_type, title, description,
+               latitude, longitude, address, status, is_public, assigned_to,
+               verified_by, verified_at, source_rescue_id
+             )
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'verified', TRUE, NULL, ?, CURRENT_TIMESTAMP, ?)`,
+            [
+              tempIncRef,
+              rescueRow.user_id,
+              publicIncidentType,
+              publicTitle,
+              publicDescription,
+              rescueRow.latitude,
+              rescueRow.longitude,
+              safeAddress,
+              req.user.id,
+              rescueRow.id,
+            ]
+          );
+          const finalIncRef = `INC-${year}-${String(incIns.insertId).padStart(6, '0')}`;
+          await conn.query(`UPDATE reports SET reference_number = ? WHERE id = ?`, [finalIncRef, incIns.insertId]);
+
+          await conn.query(
+            `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+             VALUES (?, NULL, 'verified', ?, ?)`,
+            [incIns.insertId, req.user.id, `Linked public ${publicIncidentType} published from verified rescue ${refCode}`]
+          );
+
+          await conn.query(
+            `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+             VALUES (?, 'LINKED_PUBLIC_HAZARD_PUBLISHED', 'reports', ?, ?, ?, ?)`,
+            [
+              req.user.id,
+              incIns.insertId,
+              JSON.stringify({ source_rescue_id: rescueRow.id, incident_type: publicIncidentType, is_public: true }),
+              req.ip || null,
+              req.headers['user-agent'] || null,
+            ]
+          );
+
+          const [createdLinked] = await conn.query(`SELECT * FROM reports WHERE id = ? LIMIT 1`, [incIns.insertId]);
+          linkedPublicReport = createdLinked[0];
+        }
+      } else {
+        nextRescueStatus = 'Cancelled';
+        await conn.query(
+          `UPDATE rescue_requests
+           SET status = 'Cancelled',
+               verified_by = ?,
+               verified_at = CURRENT_TIMESTAMP,
+               is_public = FALSE,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [req.user.id, rescueRow.id]
+        );
+        await conn.query(
+          `UPDATE rescue_assignments
+           SET assignment_status = 'Completed',
+               completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+           WHERE rescue_id = ?
+             AND assignment_status <> 'Completed'`,
+          [rescueRow.id]
+        );
+        await conn.query(
+          `INSERT INTO rescue_updates (rescue_id, responder_user_id, status_update, work_notes, is_internal_only)
+           VALUES (?, ?, 'Completed', ?, FALSE)`,
+          [rescueRow.id, req.user.id, `Rescue request rejected: ${reason}`]
+        );
+        await conn.query(
+          `INSERT INTO rescue_status_history (rescue_id, old_status, new_status, changed_by, work_notes)
+           VALUES (?, ?, 'Cancelled', ?, ?)`,
+          [rescueRow.id, rescueRow.status, req.user.id, `Rejected by responder: ${reason}`]
+        );
+      }
+
+      const [notifRes] = await conn.query(
+        `INSERT INTO notifications (title, message, category, created_by)
+         VALUES (?, ?, 'Alert', ?)`,
+        [
+          action === 'verify' ? `Rescue Verified: ${refCode}` : `Rescue Request Rejected: ${refCode}`,
+          action === 'verify'
+            ? `Rescue request ${refCode} has been verified by ${req.user.name || 'the responder'}.`
+            : `Rescue request ${refCode} was rejected as unverified. Reason: ${reason}`,
+          req.user.id,
+        ]
+      );
+
+      const [adminUsers] = await conn.query(
+        `SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id WHERE LOWER(r.name) IN ('admin', 'administrator') AND u.status = 'active'`
+      );
+      const recipientIds = new Set(adminUsers.map((u) => Number(u.id)));
+      if (rescueRow.user_id) recipientIds.add(Number(rescueRow.user_id));
+
+      for (const recipientId of recipientIds) {
+        await conn.query(
+          `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
+          [notifRes.insertId, recipientId]
+        );
+      }
+
+      await conn.query(
+        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
+         VALUES (?, ?, 'rescue_requests', ?, ?, ?, ?, ?)`,
+        [
+          req.user.id,
+          action === 'verify' ? 'RESPONDER_VERIFY_RESCUE' : 'RESPONDER_REJECT_RESCUE',
+          rescueRow.id,
+          JSON.stringify({ status: rescueRow.status, is_public: Boolean(rescueRow.is_public) }),
+          JSON.stringify({ status: nextRescueStatus, is_public: nextIsPublic, reason: reason || null }),
+          req.ip || null,
+          req.headers['user-agent'] || null,
+        ]
+      );
+
+      await conn.commit();
+
+      emitReportVerificationResult({
+        rescueId: rescueRow.id,
+        assignmentType: 'rescue',
+        referenceNumber: refCode,
+        userId: rescueRow.user_id,
+        status: nextRescueStatus,
+        verifiedBy: req.user.name || 'Responder',
+        isPublic: nextIsPublic,
+        reason: action === 'reject' ? reason : undefined,
+      });
+
+      emitStatusUpdate({
+        rescueId: rescueRow.id,
+        assignmentType: 'rescue',
+        referenceNumber: refCode,
+        userId: rescueRow.user_id,
+        status: nextRescueStatus,
+        assignmentStatus: action === 'reject' ? 'Completed' : undefined,
+        updatedBy: req.user.name || 'Responder',
+      });
+
+      if (linkedPublicReport) {
+        emitPublicVerifiedReport(linkedPublicReport);
+      }
+
+      return res.json({
+        message: action === 'verify'
+          ? 'Rescue situation verified and linked public hazard incident published.'
+          : 'Rescue request rejected and kept private.',
+        linkedPublicIncident: linkedPublicReport ? {
+          id: linkedPublicReport.id,
+          referenceNumber: linkedPublicReport.reference_number,
+          incidentType: linkedPublicReport.incident_type,
+          isPublic: true,
+        } : null,
+        rescue: {
+          id: rescueRow.id,
+          referenceNumber: refCode,
+          status: nextRescueStatus,
+          isPublic: false,
+          verifiedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    const [reportRows] = await conn.query(
+      `SELECT r.*
+       FROM reports r
+       WHERE r.reference_number = ?
+          OR r.id = ?
+          OR r.id IN (SELECT report_id FROM incident_assignments WHERE id = ?)
+       LIMIT 1
+       FOR UPDATE`,
+      [paramId, numericId, numericId]
+    );
+
+    if (!reportRows.length) {
+      await conn.rollback();
+      return res.status(404).json({ error: 'Incident report not found.' });
+    }
+
+    const reportRow = reportRows[0];
+    const [latestAssignRows] = await conn.query(
+      `SELECT id, responder_user_id, assignment_status
+       FROM incident_assignments
+       WHERE report_id = ?
+       ORDER BY assigned_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [reportRow.id]
+    );
+
+    const assignedResponderId = latestAssignRows[0] ? latestAssignRows[0].responder_user_id : reportRow.assigned_to;
+    if (req.user.role !== 'admin' && Number(assignedResponderId) !== Number(req.user.id)) {
+      await conn.rollback();
+      return res.status(403).json({ error: 'Only the assigned responder or an administrator can verify this incident report.' });
+    }
+
+    const currentStatus = String(reportRow.status || '').toLowerCase();
+    if (['false_alarm', 'dismissed'].includes(currentStatus)) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'This incident report has already been rejected.' });
+    }
+    if (reportRow.verified_at || reportRow.is_public) {
+      await conn.rollback();
+      return res.status(409).json({ error: 'This incident report has already been verified.' });
+    }
+
+    const refCode = reportRow.reference_number || `REP-${reportRow.id}`;
+    let nextReportStatus = reportRow.status;
+    let nextIsPublic = false;
+
+    if (action === 'verify') {
+      nextReportStatus = ['pending', 'verified'].includes(currentStatus) ? 'verified' : reportRow.status;
+      nextIsPublic = true;
+
+      await conn.query(
+        `UPDATE reports
+         SET status = ?,
+             verified_by = ?,
+             verified_at = CURRENT_TIMESTAMP,
+             is_public = TRUE,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [nextReportStatus, req.user.id, reportRow.id]
+      );
+
+      const verifyNote = reason || `${req.user.name || 'Responder'} verified the incident on scene.`;
+      await conn.query(
+        `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, is_internal_only)
+         VALUES (?, ?, 'In Progress', ?, FALSE)`,
+        [reportRow.id, req.user.id, verifyNote]
+      );
+
+      await conn.query(
+        `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+         VALUES (?, ?, ?, ?, ?)`,
+        [reportRow.id, reportRow.status, nextReportStatus, req.user.id, verifyNote]
+      );
+    } else {
+      nextReportStatus = 'false_alarm';
+      nextIsPublic = false;
+
+      await conn.query(
+        `UPDATE reports
+         SET status = 'false_alarm',
+             verified_by = ?,
+             verified_at = CURRENT_TIMESTAMP,
+             is_public = FALSE,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [req.user.id, reportRow.id]
+      );
+
+      await conn.query(
+        `UPDATE incident_assignments
+         SET assignment_status = 'Completed',
+             completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)
+         WHERE report_id = ?
+           AND assignment_status <> 'Completed'`,
+        [reportRow.id]
+      );
+
+      await conn.query(
+        `INSERT INTO incident_updates (report_id, responder_user_id, status_update, work_notes, is_internal_only)
+         VALUES (?, ?, 'Completed', ?, FALSE)`,
+        [reportRow.id, req.user.id, `Report rejected: ${reason}`]
+      );
+
+      await conn.query(
+        `INSERT INTO incident_status_history (incident_id, old_status, new_status, changed_by, remarks)
+         VALUES (?, ?, 'false_alarm', ?, ?)`,
+        [reportRow.id, reportRow.status, req.user.id, `Rejected by responder: ${reason}`]
+      );
+    }
+
+    const [notifRes] = await conn.query(
+      `INSERT INTO notifications (title, message, category, created_by)
+       VALUES (?, ?, 'Alert', ?)`,
+      [
+        action === 'verify' ? `Incident Verified: ${refCode}` : `Incident Report Rejected: ${refCode}`,
+        action === 'verify'
+          ? `Report ${refCode} has been verified by ${req.user.name || 'the responder'} and published to the community safety map.`
+          : `Report ${refCode} was rejected as unverified/false alarm. Reason: ${reason}`,
+        req.user.id,
+      ]
+    );
+
+    const [adminUsers] = await conn.query(
+      `SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id WHERE LOWER(r.name) IN ('admin', 'administrator') AND u.status = 'active'`
+    );
+    const recipientIds = new Set(adminUsers.map((u) => Number(u.id)));
+    if (reportRow.user_id) recipientIds.add(Number(reportRow.user_id));
+
+    for (const recipientId of recipientIds) {
+      await conn.query(
+        `INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)`,
+        [notifRes.insertId, recipientId]
+      );
+    }
+
+    await conn.query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
+       VALUES (?, ?, 'reports', ?, ?, ?, ?, ?)`,
+      [
+        req.user.id,
+        action === 'verify' ? 'RESPONDER_VERIFY_REPORT' : 'RESPONDER_REJECT_REPORT',
+        reportRow.id,
+        JSON.stringify({ status: reportRow.status, is_public: Boolean(reportRow.is_public) }),
+        JSON.stringify({ status: nextReportStatus, is_public: nextIsPublic, reason: reason || null }),
+        req.ip || null,
+        req.headers['user-agent'] || null,
+      ]
+    );
+
+    await conn.commit();
+
+    const [updatedRows] = await pool.query('SELECT * FROM reports WHERE id = ? LIMIT 1', [reportRow.id]);
+    const updatedReport = updatedRows[0] || { ...reportRow, status: nextReportStatus, is_public: nextIsPublic };
+
+    emitReportVerificationResult({
+      reportId: reportRow.id,
+      referenceNumber: refCode,
+      userId: reportRow.user_id,
+      status: nextReportStatus,
+      verifiedBy: req.user.name || 'Responder',
+      isPublic: nextIsPublic,
+      reason: action === 'reject' ? reason : undefined,
+    });
+
+    if (action === 'verify') {
+      emitPublicVerifiedReport(updatedReport);
+    } else {
+      emitStatusUpdate({
+        reportId: reportRow.id,
+        referenceNumber: refCode,
+        userId: reportRow.user_id,
+        status: nextReportStatus,
+        assignmentStatus: 'Completed',
+        updatedBy: req.user.name || 'Responder',
+      });
+    }
+
+    return res.json({
+      message: action === 'verify' ? 'Incident report verified and published.' : 'Incident report rejected and kept private.',
+      report: {
+        id: reportRow.id,
+        referenceNumber: refCode,
+        status: nextReportStatus,
+        isPublic: nextIsPublic,
+        verifiedAt: updatedReport.verified_at || new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    try { await conn.rollback(); } catch (_e) {}
+    console.error('[Portal API] PATCH /responder/assignments/:id/verify failed:', err.message);
+    return res.status(503).json({ error: 'Unable to update incident verification' });
+  } finally {
+    conn.release();
+  }
+});
 
 async function resolveOwnedRescueForResponder(conn, paramId, user) {
   const numericId = /^\d+$/.test(paramId) ? parseInt(paramId, 10) : -1;
@@ -3065,10 +3991,13 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
   try {
     const assignments = await loadResponderAssignmentsForUser(req.user.id, req.user.role === 'admin');
 
-    const active = assignments.filter((a) => a.status !== 'Completed').length;
+    const activeAssignments = assignments.filter(
+      (a) => !['completed', 'resolved'].includes(String(a.status || '').toLowerCase())
+    );
+    const active = activeAssignments.length;
     const pending = assignments.filter((a) => ['Pending', 'Assigned', 'Accepted'].includes(a.status)).length;
     const inProgress = assignments.filter((a) => ['En Route', 'On Scene', 'In Progress'].includes(a.status)).length;
-    const completed = assignments.filter((a) => a.status === 'Completed').length;
+    const completed = assignments.filter((a) => ['completed', 'resolved'].includes(String(a.status || '').toLowerCase())).length;
 
     const [rRows] = await pool.query(
       'SELECT * FROM responder_profiles WHERE user_id = ? LIMIT 1',
@@ -3079,7 +4008,7 @@ router.get('/responder/dashboard/summary', requireRole('responder', 'admin'), as
 
     return res.json({
       stats: { active, pending, inProgress, completed },
-      recentAssignments: assignments.slice(0, 5),
+      recentAssignments: activeAssignments.slice(0, 10),
       responder: {
         id: req.user.id,
         firstName: parts[0] || 'Responder',
@@ -3127,7 +4056,8 @@ router.get('/responder/map-data', requireRole('responder', 'admin'), async (req,
     const [incidentRows] = await pool.query(
       `SELECT id, reference_number, incident_type, title, description, latitude, longitude, address, status, created_at
        FROM reports
-       WHERE status IN ('verified', 'dispatched', 'responding', 'on_site', 'in_progress')
+       WHERE source_rescue_id IS NULL
+         AND status IN ('pending', 'verified', 'dispatched', 'responding', 'on_site', 'in_progress')
        ORDER BY created_at DESC
        LIMIT 50`
     );
@@ -3201,13 +4131,13 @@ router.post('/responder/location', authenticate, requireRole('responder', 'admin
     }
 
     const [profRows] = await pool.query(
-      `SELECT rp.assigned_unit, rp.callsign, rp.badge_number, rp.availability_status,
+      `SELECT rp.user_id AS has_profile, rp.assigned_unit, rp.callsign, rp.badge_number, rp.availability_status,
               rp.organization, rp.custom_organization, rp.department,
               rp.current_latitude, rp.current_longitude, rp.last_location_updated_at,
               u.name, u.user_code
-       FROM responder_profiles rp
-       INNER JOIN users u ON u.id = rp.user_id
-       WHERE rp.user_id = ?
+       FROM users u
+       LEFT JOIN responder_profiles rp ON rp.user_id = u.id
+       WHERE u.id = ?
        LIMIT 1`,
       [req.user.id]
     );
@@ -3251,13 +4181,21 @@ router.post('/responder/location', authenticate, requireRole('responder', 'admin
         ? computeHaversineMeters(prevLat, prevLng, lat, lng)
         : Infinity;
 
-      if (movedMeters >= 10 || elapsedMs >= 30000) {
-        await pool.query(
-          `UPDATE responder_profiles
-           SET current_latitude = ?, current_longitude = ?, last_location_updated_at = CURRENT_TIMESTAMP
-           WHERE user_id = ?`,
-          [lat, lng, req.user.id]
-        );
+      if (!prof.has_profile || movedMeters >= 10 || elapsedMs >= 30000) {
+        if (prof.has_profile) {
+          await pool.query(
+            `UPDATE responder_profiles
+             SET current_latitude = ?, current_longitude = ?, last_location_updated_at = CURRENT_TIMESTAMP
+             WHERE user_id = ?`,
+            [lat, lng, req.user.id]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO responder_profiles (user_id, availability_status, current_latitude, current_longitude, last_location_updated_at)
+             VALUES (?, 'On Duty', ?, ?, CURRENT_TIMESTAMP)`,
+            [req.user.id, lat, lng]
+          );
+        }
         await pool.query(
           `UPDATE users SET last_location_at = CURRENT_TIMESTAMP WHERE id = ?`,
           [req.user.id]

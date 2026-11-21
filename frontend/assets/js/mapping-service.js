@@ -46,8 +46,8 @@
     },
     // Default Map Center: Barangay Bayanan, Muntinlupa City, Metro Manila
     center: {
-      lat: 14.4075,
-      lng: 121.0475
+      lat: 14.4101,
+      lng: 121.0501
     },
     // Official GeoSafe Emergency Operations Center (EOC) Location
     eoc: {
@@ -283,26 +283,34 @@
         ...options
       });
 
-      // Remove visible "Leaflet" branding text while preserving required OpenStreetMap attribution
       if (map.attributionControl) {
         map.attributionControl.setPrefix(false);
       }
 
-      // Add official OpenStreetMap tile layer with automatic offline grid fallback
       this.addBaseTileLayer(map);
 
-      // Render verified Barangay Bayanan administrative boundary (line only, no fill)
-      const shouldFit = options.fitBayananBounds !== false && !options.center && !options.zoom;
+      const shouldFit = options.fitBayananBounds !== false && options.fitBoundary !== false && !options.center && !options.zoom;
       this.addBayananBoundary(map, { fitBounds: shouldFit });
 
-      // Automatically recalculate map tiles when layout dimensions change or window resizes
-      setTimeout(() => {
-        try { map.invalidateSize(); } catch (e) {}
-      }, 250);
+      const recalc = () => {
+        try {
+          map.invalidateSize(false);
+          if (shouldFit && cachedBoundaryBounds && cachedBoundaryBounds.isValid()) {
+            map.fitBounds(cachedBoundaryBounds, { padding: [24, 24] });
+          }
+        } catch (e) { }
+      };
 
-      window.addEventListener('resize', () => {
-        try { map.invalidateSize(); } catch (e) {}
-      });
+      setTimeout(recalc, 250);
+      window.addEventListener('resize', recalc);
+      if (typeof ResizeObserver !== 'undefined') {
+        try {
+          const ro = new ResizeObserver(() => {
+            try { map.invalidateSize(false); } catch (e) { }
+          });
+          ro.observe(mapEl);
+        } catch (e) { }
+      }
 
       return map;
     },
@@ -336,8 +344,9 @@
     },
 
     /**
-     * Load the verified Barangay Bayanan boundary geometry (without drawing a visible outline border)
-     * and optionally fit the map viewport to its bounds.
+     * Load and render the verified Barangay Bayanan boundary polygon (red dashed outline,
+     * subtle interior fill, and non-blocking exterior de-emphasis mask) and optionally
+     * fit the map viewport to its bounds.
      * @param {L.Map} map
      * @param {Object} options
      * @returns {Promise<L.LatLngBounds|null>}
@@ -347,14 +356,65 @@
       const geoJson = await this.loadBayananBoundary();
       if (!geoJson) return null;
 
+      let boundaryPane = map.getPane('bayananBoundaryPane');
+      if (!boundaryPane) {
+        boundaryPane = map.createPane('bayananBoundaryPane');
+      }
+      boundaryPane.style.zIndex = '350';
+      boundaryPane.style.pointerEvents = 'none';
+
+      if (map._bayananMaskLayer && map.hasLayer(map._bayananMaskLayer)) {
+        map.removeLayer(map._bayananMaskLayer);
+        map._bayananMaskLayer = null;
+      }
+      if (map._bayananFillLayer && map.hasLayer(map._bayananFillLayer)) {
+        map.removeLayer(map._bayananFillLayer);
+        map._bayananFillLayer = null;
+      }
       if (map._bayananBoundaryLayer && map.hasLayer(map._bayananBoundaryLayer)) {
         map.removeLayer(map._bayananBoundaryLayer);
         map._bayananBoundaryLayer = null;
       }
 
-      const { bounds } = extractBoundaryGeometryData(geoJson);
+      const { polygons, bounds } = extractBoundaryGeometryData(geoJson);
+
+      map._bayananFillLayer = L.geoJSON(geoJson, {
+        pane: 'bayananBoundaryPane',
+        interactive: false,
+        style: {
+          stroke: false,
+          weight: 0,
+          opacity: 0,
+          fillColor: '#EF4444',
+          fillOpacity: 0.04
+        }
+      }).addTo(map);
+
+      const outlineGroup = L.layerGroup();
+      (polygons || []).forEach((poly) => {
+        if (!Array.isArray(poly) || !Array.isArray(poly[0]) || poly[0].length < 3) return;
+        const ringLatLngs = poly[0].map((coord) => [Number(coord[1]), Number(coord[0])]);
+        outlineGroup.addLayer(
+          L.polyline(ringLatLngs, {
+            pane: 'bayananBoundaryPane',
+            interactive: false,
+            color: '#DC2626',
+            weight: 3,
+            opacity: 0.95,
+            dashArray: '1, 7'
+          })
+        );
+      });
+      outlineGroup.addTo(map);
+      map._bayananBoundaryLayer = outlineGroup;
+
       if (options.fitBounds !== false && bounds && bounds.isValid()) {
-        map.fitBounds(bounds, { padding: options.padding || [20, 20] });
+        try {
+          map.invalidateSize(false);
+        } catch (_) {
+          // Ignore if map container is not yet laid out
+        }
+        map.fitBounds(bounds, { padding: options.padding || [24, 24] });
       }
 
       return bounds || null;
@@ -1032,14 +1092,14 @@
           typeof options.routeFn === 'function'
             ? options.routeFn
             : (start, dest) => GeoSafeMapping.calculatePedestrianRoute(start, dest),
-        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => {},
-        onGpsUpdate: typeof options.onGpsUpdate === 'function' ? options.onGpsUpdate : () => {},
-        onRouteCalculated: typeof options.onRouteCalculated === 'function' ? options.onRouteCalculated : () => {},
-        onRouteProgress: typeof options.onRouteProgress === 'function' ? options.onRouteProgress : () => {},
-        onArrival: typeof options.onArrival === 'function' ? options.onArrival : () => {},
-        onError: typeof options.onError === 'function' ? options.onError : () => {},
-        onClearError: typeof options.onClearError === 'function' ? options.onClearError : () => {},
-        onStop: typeof options.onStop === 'function' ? options.onStop : () => {}
+        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => { },
+        onGpsUpdate: typeof options.onGpsUpdate === 'function' ? options.onGpsUpdate : () => { },
+        onRouteCalculated: typeof options.onRouteCalculated === 'function' ? options.onRouteCalculated : () => { },
+        onRouteProgress: typeof options.onRouteProgress === 'function' ? options.onRouteProgress : () => { },
+        onArrival: typeof options.onArrival === 'function' ? options.onArrival : () => { },
+        onError: typeof options.onError === 'function' ? options.onError : () => { },
+        onClearError: typeof options.onClearError === 'function' ? options.onClearError : () => { },
+        onStop: typeof options.onStop === 'function' ? options.onStop : () => { }
       };
 
       const state = {
@@ -1113,10 +1173,10 @@
           resetArrivalTracking();
           const lastTime = state.lastGpsAt
             ? new Date(state.lastGpsAt).toLocaleTimeString('en-PH', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              })
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
             : 'never';
           setNavState(NAV_STATES.GPS_UNAVAILABLE, { isError: true, reason: 'STALE_GPS', lastGpsAt: state.lastGpsAt });
           cfg.onError(
@@ -1184,7 +1244,7 @@
         if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
           try {
             navigator.geolocation.clearWatch(state.watchId);
-          } catch (_) {}
+          } catch (_) { }
         }
         state.watchId = null;
         detachLifecycleListeners();
@@ -1537,7 +1597,7 @@
         if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
           try {
             navigator.geolocation.clearWatch(state.watchId);
-          } catch (_) {}
+          } catch (_) { }
         }
         state.watchId = null;
         state.active = false;
@@ -1778,7 +1838,7 @@
           markerState.accuracyCircle.setStyle({ color: ringColor, fillColor: ringFill });
         }
       } else if (markerState.accuracyCircle) {
-        try { map.removeLayer(markerState.accuracyCircle); } catch (_) {}
+        try { map.removeLayer(markerState.accuracyCircle); } catch (_) { }
         markerState.accuracyCircle = null;
       }
     },
@@ -1800,9 +1860,9 @@
         highAccuracy: options.highAccuracy !== false,
         maximumAgeMs: Number.isFinite(Number(options.maximumAgeMs)) ? Number(options.maximumAgeMs) : 5000,
         timeoutMs: Number.isFinite(Number(options.timeoutMs)) ? Number(options.timeoutMs) : 12000,
-        onLocation: typeof options.onLocation === 'function' ? options.onLocation : () => {},
-        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => {},
-        onError: typeof options.onError === 'function' ? options.onError : () => {},
+        onLocation: typeof options.onLocation === 'function' ? options.onLocation : () => { },
+        onStatusChange: typeof options.onStatusChange === 'function' ? options.onStatusChange : () => { },
+        onError: typeof options.onError === 'function' ? options.onError : () => { },
       };
 
       const state = {
@@ -1973,7 +2033,7 @@
         state.active = false;
         state.inFlight = false;
         if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-          try { navigator.geolocation.clearWatch(state.watchId); } catch (_) {}
+          try { navigator.geolocation.clearWatch(state.watchId); } catch (_) { }
           state.watchId = null;
         }
         if (state.syncIntervalId !== null) {
@@ -2005,7 +2065,7 @@
     stopAllLiveGpsTrackers() {
       if (!window.__geosafeLiveGpsTrackers) return;
       Array.from(window.__geosafeLiveGpsTrackers).forEach((tracker) => {
-        try { tracker.stop(); } catch (_) {}
+        try { tracker.stop(); } catch (_) { }
       });
     }
   };

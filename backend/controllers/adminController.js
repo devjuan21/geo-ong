@@ -192,7 +192,7 @@ async function insertNotificationForUsers(connOrPool, { title, message, category
 // ============================================================================
 async function getAdminOverview(req, res) {
   try {
-    const [[incTotalRow]] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE status NOT IN ('resolved', 'false_alarm', 'dismissed')");
+    const [[incTotalRow]] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE source_rescue_id IS NULL AND status NOT IN ('resolved', 'false_alarm', 'dismissed')");
     const [[resTotalRow]] = await pool.query("SELECT COUNT(*) AS count FROM rescue_requests WHERE status NOT IN ('Completed', 'Cancelled')");
 
     const [[incPendingRow]] = await pool.query("SELECT COUNT(*) AS count FROM reports WHERE status = 'pending'");
@@ -2031,7 +2031,7 @@ async function createResponderAccount(req, res) {
         FIXED_ORGANIZATION,
         effectiveDesignation,
         serviceIdVal,
-        finalStatus === 'active' ? 'Off Duty' : 'On Break',
+        finalStatus === 'active' ? 'On Duty' : 'On Break',
       ]
     );
 
@@ -3840,6 +3840,104 @@ async function getAdminAnalytics(req, res) {
   }
 }
 
+async function getMonthlyIncidentsByCategory(req, res) {
+  try {
+    const manilaNow = getManilaDateParts(new Date());
+    const requestedYear = Number(req.query.year);
+    const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
+      ? requestedYear
+      : manilaNow.year;
+
+    const [yearRows] = await pool.query(
+      `SELECT DISTINCT EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Manila')::int AS yr
+       FROM reports
+       ORDER BY yr DESC`
+    );
+    const availableYearsSet = new Set(yearRows.map((r) => Number(r.yr)).filter(Number.isFinite));
+    availableYearsSet.add(manilaNow.year);
+    availableYearsSet.add(year);
+    const availableYears = Array.from(availableYearsSet).sort((a, b) => b - a);
+
+    const [catRows] = await pool.query(
+      'SELECT id, name FROM incident_categories ORDER BY id ASC'
+    );
+    const categoryOrder = [];
+    const seenCats = new Set();
+    catRows.forEach((c) => {
+      const normalized = normalizeCanonicalDisasterCategory(c.name) || String(c.name || '').trim();
+      if (normalized && !seenCats.has(normalized)) {
+        seenCats.add(normalized);
+        categoryOrder.push(normalized);
+      }
+    });
+
+    const [monthlyRows] = await pool.query(
+      `SELECT
+         EXTRACT(MONTH FROM r.created_at AT TIME ZONE 'Asia/Manila')::int AS month_num,
+         COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized') AS raw_category,
+         COUNT(DISTINCT r.id)::int AS count
+       FROM reports r
+       LEFT JOIN incident_categories ic ON ic.id = r.category_id
+       WHERE EXTRACT(YEAR FROM r.created_at AT TIME ZONE 'Asia/Manila')::int = ?
+       GROUP BY month_num, COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized')
+       ORDER BY month_num ASC`,
+      [year]
+    );
+
+    const monthMaps = Array.from({ length: 12 }, () => new Map());
+    monthlyRows.forEach((row) => {
+      const mIdx = Number(row.month_num) - 1;
+      const count = Number(row.count || 0);
+      if (mIdx < 0 || mIdx >= 12 || count <= 0) return;
+      const cat = normalizeCanonicalDisasterCategory(row.raw_category) || String(row.raw_category || 'Uncategorized').trim();
+      if (!seenCats.has(cat)) {
+        seenCats.add(cat);
+        categoryOrder.push(cat);
+      }
+      monthMaps[mIdx].set(cat, (monthMaps[mIdx].get(cat) || 0) + count);
+    });
+
+    const MONTH_NAMES = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const MONTH_SHORT = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    let totalYearReports = 0;
+    const months = MONTH_NAMES.map((fullName, idx) => {
+      const map = monthMaps[idx];
+      let total = 0;
+      const segments = categoryOrder.map((cat) => {
+        const count = map.get(cat) || 0;
+        total += count;
+        return { category: cat, count };
+      });
+      totalYearReports += total;
+      return {
+        monthIndex: idx + 1,
+        monthLabel: MONTH_SHORT[idx],
+        monthFullName: fullName,
+        total,
+        segments,
+      };
+    });
+
+    return res.json({
+      year,
+      availableYears,
+      categories: categoryOrder,
+      months,
+      totalYearReports,
+    });
+  } catch (err) {
+    console.error('[Admin API] getMonthlyIncidentsByCategory failed:', err.message);
+    return res.status(503).json({ error: 'Unable to aggregate monthly incident categories from database.' });
+  }
+}
+
 async function exportAdminAnalyticsCsv(req, res) {
   try {
     const period = String(req.query.period || 'all').toLowerCase();
@@ -4757,7 +4855,12 @@ module.exports = {
   getBroadcastCategories,
   createBroadcastCategory,
   getAdminAnalytics,
+  getMonthlyIncidentsByCategory,
   exportAdminAnalyticsCsv,
+  buildDateFilterClause,
+  getReportCategoryDistribution,
+  getManilaDateParts,
+  addDaysYmd,
   getAdminSystemSettings,
   updateAdminSystemSetting,
   getAdminFacilities,

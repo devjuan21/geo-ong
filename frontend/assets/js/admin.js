@@ -475,13 +475,21 @@
     `;
   }
 
-  function createResponderLiveIcon(isStale) {
+  function getResponderInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return 'R';
+  }
+
+  function createResponderLiveIcon(isStale, name = '') {
+    const initials = escapeHtml(getResponderInitials(name));
     return L.divIcon({
       className: 'geosafe-admin-responder-live',
       html: `
         <div style="position:relative;display:flex;align-items:center;justify-content:center;width:32px;height:32px;">
           <span class="${isStale ? '' : 'animate-ping'}" style="position:absolute;width:28px;height:28px;border-radius:9999px;background:${isStale ? 'rgba(217,119,6,0.28)' : 'rgba(37,99,235,0.32)'};"></span>
-          <div style="width:24px;height:24px;border-radius:9999px;background:${isStale ? '#D97706' : '#1D4ED8'};border:2.5px solid #FFFFFF;box-shadow:0 3px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-size:10px;font-weight:800;letter-spacing:-0.02em;">R</div>
+          <div style="width:24px;height:24px;border-radius:9999px;background:${isStale ? '#D97706' : '#1D4ED8'};border:2.5px solid #FFFFFF;box-shadow:0 3px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-size:9px;font-weight:800;letter-spacing:-0.02em;">${initials}</div>
         </div>
       `,
       iconSize: [32, 32],
@@ -514,18 +522,22 @@
     state.responderLiveData.set(uid, stored);
 
     const popupHtml = buildResponderLivePopupHtml(stored, isStale);
+    const tooltipText = `${stored.name || 'Responder'} (${stored.availabilityStatus || 'On Duty'}${isStale ? ' • Stale' : ' • Live'})`;
     const existing = state.responderLiveMarkers.get(uid);
     if (!existing) {
       const marker = L.marker([lat, lng], {
-        icon: createResponderLiveIcon(isStale),
-        zIndexOffset: 850
+        icon: createResponderLiveIcon(isStale, stored.name),
+        zIndexOffset: isStale ? 840 : 860
       }).addTo(state.responderLiveLayer);
+      marker.bindTooltip(escapeHtml(tooltipText), { direction: 'top' });
       marker.bindPopup(popupHtml);
       state.responderLiveMarkers.set(uid, marker);
       if (window.__GEOSAFE_GPS_DEBUG__) console.debug('[GeoSafe GPS][Admin] Marker created for responder', uid, lat, lng);
     } else {
       existing.setLatLng([lat, lng]);
-      existing.setIcon(createResponderLiveIcon(isStale));
+      existing.setIcon(createResponderLiveIcon(isStale, stored.name));
+      existing.setZIndexOffset(isStale ? 840 : 860);
+      existing.setTooltipContent(escapeHtml(tooltipText));
       existing.setPopupContent(popupHtml);
       if (window.__GEOSAFE_GPS_DEBUG__) console.debug('[GeoSafe GPS][Admin] Marker updated for responder', uid, lat, lng);
     }
@@ -553,7 +565,7 @@
         entry.lastRenderedStale = staleNow;
         const marker = state.responderLiveMarkers.get(uid);
         if (marker) {
-          marker.setIcon(createResponderLiveIcon(staleNow));
+          marker.setIcon(createResponderLiveIcon(staleNow, entry.name));
           marker.setPopupContent(buildResponderLivePopupHtml(entry, staleNow));
         }
       }
@@ -970,6 +982,7 @@
 
       initIncidentMap();
       renderMapMarkers();
+      loadLiveResponderLocations();
       renderActivityFeed(state.overview.recentActivities);
     } catch (err) {
       console.error('[Admin] loadDashboardOverview failed:', err.message);
@@ -1176,22 +1189,13 @@
           : null;
 
       if (!modalLeafletMap) {
-        modalLeafletMap = L.map('modal-report-map', {
+        modalLeafletMap = window.GeoSafeMapping.createMap('modal-report-map', {
+          center: [numLat, numLng],
+          zoom: 17,
           zoomControl: true,
           scrollWheelZoom: false,
-        }).setView([numLat, numLng], 17);
-
-        if (window.GeoSafeMapping && typeof window.GeoSafeMapping.addBaseTileLayer === 'function') {
-          window.GeoSafeMapping.addBaseTileLayer(modalLeafletMap);
-          if (typeof window.GeoSafeMapping.addBayananBoundary === 'function') {
-            window.GeoSafeMapping.addBayananBoundary(modalLeafletMap, { fitBounds: false });
-          }
-        } else {
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors | GeoSafe'
-          }).addTo(modalLeafletMap);
-        }
+          fitBoundary: false
+        });
 
         modalLeafletMarker = modalIcon
           ? L.marker([numLat, numLng], { icon: modalIcon }).addTo(modalLeafletMap)
@@ -1701,36 +1705,13 @@
       );
       attachEl.appendChild(containerWrap);
 
-      // Populate Responders & enforce assignment lifecycle locks
-      const respSelect = document.getElementById('review-responder-select');
-      const respLockNote = document.getElementById('review-responder-lock-note');
-      respSelect.innerHTML = '<option value="">-- No Assigned Responder --</option>';
-      const responders = data.availableResponders || data.activeResponders || [];
-      responders.forEach((resp) => {
-        const opt = document.createElement('option');
-        opt.value = resp.id;
-        opt.textContent = `${resp.name} (${resp.badge_number || resp.badgeNumber || resp.assigned_unit || resp.assignedUnit || 'Active'})`;
-        if (Number(data.assignedTo) === Number(resp.id)) {
-          opt.selected = true;
-        }
-        respSelect.appendChild(opt);
-      });
       const rawStLower = String(data.rawStatus || data.status || '').toLowerCase();
       const isAlreadyRejected = ['false_alarm', 'dismissed', 'cancelled'].includes(rawStLower);
       const isAlreadyVerified = recordType === 'rescue'
-        ? Boolean(data.hasActiveAssignment || ['assigned', 'accepted', 'en route', 'on scene', 'completed'].includes(rawStLower))
-        : Boolean(data.verifiedAt || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
+        ? Boolean(data.verifiedAt || data.isPublic)
+        : Boolean(data.verifiedAt || data.isPublic || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
       const hasAssignedResponder = Boolean(data.assignedTo || data.hasActiveAssignment);
       const isClosedOrRejected = isAlreadyRejected || ['resolved', 'completed', 'cancelled', 'false_alarm', 'dismissed'].includes(rawStLower);
-
-      const isResponderLocked = Boolean(data.responderLocked);
-      const assignBtn = document.getElementById('review-assign-btn');
-      const cannotAssign = isClosedOrRejected || isResponderLocked || hasAssignedResponder;
-      respSelect.disabled = cannotAssign;
-      if (assignBtn) assignBtn.disabled = cannotAssign;
-      if (respLockNote) {
-        respLockNote.classList.toggle('hidden', !(isResponderLocked || hasAssignedResponder));
-      }
 
       const verStatusEl = document.getElementById('review-verification-status');
       if (verStatusEl) {
@@ -1995,13 +1976,10 @@
     if (errEl) errEl.classList.add('hidden');
 
     const detail = state.reports.activeDetail;
-    const respSelect = document.getElementById('review-responder-select');
     const reasonInput = document.getElementById('review-reason-input');
     const verifyBtn = document.getElementById('review-verify-btn');
     const rejectBtn = document.getElementById('review-reject-btn');
-    const respVal = detail.responderLocked
-      ? (detail.assignedTo ? String(detail.assignedTo) : '')
-      : (respSelect?.value || '');
+    const respVal = detail.assignedTo ? String(detail.assignedTo) : '';
     const reasonVal = detail.reviewNotesLocked ? '' : (reasonInput?.value.trim() || '');
 
     if (detail.reviewNotesLocked) {
@@ -2195,9 +2173,9 @@
           <td class="px-4 py-3 text-xs">${dutyBadge}</td>
           <td class="px-4 py-3 text-xs font-bold text-[#202020]">${r.activeAssignmentsCount}</td>
           <td class="px-4 py-3 text-xs text-right">
-            <button type="button" onclick="window.GeoSafeAdmin.openAssignResponderModal('incident', null, ${r.id})" class="px-3 py-1.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] text-xs font-bold text-[#202020] transition-colors shadow-subtle">
-              Dispatch
-            </button>
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+              Self-Claim Enabled
+            </span>
           </td>
         `;
         tbody.appendChild(tr);
@@ -3914,6 +3892,9 @@
       // Daily Incident Count Bar Chart
       renderDailyIncidentsBarChart(data.dailyTrends || [], period, dateFrom, dateTo);
 
+      // Independent Monthly Stacked Incidents by Category Chart
+      loadMonthlyStackedAnalytics();
+
       // Categories
       const catList = document.getElementById('analytics-categories-list');
       const catEmpty = document.getElementById('analytics-categories-empty');
@@ -4132,14 +4113,455 @@
     }
   }
 
-  function downloadAnalyticsCsv() {
-    const periodSelect = document.getElementById('analytics-period-select');
-    const period = periodSelect ? periodSelect.value : 'all';
-    const dateFrom = document.getElementById('analytics-date-from')?.value || '';
-    const dateTo = document.getElementById('analytics-date-to')?.value || '';
+  let exportPreviewTimer = null;
+  let exportGenerating = false;
+  let exportListenersBound = false;
 
-    const params = new URLSearchParams({ period, from: dateFrom, to: dateTo });
-    window.location.href = `/api/admin/analytics/export?${params.toString()}`;
+  function getSelectedExportCategories() {
+    return Array.from(document.querySelectorAll('.export-category-cb:checked')).map((el) => el.value);
+  }
+
+  function updateExportSelectedCount() {
+    const count = getSelectedExportCategories().length;
+    const countEl = document.getElementById('export-selected-count');
+    if (countEl) {
+      countEl.textContent = `(${count} selected)`;
+    }
+  }
+
+  function collectExportPayload() {
+    const categories = getSelectedExportCategories();
+    const period = document.getElementById('export-period-select')?.value || 'this_month';
+    const from = document.getElementById('export-date-from')?.value || '';
+    const to = document.getElementById('export-date-to')?.value || '';
+    const status = document.getElementById('export-status-filter')?.value || '';
+    const category = document.getElementById('export-category-filter')?.value || '';
+    const operationType = document.getElementById('export-operation-type-filter')?.value || 'all';
+    const format = document.querySelector('input[name="export-format"]:checked')?.value || 'xlsx';
+    return { categories, period, from, to, status, category, operationType, format };
+  }
+
+  function syncExportCustomDateState() {
+    const period = document.getElementById('export-period-select')?.value || 'this_month';
+    const fromEl = document.getElementById('export-date-from');
+    const toEl = document.getElementById('export-date-to');
+    const isCustom = period === 'custom';
+    if (fromEl) fromEl.disabled = !isCustom;
+    if (toEl) toEl.disabled = !isCustom;
+  }
+
+  function scheduleExportPreview() {
+    updateExportSelectedCount();
+    syncExportCustomDateState();
+    clearTimeout(exportPreviewTimer);
+    exportPreviewTimer = setTimeout(() => {
+      refreshExportPreview();
+    }, 180);
+  }
+
+  async function refreshExportPreview() {
+    const boxEl = document.getElementById('export-preview-box');
+    const statusEl = document.getElementById('export-preview-status');
+    const errEl = document.getElementById('export-modal-error');
+    const genBtn = document.getElementById('btn-generate-export');
+    if (!boxEl) return;
+
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList.add('hidden');
+    }
+
+    const payload = collectExportPayload();
+    if (payload.categories.length === 0) {
+      if (statusEl) statusEl.textContent = 'No categories selected';
+      boxEl.innerHTML = '<div class="text-slate-500">Select at least one report category to preview record counts.</div>';
+      if (genBtn) genBtn.disabled = true;
+      return;
+    }
+
+    if (payload.period === 'custom' && (!payload.from || !payload.to)) {
+      if (statusEl) statusEl.textContent = 'Select start & end dates';
+      boxEl.innerHTML = '<div class="text-amber-700">Choose both a Start Date and End Date for the custom reporting period.</div>';
+      if (genBtn) genBtn.disabled = true;
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = 'Calculating...';
+    if (genBtn) genBtn.disabled = true;
+
+    try {
+      const preview = await apiRequest('/analytics/export/preview', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      const formatLabel = preview.format === 'xlsx'
+        ? 'Excel (.xlsx)'
+        : preview.format === 'pdf'
+          ? 'PDF (.pdf)'
+          : preview.categories.length > 1
+            ? 'CSV Archive (.zip)'
+            : 'CSV (.csv)';
+
+      const countRowsHtml = (preview.categories || []).map((catKey, idx) => {
+        const label = (preview.categoryLabels && preview.categoryLabels[idx]) || catKey;
+        const count = Number((preview.counts && preview.counts[catKey]) || 0);
+        const badge = count === 0
+          ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">0 records</span>'
+          : `<span class="font-bold text-[#0f172a] tabular-nums">${count.toLocaleString()}</span>`;
+        return `<div class="flex items-center justify-between text-[11.5px]"><span>${escapeHtml(label)}</span>${badge}</div>`;
+      }).join('');
+
+      const emptyNote = Array.isArray(preview.emptyCategories) && preview.emptyCategories.length > 0
+        ? `<div class="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">Empty for selected filters: ${escapeHtml(preview.emptyCategories.join(', '))}</div>`
+        : '';
+
+      boxEl.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-200 text-[11px] text-slate-600">
+          <span><strong>Period:</strong> ${escapeHtml(preview.dateRangeLabel || '')}</span>
+          <span><strong>Format:</strong> ${escapeHtml(formatLabel)}</span>
+        </div>
+        <div class="space-y-1 pt-1">${countRowsHtml}</div>
+        <div class="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs font-bold text-[#0f172a]">
+          <span>Total Records Included</span>
+          <span class="tabular-nums">${Number(preview.totalRecords || 0).toLocaleString()}</span>
+        </div>
+        ${emptyNote}
+      `;
+      if (statusEl) statusEl.textContent = 'Ready';
+      if (genBtn) genBtn.disabled = exportGenerating;
+    } catch (err) {
+      if (statusEl) statusEl.textContent = 'Error';
+      boxEl.innerHTML = '<div class="text-red-700">Unable to load live export preview counts.</div>';
+      if (errEl) {
+        errEl.textContent = err.message || 'Failed to preview export.';
+        errEl.classList.remove('hidden');
+      }
+      if (genBtn) genBtn.disabled = true;
+    }
+  }
+
+  function bindExportModalListeners() {
+    if (exportListenersBound) return;
+    exportListenersBound = true;
+    document.querySelectorAll('.export-category-cb').forEach((cb) => {
+      cb.addEventListener('change', scheduleExportPreview);
+    });
+    document.querySelectorAll('input[name="export-format"]').forEach((r) => {
+      r.addEventListener('change', scheduleExportPreview);
+    });
+    ['export-period-select', 'export-date-from', 'export-date-to', 'export-status-filter', 'export-category-filter', 'export-operation-type-filter'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', scheduleExportPreview);
+    });
+  }
+
+  function openAnalyticsExportModal() {
+    const modal = document.getElementById('modal-analytics-export');
+    if (!modal) return;
+    bindExportModalListeners();
+
+    // Default to current Reports & Analytics period/date range without mutating dashboard filters
+    const dashPeriod = document.getElementById('analytics-period-select')?.value || 'this_month';
+    const dashFrom = document.getElementById('analytics-date-from')?.value || '';
+    const dashTo = document.getElementById('analytics-date-to')?.value || '';
+
+    const expPeriodEl = document.getElementById('export-period-select');
+    const expFromEl = document.getElementById('export-date-from');
+    const expToEl = document.getElementById('export-date-to');
+    if (expPeriodEl) expPeriodEl.value = dashPeriod;
+    if (expFromEl) expFromEl.value = dashFrom;
+    if (expToEl) expToEl.value = dashTo;
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    updateExportSelectedCount();
+    syncExportCustomDateState();
+    refreshExportPreview();
+  }
+
+  function closeAnalyticsExportModal() {
+    const modal = document.getElementById('modal-analytics-export');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  function selectAllExportCategories() {
+    document.querySelectorAll('.export-category-cb').forEach((cb) => { cb.checked = true; });
+    scheduleExportPreview();
+  }
+
+  function clearExportCategories() {
+    document.querySelectorAll('.export-category-cb').forEach((cb) => { cb.checked = false; });
+    scheduleExportPreview();
+  }
+
+  async function generateAnalyticsExport() {
+    if (exportGenerating) return;
+    const payload = collectExportPayload();
+    const errEl = document.getElementById('export-modal-error');
+    const genBtn = document.getElementById('btn-generate-export');
+    const genLabel = document.getElementById('btn-generate-export-label');
+
+    if (payload.categories.length === 0) {
+      if (errEl) {
+        errEl.textContent = 'Select at least one report category to export.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    exportGenerating = true;
+    if (genBtn) genBtn.disabled = true;
+    if (genLabel) genLabel.textContent = 'Generating...';
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList.add('hidden');
+    }
+
+    try {
+      const store = window.geoSafeStore;
+      let headers = { 'Content-Type': 'application/json' };
+      if (store && typeof store.getAuthHeaders === 'function') {
+        headers = store.getAuthHeaders(headers);
+      }
+
+      const response = await fetch('/api/admin/analytics/export', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 401) {
+        window.location.replace('/login.html');
+        return;
+      }
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || `Export failed (HTTP ${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const disp = response.headers.get('Content-Disposition') || '';
+      const fnMatch = disp.match(/filename="?([^"]+)"?/i);
+      const extFallback = payload.format === 'csv' && payload.categories.length > 1 ? 'zip' : payload.format;
+      const filename = fnMatch ? fnMatch[1] : `GeoSafe_Export_${new Date().toISOString().slice(0, 10)}.${extFallback}`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      if (typeof showToast === 'function') {
+        showToast(`Export generated: ${filename}`, 'success');
+      }
+      closeAnalyticsExportModal();
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = err.message || 'Unable to generate export.';
+        errEl.classList.remove('hidden');
+      }
+      if (typeof showToast === 'function') {
+        showToast(err.message || 'Export failed.', 'error');
+      }
+    } finally {
+      exportGenerating = false;
+      if (genBtn) genBtn.disabled = false;
+      if (genLabel) genLabel.textContent = 'Generate Export';
+    }
+  }
+
+  let monthlyStackedYearBound = false;
+
+  async function loadMonthlyStackedAnalytics(explicitYear) {
+    const yearSelect = document.getElementById('analytics-monthly-year-select');
+    const chartEl = document.getElementById('analytics-monthly-stacked-chart');
+    const emptyEl = document.getElementById('analytics-monthly-stacked-empty');
+    const errEl = document.getElementById('analytics-monthly-stacked-error');
+    const badgeEl = document.getElementById('analytics-monthly-total-badge');
+    if (!chartEl) return;
+
+    if (yearSelect && !monthlyStackedYearBound) {
+      monthlyStackedYearBound = true;
+      yearSelect.addEventListener('change', () => {
+        loadMonthlyStackedAnalytics(yearSelect.value);
+      });
+    }
+
+    const selectedYear = explicitYear || (yearSelect && yearSelect.value) || '';
+    const qs = selectedYear ? `?year=${encodeURIComponent(selectedYear)}` : '';
+
+    try {
+      if (errEl) {
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+      }
+      const data = await apiRequest(`/analytics/monthly-categories${qs}`);
+
+      if (yearSelect && Array.isArray(data.availableYears)) {
+        yearSelect.innerHTML = data.availableYears
+          .map((y) => `<option value="${y}" ${Number(y) === Number(data.year) ? 'selected' : ''}>${y}</option>`)
+          .join('');
+      }
+
+      if (badgeEl) {
+        const tot = Number(data.totalYearReports || 0);
+        badgeEl.textContent = `${tot.toLocaleString()} Total ${tot === 1 ? 'Report' : 'Reports'}`;
+      }
+
+      renderMonthlyStackedCategoryChart(data);
+    } catch (err) {
+      chartEl.innerHTML = '';
+      if (emptyEl) emptyEl.classList.add('hidden');
+      if (errEl) {
+        errEl.textContent = err.message || 'Unable to load monthly incident category chart.';
+        errEl.classList.remove('hidden');
+      }
+    }
+  }
+
+  function renderMonthlyStackedCategoryChart(data) {
+    const chartEl = document.getElementById('analytics-monthly-stacked-chart');
+    const emptyEl = document.getElementById('analytics-monthly-stacked-empty');
+    const legendEl = document.getElementById('analytics-monthly-stacked-legend');
+    const tooltipEl = document.getElementById('analytics-monthly-stacked-tooltip');
+    if (!chartEl) return;
+
+    const months = Array.isArray(data && data.months) ? data.months : [];
+    const categories = Array.isArray(data && data.categories) ? data.categories : [];
+    const yearLabel = data && data.year ? String(data.year) : '';
+
+    if (legendEl) {
+      legendEl.innerHTML = categories.map((cat, idx) => {
+        const color = getCategoryChartColor(cat, idx);
+        return `
+          <span class="inline-flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-[2px] inline-block flex-none" style="background:${color};"></span>
+            <span class="font-medium text-slate-700">${escapeHtml(cat)}</span>
+          </span>
+        `;
+      }).join('');
+    }
+
+    if (months.length === 0) {
+      chartEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    chartEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    const maxTotal = Math.max(1, ...months.map((m) => Number(m.total || 0)));
+    const rawStep = maxTotal <= 5 ? 1 : Math.ceil(maxTotal / 5);
+    const yMax = Math.max(5, Math.ceil(maxTotal / rawStep) * rawStep);
+    const tickCount = 5;
+
+    const svgW = 860;
+    const svgH = 290;
+    const padL = 44;
+    const padR = 16;
+    const padT = 24;
+    const padB = 34;
+    const plotW = svgW - padL - padR;
+    const plotH = svgH - padT - padB;
+    const slotW = plotW / 12;
+    const barW = Math.min(40, Math.max(22, slotW * 0.54));
+
+    const gridLines = [];
+    for (let i = 0; i <= tickCount; i++) {
+      const val = Math.round((yMax / tickCount) * i);
+      const y = padT + plotH - (val / yMax) * plotH;
+      gridLines.push(`
+        <line x1="${padL}" y1="${y.toFixed(1)}" x2="${svgW - padR}" y2="${y.toFixed(1)}" stroke="#E2E8F0" stroke-width="1" />
+        <text x="${padL - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" fill="#64748B" font-size="10.5" font-weight="500">${val}</text>
+      `);
+    }
+
+    const barsHtml = months.map((m, mIdx) => {
+      const cx = padL + mIdx * slotW + slotW / 2;
+      const bx = cx - barW / 2;
+      const monthTotal = Number(m.total || 0);
+      let currentY = padT + plotH;
+
+      const segmentsSvg = (m.segments || []).map((seg, sIdx) => {
+        const count = Number(seg.count || 0);
+        if (count <= 0) return '';
+        const segH = (count / yMax) * plotH;
+        const sy = currentY - segH;
+        currentY = sy;
+        const color = getCategoryChartColor(seg.category, sIdx);
+        return `
+          <rect class="analytics-monthly-seg cursor-pointer transition-opacity hover:opacity-85"
+            x="${bx.toFixed(1)}" y="${sy.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1.5, segH).toFixed(1)}"
+            fill="${color}" stroke="#FFFFFF" stroke-width="0.75"
+            data-month="${escapeHtml(m.monthFullName)} ${escapeHtml(yearLabel)}"
+            data-category="${escapeHtml(seg.category)}"
+            data-count="${count}"
+            data-total="${monthTotal}"
+            tabindex="0" />
+        `;
+      }).join('');
+
+      const totalLabelY = Math.max(12, currentY - 6);
+      const totalText = `
+        <text x="${cx.toFixed(1)}" y="${totalLabelY.toFixed(1)}" text-anchor="middle" fill="${monthTotal > 0 ? '#0F172A' : '#94A3B8'}" font-size="10.5" font-weight="700">${monthTotal}</text>
+      `;
+
+      const xLabel = `
+        <text x="${cx.toFixed(1)}" y="${(padT + plotH + 18).toFixed(1)}" text-anchor="middle" fill="#475569" font-size="11" font-weight="600">${escapeHtml(m.monthLabel)}</text>
+      `;
+
+      return `<g>${segmentsSvg}${totalText}${xLabel}</g>`;
+    }).join('');
+
+    chartEl.innerHTML = `
+      <svg viewBox="0 0 ${svgW} ${svgH}" class="w-full h-full select-none" role="img" aria-label="Monthly Incidents by Category stacked bar chart">
+        ${gridLines.join('')}
+        <line x1="${padL}" y1="${padT + plotH}" x2="${svgW - padR}" y2="${padT + plotH}" stroke="#94A3B8" stroke-width="1.2" />
+        ${barsHtml}
+      </svg>
+    `;
+
+    if (tooltipEl) {
+      const showTip = (el, clientX, clientY) => {
+        const month = el.getAttribute('data-month') || '';
+        const category = el.getAttribute('data-category') || '';
+        const count = Number(el.getAttribute('data-count') || 0);
+        const total = Number(el.getAttribute('data-total') || 0);
+        tooltipEl.innerHTML = `
+          <div class="font-bold text-white">${escapeHtml(month)}</div>
+          <div class="text-slate-200">${escapeHtml(category)}: <span class="font-bold text-white">${count}</span> ${count === 1 ? 'report' : 'reports'}</div>
+          <div class="text-slate-300 text-[10.5px] mt-0.5">Monthly total: <span class="font-semibold text-white">${total}</span></div>
+        `;
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.left = `${Math.min(window.innerWidth - 220, clientX + 12)}px`;
+        tooltipEl.style.top = `${Math.max(12, clientY - 54)}px`;
+      };
+      const hideTip = () => tooltipEl.classList.add('hidden');
+
+      chartEl.querySelectorAll('.analytics-monthly-seg').forEach((seg) => {
+        seg.addEventListener('mouseenter', (e) => showTip(seg, e.clientX, e.clientY));
+        seg.addEventListener('mousemove', (e) => showTip(seg, e.clientX, e.clientY));
+        seg.addEventListener('mouseleave', hideTip);
+        seg.addEventListener('focus', () => {
+          const rect = seg.getBoundingClientRect();
+          showTip(seg, rect.left + rect.width / 2, rect.top + 10);
+        });
+        seg.addEventListener('blur', hideTip);
+      });
+    }
+  }
+
+  function downloadAnalyticsCsv() {
+    openAnalyticsExportModal();
   }
 
   function printAnalyticsReport() {
@@ -4787,11 +5209,6 @@
         if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
           openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
         }
-
-        const assignModal = document.getElementById('admin-assign-responder-modal');
-        if (assignModal && !assignModal.classList.contains('hidden')) {
-          openAssignResponderModal();
-        }
       });
 
       if (window.geoSafeStore && window.geoSafeStore.socket) {
@@ -5220,6 +5637,11 @@
     loadBroadcastCategories,
     promptNewBroadcastCategory,
     loadAnalyticsData,
+    openAnalyticsExportModal,
+    closeAnalyticsExportModal,
+    selectAllExportCategories,
+    clearExportCategories,
+    generateAnalyticsExport,
     downloadAnalyticsCsv,
     printAnalyticsReport,
     emailAnalyticsSummary,

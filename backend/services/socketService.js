@@ -222,7 +222,9 @@ function emitNewReport(report) {
   if (!io) return;
   const target = io
     .to('role:Administrator')
-    .to('role:admin');
+    .to('role:Responder')
+    .to('role:admin')
+    .to('role:responder');
   target.emit('new-incident-report', report);
   target.emit('new-report', report);
 }
@@ -351,6 +353,11 @@ function emitAssignmentUpdate(assignment) {
     target = io.to('role:admin');
   }
   target.emit('rescue-assignment-updated', assignment);
+  io.to('role:Administrator')
+    .to('role:Responder')
+    .to('role:admin')
+    .to('role:responder')
+    .emit('assignment-updated', assignment);
 }
 
 function emitReportVerificationResult(payload) {

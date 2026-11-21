@@ -164,4 +164,12 @@ ALTER TABLE rescue_attachments
   ADD COLUMN IF NOT EXISTS evidence_type VARCHAR(50) NOT NULL DEFAULT 'resident_submission',
   ADD COLUMN IF NOT EXISTS assignment_id INTEGER DEFAULT NULL REFERENCES rescue_assignments(id) ON DELETE SET NULL;
 
+-- ----------------------------------------------------------------------------
+-- 7. Rescue Verification & Public Visibility Columns (from 012)
+-- ----------------------------------------------------------------------------
+ALTER TABLE rescue_requests
+  ADD COLUMN IF NOT EXISTS verified_by INTEGER DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
+
 COMMIT;

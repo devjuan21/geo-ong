@@ -153,4 +153,15 @@ WHERE id NOT IN (1, 4, 5, 6);
 
 SELECT setval(pg_get_serial_sequence('hospitals', 'id'), GREATEST((SELECT MAX(id) FROM hospitals), 6), true);
 
+-- ----------------------------------------------------------------------------
+-- 6. Evidence Attachment Columns (incident_attachments & rescue_attachments)
+-- ----------------------------------------------------------------------------
+ALTER TABLE incident_attachments
+  ADD COLUMN IF NOT EXISTS evidence_type VARCHAR(50) NOT NULL DEFAULT 'resident_submission',
+  ADD COLUMN IF NOT EXISTS assignment_id INTEGER DEFAULT NULL REFERENCES incident_assignments(id) ON DELETE SET NULL;
+
+ALTER TABLE rescue_attachments
+  ADD COLUMN IF NOT EXISTS evidence_type VARCHAR(50) NOT NULL DEFAULT 'resident_submission',
+  ADD COLUMN IF NOT EXISTS assignment_id INTEGER DEFAULT NULL REFERENCES rescue_assignments(id) ON DELETE SET NULL;
+
 COMMIT;

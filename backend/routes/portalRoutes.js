@@ -1711,19 +1711,17 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
     })),
   ];
 
-  const isCompletedRecord = (item) => {
-    const st = String(item && item.status || '').toLowerCase();
-    return ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(st);
-  };
   const recordTimestamp = (item) => {
-    const raw = (item && (item.submittedAt || item.assignedAt)) || null;
+    const raw = item && item.submittedAt ? item.submittedAt : null;
     const ms = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(ms) ? ms : 0;
   };
   return combined.sort((a, b) => {
-    const doneDiff = (isCompletedRecord(a) ? 1 : 0) - (isCompletedRecord(b) ? 1 : 0);
-    if (doneDiff !== 0) return doneDiff;
-    return recordTimestamp(b) - recordTimestamp(a);
+    const timeDiff = recordTimestamp(b) - recordTimestamp(a);
+    if (timeDiff !== 0) return timeDiff;
+    const idDiff = (Number(b.dbId) || 0) - (Number(a.dbId) || 0);
+    if (idDiff !== 0) return idDiff;
+    return String(a.assignmentType || '').localeCompare(String(b.assignmentType || ''));
   });
 }
 

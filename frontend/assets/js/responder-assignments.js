@@ -290,16 +290,21 @@ function renderFilteredAssignments() {
   const emptyText = document.getElementById('assign-empty-text');
   if (!container) return;
 
-  let filtered = [...allAssignments];
+  // Deduplicate by (assignmentType, dbId/id) and sort strictly newest submitted record first (created_at DESC)
+  const dedupedMap = new Map();
+  (allAssignments || []).forEach((item) => {
+    const key = `${item.assignmentType || 'item'}:${item.dbId || item.id || item.referenceNumber}`;
+    if (!dedupedMap.has(key)) dedupedMap.set(key, item);
+  });
+  let filtered = Array.from(dedupedMap.values());
 
-  // Ensure active/pending items always appear before completed items, newest first
-  const isCompletedItem = (item) => ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(String(item.status || '').toLowerCase());
   filtered.sort((a, b) => {
-    const doneDiff = (isCompletedItem(a) ? 1 : 0) - (isCompletedItem(b) ? 1 : 0);
-    if (doneDiff !== 0) return doneDiff;
-    const ta = new Date(a.submittedAt || a.assignedAt || 0).getTime() || 0;
-    const tb = new Date(b.submittedAt || b.assignedAt || 0).getTime() || 0;
-    return tb - ta;
+    const ta = new Date(a.submittedAt || 0).getTime() || 0;
+    const tb = new Date(b.submittedAt || 0).getTime() || 0;
+    if (tb !== ta) return tb - ta;
+    const idDiff = (Number(b.dbId) || 0) - (Number(a.dbId) || 0);
+    if (idDiff !== 0) return idDiff;
+    return String(a.assignmentType || '').localeCompare(String(b.assignmentType || ''));
   });
 
   // Apply tab status filter

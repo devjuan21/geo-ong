@@ -5165,64 +5165,126 @@
         } catch (_) { }
       }
 
-      window.addEventListener('geosafe:realtime-update', (ev) => {
-        const detail = (ev && ev.detail) || {};
-        if (detail.event === 'responder:location-updated') {
-          upsertAdminResponderLocationMarker(detail.data);
-          return;
-        }
-        if (detail.event === 'responder:location-offline') {
-          removeAdminResponderLocationMarker(detail.data && detail.data.userId);
-          return;
-        }
-        if (detail.event === 'reconnect-sync') {
-          loadLiveResponderLocations();
-        }
-        if (state.currentSection === 'dashboard') {
-          loadDashboardOverview();
-        } else if (state.currentSection === 'reports') {
-          loadReportsList();
-        } else if (state.currentSection === 'responders') {
-          loadRespondersList();
-        } else if (state.currentSection === 'alerts') {
-          const alertEvents = new Set([
-            'new-hazard-alert',
-            'alert-broadcast',
-            'hazard-alert-expired',
-            'alert-expired',
-            'hazard-alert-cancelled',
-            'alert-cancelled',
-            'reconnect-sync',
-            'admin-sync',
-          ]);
-          if (alertEvents.has(detail.event)) {
-            loadBroadcastsList();
-          }
-        } else if (state.currentSection === 'messages') {
-          loadAdminConversationsList({ silent: true });
-          if (state.messages.activeConversationId) {
-            selectAdminConversation(state.messages.activeConversationId, { silent: true });
-          }
-        }
+      const MESSAGING_REALTIME_EVENTS = new Set([
+        'conversation:new-message',
+        'conversation:messages-read',
+        'conversation:typing',
+        'messages:unread-update',
+        'messages:access-updated',
+        'conversation:archive-updated',
+        'admin:conversation-activity',
+        'messages:incoming-notification',
+      ]);
 
-        const reportModal = document.getElementById('admin-report-modal');
-        if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
-          openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
-        }
-      });
+      const OPERATIONAL_REALTIME_EVENTS = new Set([
+        'new-incident-report',
+        'new-report',
+        'public-report-verified',
+        'incident-resolved',
+        'report-verification-result',
+        'new-rescue-request',
+        'rescue-assignment-updated',
+        'rescue-status-updated',
+        'assignment-updated',
+        'status-update',
+        'admin-sync',
+        'reconnect-sync',
+        'new-hazard-alert',
+        'alert-broadcast',
+        'hazard-alert-expired',
+        'alert-expired',
+        'hazard-alert-cancelled',
+        'alert-cancelled',
+        'facility-updated',
+        'evacuation-center-updated',
+      ]);
 
-      if (window.geoSafeStore && window.geoSafeStore.socket) {
-        const sock = window.geoSafeStore.socket;
-        const refreshRescueMonitor = () => {
-          if (state.currentSection === 'reports') loadReportsTable();
-          if (state.currentSection === 'dashboard') loadDashboardOverview();
+      if (!window.__geosafeAdminRealtimeBound) {
+        window.__geosafeAdminRealtimeBound = true;
+        window.addEventListener('geosafe:realtime-update', (ev) => {
+          const detail = (ev && ev.detail) || {};
+          const evtName = detail.event || '';
+
+          if (evtName === 'responder:location-updated') {
+            upsertAdminResponderLocationMarker(detail.data);
+            return;
+          }
+          if (evtName === 'responder:location-offline') {
+            removeAdminResponderLocationMarker(detail.data && detail.data.userId);
+            return;
+          }
+
+          // Isolate private messaging events strictly to the Messages oversight section
+          if (MESSAGING_REALTIME_EVENTS.has(evtName)) {
+            if (evtName === 'conversation:typing') return;
+            if (state.currentSection === 'messages') {
+              loadAdminConversationsList({ silent: true });
+              if (state.messages.activeConversationId) {
+                selectAdminConversation(state.messages.activeConversationId, { silent: true });
+              }
+            }
+            return;
+          }
+
+          if (!OPERATIONAL_REALTIME_EVENTS.has(evtName)) {
+            return;
+          }
+
+          if (evtName === 'reconnect-sync') {
+            loadLiveResponderLocations();
+          }
+
+          if (state.currentSection === 'dashboard') {
+            loadDashboardOverview();
+          } else if (state.currentSection === 'reports') {
+            loadReportsList();
+          } else if (state.currentSection === 'responders') {
+            loadRespondersList();
+          } else if (state.currentSection === 'alerts') {
+            const alertEvents = new Set([
+              'new-hazard-alert',
+              'alert-broadcast',
+              'hazard-alert-expired',
+              'alert-expired',
+              'hazard-alert-cancelled',
+              'alert-cancelled',
+              'reconnect-sync',
+              'admin-sync',
+            ]);
+            if (alertEvents.has(evtName)) {
+              loadBroadcastsList();
+            }
+          } else if (state.currentSection === 'messages' && evtName === 'reconnect-sync') {
+            loadAdminConversationsList({ silent: true });
+            if (state.messages.activeConversationId) {
+              selectAdminConversation(state.messages.activeConversationId, { silent: true });
+            }
+          }
+
           const reportModal = document.getElementById('admin-report-modal');
           if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
             openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
           }
-        };
-        sock.on('assignment:outcome', refreshRescueMonitor);
-        sock.on('rescue:transport-updated', refreshRescueMonitor);
+        });
+      }
+
+      if (window.geoSafeStore && window.geoSafeStore.socket) {
+        const sock = window.geoSafeStore.socket;
+        if (!sock._geosafeAdminRescueMonitorBound) {
+          sock._geosafeAdminRescueMonitorBound = true;
+          const refreshRescueMonitor = () => {
+            if (state.currentSection === 'reports') loadReportsTable();
+            if (state.currentSection === 'dashboard') loadDashboardOverview();
+            const reportModal = document.getElementById('admin-report-modal');
+            if (reportModal && !reportModal.classList.contains('hidden') && state.reports.activeDetail) {
+              openReportDetailModal(state.reports.activeDetail.recordType, state.reports.activeDetail.id);
+            }
+          };
+          sock.off('assignment:outcome', refreshRescueMonitor);
+          sock.off('rescue:transport-updated', refreshRescueMonitor);
+          sock.on('assignment:outcome', refreshRescueMonitor);
+          sock.on('rescue:transport-updated', refreshRescueMonitor);
+        }
       }
     } catch (err) {
       console.error('[Admin] Session authorization verification failed:', err);

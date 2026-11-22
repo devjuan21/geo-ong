@@ -363,9 +363,6 @@ function renderShelterMarkers(centers) {
     const shelterIcon = GeoSafeMapping.createCustomIcon('evacuation');
     const marker = L.marker([lat, lng], { icon: shelterIcon, zIndexOffset: 100 });
 
-    const capText = Number.isFinite(Number(center.capacity)) && Number(center.capacity) > 0
-      ? `<div><strong class="text-slate-900">Capacity:</strong> ${Number(center.currentOccupancy || 0)} / ${Number(center.capacity)}</div>`
-      : '';
     const statusText = center.status || 'Open';
     const isClosed = String(statusText).toLowerCase().includes('closed') || String(statusText).toLowerCase().includes('full');
 
@@ -378,7 +375,6 @@ function renderShelterMarkers(centers) {
         <h4 class="font-semibold text-slate-900 text-xs sm:text-sm mb-1">${escapeHtmlSafe(center.name || 'Evacuation Center')}</h4>
         <div class="bg-slate-50 p-2 rounded-md border border-slate-200 text-[10px] text-slate-600 space-y-0.5 mb-2.5">
           <div><strong class="text-slate-900">Address:</strong> ${escapeHtmlSafe(center.address || center.location || 'Barangay Bayanan')}</div>
-          ${capText}
         </div>
         <a href="evacuation-routes.html" class="block text-center w-full py-1.5 px-2 bg-slate-900 text-white rounded-md text-[11px] font-semibold hover:bg-slate-800 transition-colors">
           View Evacuation Routes

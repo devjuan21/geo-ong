@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - GeoSafe</title>
+  <title>Sign In - GeoSafe</title>
   <link rel="stylesheet" href="./assets/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,244 +16,308 @@
       width: 0 !important;
       height: 0 !important;
     }
+    .gs-login-grid-bg {
+      background-color: #0B203B;
+      background-image:
+        linear-gradient(to right, rgba(148, 185, 235, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148, 185, 235, 0.06) 1px, transparent 1px);
+      background-size: 36px 36px;
+    }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex items-center justify-center p-4 sm:p-6 font-sans selection:bg-[#F5B900] selection:text-[#202020]">
+<body class="bg-white text-[#0F172A] antialiased min-h-screen lg:h-screen lg:overflow-hidden flex flex-col lg:flex-row font-sans selection:bg-[#164579] selection:text-white">
 
-  <!-- Centered Auth Card -->
-  <main class="w-full max-w-md bg-white rounded-lg border border-slate-200 shadow-modal p-6 sm:p-8 relative">
+  <!-- Mobile Compact Brand Header (< 1024px) -->
+  <header class="lg:hidden gs-login-grid-bg px-5 py-4 flex items-center justify-between border-b border-white/10">
+    <div class="flex items-center gap-2.5">
+      <svg class="w-7 h-7 flex-shrink-0" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 2.5L5 7v8.2c0 6.8 4.7 12.9 11 14.3 6.3-1.4 11-7.5 11-14.3V7L16 2.5z" fill="#132F54" stroke="#CBD5E1" stroke-width="1.6"/>
+        <circle cx="16" cy="14" r="3" fill="#DC2626"/>
+      </svg>
+      <span class="text-base font-bold tracking-tight text-white">GeoSafe</span>
+    </div>
+    <span class="text-[11px] font-medium text-[#9EB8D6]">Barangay Bayanan</span>
+  </header>
 
-    <!-- Brand Header -->
-    <div class="flex flex-col items-center mb-6 text-center">
-      <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo"
-        class="w-14 h-14 rounded-full object-cover shadow-subtle ring-2 ring-slate-200 mb-3"
-        style="border-radius: 50%;">
-      <span class="gs-brand font-bold text-xl tracking-tight text-[#202020] leading-none">GeoSafe</span>
-      <h1 id="auth-card-title" class="text-base font-bold text-[#777777] mt-1.5">Login</h1>
+  <!-- LEFT PANEL (58% on Desktop): GeoSafe Branding + Map Visual -->
+  <section class="order-2 lg:order-1 w-full lg:w-[58%] gs-login-grid-bg text-white flex flex-col justify-between px-6 py-7 sm:px-10 sm:py-8 lg:px-12 lg:py-8 lg:h-full">
+    <!-- Top Brand Logo -->
+    <div class="hidden lg:flex items-center gap-2.5">
+      <svg class="w-7 h-7 flex-shrink-0" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M16 2.5L5 7v8.2c0 6.8 4.7 12.9 11 14.3 6.3-1.4 11-7.5 11-14.3V7L16 2.5z" fill="#132F54" stroke="#E2E8F0" stroke-width="1.6"/>
+        <circle cx="16" cy="14" r="3" fill="#DC2626"/>
+      </svg>
+      <span class="text-[17px] font-bold tracking-tight text-white">GeoSafe</span>
     </div>
 
-    <!-- 1. SIGN IN FORM -->
-    <form id="login-form" autocomplete="off" class="space-y-4" novalidate>
-      <!-- Anti-autofill decoy inputs preventing browser password manager automatic injection -->
-      <div style="position: absolute; left: -9999px; top: -9999px; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
-        <input type="text" name="prevent_autofill_user" tabindex="-1" autocomplete="off">
-        <input type="password" name="prevent_autofill_pwd" tabindex="-1" autocomplete="new-password">
+    <!-- Center Hero + Decorative Bayanan Map -->
+    <div class="my-auto py-2 lg:py-4 space-y-5 max-w-[660px]">
+      <div class="space-y-2.5">
+        <p class="text-[11px] sm:text-xs font-medium text-[#9EB8D6] tracking-wide">
+          Barangay Bayanan &middot; Emergency Operations Portal
+        </p>
+        <h1 id="auth-hero-title" class="text-2xl sm:text-[30px] lg:text-[34px] font-bold text-white leading-[1.16] tracking-tight">
+          GeoSafe &mdash; Barangay Bayanan<br class="hidden sm:inline"> Emergency Operations Center
+        </h1>
+        <p class="text-xs sm:text-[13px] text-[#9EB8D6] leading-relaxed max-w-[540px]">
+          Coordinated incident monitoring, rapid responder dispatch, and official community safety access for Barangay Bayanan.
+        </p>
       </div>
 
-      <!-- Email Field -->
-      <div>
-        <label for="login-email" class="block text-xs font-bold text-[#202020] mb-1.5">Email Address</label>
-        <input
-          type="email"
-          id="login-email"
-          name="email"
-          required
-          autocomplete="off"
-          placeholder="name@example.com"
-          class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] placeholder-[#777777]/60 focus:outline-none focus:ring-2 focus:ring-[#F5B900] focus:border-transparent transition-all"
-        >
-      </div>
+      <!-- Rectangular Decorative Map Presentation -->
+      <div class="w-full rounded-[8px] border border-white/10 bg-[#0E2440] overflow-hidden">
+        <svg viewBox="0 0 640 310" class="w-full h-auto block" role="img" aria-label="Decorative map illustration of Barangay Bayanan, Muntinlupa City">
+          <!-- Land & Laguna de Bay Water -->
+          <rect width="640" height="310" fill="#0F2744"/>
+          <path d="M402 0 L640 0 L640 310 L382 310 C395 250 408 175 412 110 C414 68 408 32 402 0 Z" fill="#0A1B32"/>
+          <!-- Coastline highlight -->
+          <path d="M402 0 C408 32 414 68 412 110 C408 175 395 250 382 310" fill="none" stroke="#2D527C" stroke-width="1.4"/>
 
-      <!-- Password Field (Last Textbox) with Show/Hide Toggle -->
-      <div>
-        <label for="login-password" class="block text-xs font-bold text-[#202020] mb-1.5">Password</label>
-        <div class="relative">
-          <input
-            type="password"
-            id="login-password"
-            name="password"
-            required
-            autocomplete="new-password"
-            placeholder="Enter your password"
-            class="w-full pl-3.5 pr-11 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] placeholder-[#777777]/60 focus:outline-none focus:ring-2 focus:ring-[#F5B900] focus:border-transparent transition-all"
-          >
-          <button
-            type="button"
-            id="toggle-password-btn"
-            aria-label="Show password"
-            class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#777777] hover:text-[#202020] focus:outline-none cursor-pointer"
-          >
-            <svg id="eye-open-icon" class="w-5 h-5 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-            </svg>
-            <svg id="eye-closed-icon" class="w-5 h-5 text-[#777777] hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"></path>
-            </svg>
-          </button>
-        </div>
-        <!-- Forgot Password Link Below Textbox -->
-        <div class="flex justify-end pt-1.5">
-          <button type="button" id="forgot-password-btn" class="text-xs font-bold text-[#8A6800] hover:underline focus:outline-none">
-            Forgot Password?
-          </button>
-        </div>
-      </div>
+          <!-- Subtle Grid & Street Network -->
+          <g stroke="#1C3C61" stroke-width="0.9" fill="none" opacity="0.85">
+            <path d="M0 42 L405 42 M0 95 L411 95 M0 152 L407 152 M0 208 L398 208 M0 264 L388 264"/>
+            <path d="M55 0 L42 310 M115 0 L98 310 M178 0 L165 310 M292 0 L282 310 M352 0 L340 310"/>
+            <path d="M18 22 L170 72 M52 124 L210 86 M30 185 L205 225 M140 285 L285 240 M245 30 L398 78 M255 130 L404 162 M262 215 L392 195"/>
+            <path d="M72 58 L138 148 M92 162 L154 252 M310 62 L372 135 M302 158 L368 242"/>
+          </g>
 
-      <!-- Login Submit Button -->
-      <button
-        type="submit"
-        id="login-submit-btn"
-        class="w-full py-3 px-4 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] active:scale-[0.99] text-[#202020] font-bold text-xs sm:text-sm shadow-subtle transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F5B900] mt-2"
-      >
-        <span id="login-btn-text">Login</span>
-        <svg id="login-btn-spinner" class="hidden animate-spin w-4 h-4 text-[#202020]" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          <!-- Major Corridors: SLEX & National Rd -->
+          <path d="M214 0 C212 95 210 200 206 310" fill="none" stroke="#2B5584" stroke-width="4.2"/>
+          <path d="M220 0 C218 95 216 200 212 310" fill="none" stroke="#2B5584" stroke-width="2.4"/>
+          <path d="M278 0 C272 105 266 210 262 310" fill="none" stroke="#2F5D8F" stroke-width="3"/>
+
+          <!-- Decorative Concentric Focus Rings centered on Bayanan -->
+          <circle cx="315" cy="155" r="245" fill="none" stroke="#E05252" stroke-opacity="0.14" stroke-width="1"/>
+          <circle cx="315" cy="155" r="142" fill="#E05252" fill-opacity="0.12" stroke="#E05252" stroke-opacity="0.45" stroke-width="1.2"/>
+          <circle cx="315" cy="155" r="92" fill="#E05252" fill-opacity="0.18" stroke="#E05252" stroke-opacity="0.6" stroke-width="1.2"/>
+          <circle cx="315" cy="155" r="46" fill="#E05252" fill-opacity="0.24" stroke="#E05252" stroke-opacity="0.72" stroke-width="1.2"/>
+
+          <!-- Geographic Labels -->
+          <text x="302" y="26" fill="#7D9EC2" font-size="11" font-family="Inter, sans-serif" font-weight="500">Alabang</text>
+          <text x="200" y="96" fill="#688CB4" font-size="10" font-family="Inter, sans-serif" transform="rotate(-89 200 96)">SLEX</text>
+          <text x="202" y="256" fill="#688CB4" font-size="10" font-family="Inter, sans-serif" transform="rotate(-89 202 256)">SLEX</text>
+          <text x="262" y="88" fill="#7D9EC2" font-size="9.5" font-family="Inter, sans-serif" transform="rotate(-87 262 88)">National Rd</text>
+          <text x="256" y="222" fill="#7D9EC2" font-size="9.5" font-family="Inter, sans-serif" transform="rotate(-87 256 222)">National Rd</text>
+
+          <text x="315" y="152" text-anchor="middle" fill="#D6E4F5" font-size="12" font-family="Inter, sans-serif" font-weight="600" letter-spacing="1.2">BAYANAN</text>
+          <text x="315" y="170" text-anchor="middle" fill="#9BB6D6" font-size="11" font-family="Inter, sans-serif" font-weight="500">Muntinlupa City</text>
+          <text x="292" y="286" fill="#7D9EC2" font-size="11" font-family="Inter, sans-serif" font-weight="500">Putatan</text>
+
+          <text x="512" y="138" text-anchor="middle" fill="#466992" font-size="13" font-family="Inter, sans-serif" font-weight="500" letter-spacing="5">LAGUNA</text>
+          <text x="512" y="168" text-anchor="middle" fill="#466992" font-size="13" font-family="Inter, sans-serif" font-weight="500" letter-spacing="5">DE BAY</text>
         </svg>
-      </button>
+      </div>
+    </div>
 
-      <!-- Create Resident Account Link -->
-      <p class="text-center text-xs text-[#777777] pt-2">
-        Don't have an account?
-        <button type="button" onclick="switchAuthTab('register')" class="font-bold text-[#8A6800] hover:underline ml-1">Create Resident Account</button>
-      </p>
-    </form>
+    <!-- Left Panel Footer -->
+    <div class="pt-4 mt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#7D99BA]">
+      <span>Barangay Bayanan Disaster Risk Reduction &amp; Management</span>
+      <span>Official Access Portal</span>
+    </div>
+  </section>
 
-    <!-- 2. RESIDENT REGISTRATION FORM -->
-    <form id="register-form" class="hidden space-y-3.5" novalidate>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label for="reg-first-name" class="block text-xs font-bold text-[#202020] mb-1">First Name <span class="text-[#D93636]">*</span></label>
-          <input
-            type="text"
-            id="reg-first-name"
-            required
-            autocomplete="given-name"
-            placeholder="Juan"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-        </div>
-        <div>
-          <label for="reg-last-name" class="block text-xs font-bold text-[#202020] mb-1">Last Name <span class="text-[#D93636]">*</span></label>
-          <input
-            type="text"
-            id="reg-last-name"
-            required
-            autocomplete="family-name"
-            placeholder="Dela Cruz"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-        </div>
+  <!-- RIGHT PANEL (42% on Desktop): Pure White Login Form -->
+  <main class="order-1 lg:order-2 w-full lg:w-[42%] bg-white flex flex-col justify-center items-center px-6 py-9 sm:px-10 lg:px-12 lg:h-full overflow-y-auto">
+    <div class="w-full max-w-[390px]">
+
+      <!-- Heading & Subtitle -->
+      <div class="mb-6">
+        <h2 id="auth-card-title" class="text-[26px] font-bold text-[#0F172A] tracking-tight leading-tight">
+          Welcome Back
+        </h2>
+        <p id="auth-card-subtitle" class="text-[13px] text-[#64748B] mt-1">
+          Sign in to access your account.
+        </p>
       </div>
 
-      <div>
-        <label for="reg-email" class="block text-xs font-bold text-[#202020] mb-1">Email Address <span class="text-[#D93636]">*</span></label>
-        <input
-          type="email"
-          id="reg-email"
-          required
-          autocomplete="email"
-          placeholder="resident@example.com"
-          class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
+      <!-- 1. SIGN IN FORM -->
+      <form id="login-form" autocomplete="off" class="space-y-4" novalidate>
+        <!-- Anti-autofill decoy inputs -->
+        <div style="position: absolute; left: -9999px; top: -9999px; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+          <input type="text" name="prevent_autofill_user" tabindex="-1" autocomplete="off">
+          <input type="password" name="prevent_autofill_pwd" tabindex="-1" autocomplete="new-password">
+        </div>
+
+        <!-- Email Field -->
+        <div>
+          <label for="login-email" class="block text-xs font-semibold text-[#1E293B] mb-1.5">Email Address</label>
+          <input
+            type="email"
+            id="login-email"
+            name="email"
+            required
+            autocomplete="off"
+            placeholder="name@bayanan.gov.ph"
+            class="w-full h-11 px-3.5 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20 transition-colors"
+          >
+        </div>
+
+        <!-- Password Field with Toggle -->
+        <div>
+          <label for="login-password" class="block text-xs font-semibold text-[#1E293B] mb-1.5">Password</label>
+          <div class="relative">
+            <input
+              type="password"
+              id="login-password"
+              name="password"
+              required
+              autocomplete="new-password"
+              placeholder="Enter your password"
+              class="w-full h-11 pl-3.5 pr-11 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20 transition-colors"
+            >
+            <button
+              type="button"
+              id="toggle-password-btn"
+              aria-label="Show password"
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#64748B] hover:text-[#0F172A] focus:outline-none cursor-pointer"
+            >
+              <svg id="eye-open-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <svg id="eye-closed-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Remember Me & Forgot Password -->
+        <div class="flex items-center justify-between pt-0.5">
+          <label for="login-remember" class="inline-flex items-center gap-2 text-xs text-[#475569] cursor-pointer select-none">
+            <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-[#CBD5E1] text-[#164579] focus:ring-[#164579]">
+            <span>Remember me</span>
+          </label>
+          <button type="button" id="forgot-password-btn" class="text-xs font-semibold text-[#164579] hover:underline focus:outline-none">
+            Forgot password?
+          </button>
+        </div>
+
+        <!-- Primary Sign In Button -->
+        <button
+          type="submit"
+          id="login-submit-btn"
+          class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#164579] mt-1"
         >
-      </div>
+          <span id="login-btn-text">Sign In</span>
+          <svg id="login-btn-spinner" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label for="reg-phone" class="block text-xs font-bold text-[#202020] mb-1">Mobile Number</label>
-          <input
-            type="tel"
-            id="reg-phone"
-            autocomplete="tel"
-            placeholder="0917 000 0000"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
+        <!-- Thin Horizontal Divider -->
+        <div class="border-t border-[#E2E8F0] pt-4 mt-5 space-y-2">
+          <!-- Shown ONLY if backend explicitly confirms zero accounts configured -->
+          <div id="login-init-section" class="hidden text-xs text-[#64748B] leading-relaxed">
+            <p>No accounts are configured on this standalone instance yet.</p>
+            <span class="font-semibold text-[#164579]">Initialize Administrator Account</span>
+          </div>
+          <p class="text-xs text-[#64748B]">
+            New Barangay Bayanan resident?
+            <button type="button" onclick="switchAuthTab('register')" class="font-semibold text-[#164579] hover:underline ml-1">Create Resident Account</button>
+          </p>
         </div>
-        <div>
-          <label for="reg-street" class="block text-xs font-bold text-[#202020] mb-1">House No. &amp; Street</label>
-          <input
-            type="text"
-            id="reg-street"
-            autocomplete="street-address"
-            placeholder="Purok 2"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-        </div>
-      </div>
+      </form>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label for="reg-password" class="block text-xs font-bold text-[#202020] mb-1">Password <span class="text-[#D93636]">*</span></label>
-          <input
-            type="password"
-            id="reg-password"
-            required
-            minlength="8"
-            autocomplete="new-password"
-            placeholder="Min 8 characters"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-        </div>
-        <div>
-          <label for="reg-confirm-password" class="block text-xs font-bold text-[#202020] mb-1">Confirm Password <span class="text-[#D93636]">*</span></label>
-          <input
-            type="password"
-            id="reg-confirm-password"
-            required
-            minlength="8"
-            autocomplete="new-password"
-            placeholder="Re-enter password"
-            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-xs sm:text-sm text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-        </div>
-      </div>
-
-      <!-- Location Verification Step (Barangay Bayanan) -->
-      <div id="reg-location-verification-card" class="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
-        <div class="flex items-start justify-between gap-2">
+      <!-- 2. RESIDENT REGISTRATION FORM -->
+      <form id="register-form" class="hidden space-y-3" novalidate>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <h3 class="text-xs font-extrabold text-[#202020]">Location Verification (Barangay Bayanan)</h3>
-            <p class="text-[11px] text-[#555555] leading-relaxed mt-0.5">
-              GeoSafe serves Barangay Bayanan, Muntinlupa City residents. GPS permission is requested once during registration to check if your location is inside the barangay boundary.
+            <label for="reg-first-name" class="block text-xs font-semibold text-[#1E293B] mb-1">First Name <span class="text-[#DC2626]">*</span></label>
+            <input type="text" id="reg-first-name" required autocomplete="given-name" placeholder="Juan"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+          <div>
+            <label for="reg-last-name" class="block text-xs font-semibold text-[#1E293B] mb-1">Last Name <span class="text-[#DC2626]">*</span></label>
+            <input type="text" id="reg-last-name" required autocomplete="family-name" placeholder="Dela Cruz"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+        </div>
+
+        <div>
+          <label for="reg-email" class="block text-xs font-semibold text-[#1E293B] mb-1">Email Address <span class="text-[#DC2626]">*</span></label>
+          <input type="email" id="reg-email" required autocomplete="email" placeholder="resident@example.com"
+            class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="reg-phone" class="block text-xs font-semibold text-[#1E293B] mb-1">Mobile Number</label>
+            <input type="tel" id="reg-phone" autocomplete="tel" placeholder="0917 000 0000"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+          <div>
+            <label for="reg-street" class="block text-xs font-semibold text-[#1E293B] mb-1">House No. &amp; Street</label>
+            <input type="text" id="reg-street" autocomplete="street-address" placeholder="Purok 2"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="reg-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Password <span class="text-[#DC2626]">*</span></label>
+            <input type="password" id="reg-password" required minlength="8" autocomplete="new-password" placeholder="Min 8 characters"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+          <div>
+            <label for="reg-confirm-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Confirm Password <span class="text-[#DC2626]">*</span></label>
+            <input type="password" id="reg-confirm-password" required minlength="8" autocomplete="new-password" placeholder="Re-enter password"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+        </div>
+
+        <!-- Location Verification Step (Barangay Bayanan) -->
+        <div id="reg-location-verification-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2">
+          <div>
+            <h3 class="text-xs font-bold text-[#0F172A]">Location Verification (Barangay Bayanan)</h3>
+            <p class="text-[11px] text-[#64748B] leading-snug mt-0.5">
+              GPS permission is requested once during registration to verify Barangay Bayanan residency.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btn-verify-location"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              <span id="btn-verify-location-text">Verify My Location</span>
+            </button>
+            <span id="reg-location-accuracy-label" class="hidden text-[10px] font-medium text-[#64748B]"></span>
+          </div>
+          <div id="reg-location-status-box" class="hidden rounded-[6px] border p-2 text-xs space-y-1">
+            <div class="flex items-center gap-2">
+              <span id="reg-location-status-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"></span>
+            </div>
+            <p id="reg-location-status-message" class="text-[11px] font-medium leading-snug"></p>
+            <p id="reg-location-admin-fallback" class="hidden text-[10px] text-[#64748B] leading-snug pt-0.5">
+              You may still submit registration. Your account will be active while an Administrator reviews your residency verification.
             </p>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            id="btn-verify-location"
-            class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#202020] hover:bg-[#333333] text-white font-bold text-xs shadow-subtle transition-all focus:outline-none focus:ring-2 focus:ring-[#F5B900]"
-          >
-            <svg class="w-4 h-4 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-            </svg>
-            <span id="btn-verify-location-text">Verify My Location</span>
-          </button>
-          <span id="reg-location-accuracy-label" class="hidden text-[10px] font-semibold text-[#777777]"></span>
-        </div>
+        <button type="submit" id="register-submit-btn"
+          class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#164579]">
+          <span id="register-btn-text">Create Resident Account</span>
+          <svg id="register-btn-spinner" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </button>
 
-        <div id="reg-location-status-box" class="hidden rounded-md border p-2.5 text-xs space-y-1">
-          <div class="flex items-center gap-2">
-            <span id="reg-location-status-badge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"></span>
-          </div>
-          <p id="reg-location-status-message" class="text-[11px] font-medium leading-snug"></p>
-          <p id="reg-location-admin-fallback" class="hidden text-[10px] text-[#555555] leading-snug pt-0.5">
-            You may still submit registration. Your account will be active for emergency access while an Administrator reviews your residency verification.
-          </p>
-        </div>
-      </div>
+        <p class="text-center text-xs text-[#64748B] pt-1">
+          Already have an account?
+          <button type="button" onclick="switchAuthTab('login')" class="font-semibold text-[#164579] hover:underline ml-1">Sign In</button>
+        </p>
+      </form>
 
-      <button
-        type="submit"
-        id="register-submit-btn"
-        class="w-full py-3 px-4 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] active:scale-[0.99] text-[#202020] font-bold text-xs sm:text-sm shadow-subtle transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F5B900] mt-1"
-      >
-        <span id="register-btn-text">Create Resident Account</span>
-        <svg id="register-btn-spinner" class="hidden animate-spin w-4 h-4 text-[#202020]" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-        </svg>
-      </button>
-
-      <p class="text-center text-xs text-[#777777] pt-1">
-        Already have an account?
-        <button type="button" onclick="switchAuthTab('login')" class="font-bold text-[#8A6800] hover:underline ml-1">Login</button>
+      <!-- Right Panel Footer -->
+      <p class="mt-8 pt-4 border-t border-[#F1F5F9] text-[11px] text-[#64748B] leading-relaxed">
+        Authorized personnel and registered residents of Barangay Bayanan only.
       </p>
-    </form>
 
+    </div>
   </main>
 
   <!-- Scripts -->

@@ -81,9 +81,9 @@ window.switchAuthTab = function (mode) {
       tabLogin.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
     if (titleEl) titleEl.textContent = 'Create Resident Account';
-    if (subEl) subEl.textContent = '';
+    if (subEl) subEl.textContent = 'Register for Barangay Bayanan community safety access.';
     if (headerSwitchBtn) {
-      headerSwitchBtn.innerHTML = '<span>Login</span>';
+      headerSwitchBtn.innerHTML = '<span>Sign In</span>';
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('login')");
     }
   } else {
@@ -95,8 +95,8 @@ window.switchAuthTab = function (mode) {
     if (tabRegister) {
       tabRegister.className = 'py-2 px-3 rounded-md text-xs font-bold transition-all text-[#777777] hover:text-[#202020]';
     }
-    if (titleEl) titleEl.textContent = 'Login';
-    if (subEl) subEl.textContent = '';
+    if (titleEl) titleEl.textContent = 'Welcome Back';
+    if (subEl) subEl.textContent = 'Sign in to access your account.';
     if (headerSwitchBtn) {
       headerSwitchBtn.innerHTML = '<span>Create Resident Account</span>';
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('register')");
@@ -169,12 +169,12 @@ function setSubmittingState(isSubmitting) {
 
   if (isSubmitting) {
     submitBtn.classList.add('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Logging in...';
+    if (btnText) btnText.textContent = 'Signing in...';
     if (btnArrow) btnArrow.classList.add('hidden');
     if (btnSpinner) btnSpinner.classList.remove('hidden');
   } else {
     submitBtn.classList.remove('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Login';
+    if (btnText) btnText.textContent = 'Sign In';
     if (btnArrow) btnArrow.classList.remove('hidden');
     if (btnSpinner) btnSpinner.classList.add('hidden');
   }

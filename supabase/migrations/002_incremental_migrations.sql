@@ -172,4 +172,41 @@ ALTER TABLE rescue_requests
   ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- ----------------------------------------------------------------------------
+-- 8. Official Evacuation Center: Pleasant Covered Court (Pleasant Village)
+--    Verified via Google Plus Code 7Q63C25Q+27H (14.4075625, 121.0381875)
+--    Status/capacity initialized to Standby/0 pending BDRRMO confirmation
+-- ----------------------------------------------------------------------------
+INSERT INTO evacuation_centers (
+  name,
+  address,
+  barangay,
+  latitude,
+  longitude,
+  capacity,
+  available_slots,
+  total_capacity,
+  current_occupancy,
+  status,
+  contact_person,
+  contact_phone
+)
+VALUES (
+  'Pleasant Covered Court',
+  'Hyatt St., Pleasant Village, Barangay Bayanan, Muntinlupa City',
+  'Barangay Bayanan',
+  14.40756250,
+  121.03818750,
+  0,
+  0,
+  0,
+  0,
+  'Standby',
+  NULL,
+  NULL
+)
+ON CONFLICT (name) DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('evacuation_centers', 'id'), GREATEST((SELECT MAX(id) FROM evacuation_centers), 1), true);
+
 COMMIT;

@@ -576,6 +576,9 @@ function startHomeLiveGps() {
  */
 window.locateUserOnMap = async function () {
   if (!incidentMap) return;
+  if (GeoSafeMapping && typeof GeoSafeMapping.requestCompassPermission === 'function') {
+    GeoSafeMapping.requestCompassPermission().catch(() => {});
+  }
   if (!homeGpsTracker) startHomeLiveGps();
 
   const btn = document.getElementById('btn-locate-me');

@@ -490,27 +490,31 @@ function formatGpsErrorMessage(err) {
 }
 
 function createNavigationUserIcon() {
-  if (!isNavigationActive()) {
-    return GeoSafeMapping.createCustomIcon('user');
-  }
-  const hasHeading = Number.isFinite(lastUserHeading);
-  const rotationStyle = hasHeading ? `transform: rotate(${Math.round(lastUserHeading)}deg);` : '';
-  return L.divIcon({
-    className: 'geosafe-nav-marker',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-blue-400 opacity-60"></span>
-        <div class="w-8 h-8 rounded-full bg-[#2563EB] border-2 border-white shadow-lg flex items-center justify-center" style="${rotationStyle}">
-          <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path>
-          </svg>
-        </div>
-      </div>
-    `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16]
+  const compass = GeoSafeMapping && typeof GeoSafeMapping.getCompassStatus === 'function'
+    ? GeoSafeMapping.getCompassStatus()
+    : null;
+  const heading = compass && Number.isFinite(compass.continuousHeading)
+    ? compass.continuousHeading
+    : (Number.isFinite(lastUserHeading) ? lastUserHeading : null);
+  return GeoSafeMapping.createCustomIcon('user', { heading });
+}
+
+let evacCompassUnsub = null;
+function ensureEvacCompassSubscription() {
+  if (evacCompassUnsub || !GeoSafeMapping || typeof GeoSafeMapping.subscribeCompassHeading !== 'function') return;
+  evacCompassUnsub = GeoSafeMapping.subscribeCompassHeading(({ heading, continuousHeading }) => {
+    if (userMarker && evacMap && evacMap.hasLayer(userMarker)) {
+      GeoSafeMapping.updateGpsMarkerHeading(userMarker, heading, continuousHeading);
+    }
   });
+  if (evacMap && typeof evacMap.once === 'function') {
+    evacMap.once('unload', () => {
+      if (evacCompassUnsub) {
+        evacCompassUnsub();
+        evacCompassUnsub = null;
+      }
+    });
+  }
 }
 
 /**
@@ -547,9 +551,17 @@ function renderUserLocationMarker() {
     userMarker.bindPopup(`<strong>${title}</strong><br><span class="text-xs text-slate-600">${safeLabel}</span>${accInfo}`);
   } else {
     userMarker.setLatLng(latLng);
-    userMarker.setIcon(userIcon);
     userMarker.setPopupContent(`<strong>${title}</strong><br><span class="text-xs text-slate-600">${safeLabel}</span>${accInfo}`);
+    const compass = GeoSafeMapping && typeof GeoSafeMapping.getCompassStatus === 'function'
+      ? GeoSafeMapping.getCompassStatus()
+      : null;
+    if (compass && compass.hasHeading) {
+      GeoSafeMapping.updateGpsMarkerHeading(userMarker, compass.heading, compass.continuousHeading);
+    } else if (Number.isFinite(lastUserHeading)) {
+      GeoSafeMapping.updateGpsMarkerHeading(userMarker, lastUserHeading, lastUserHeading);
+    }
   }
+  ensureEvacCompassSubscription();
 
   if (Number.isFinite(currentUserPosition.accuracy) && currentUserPosition.accuracy > 0) {
     const radius = Math.min(currentUserPosition.accuracy, 500);

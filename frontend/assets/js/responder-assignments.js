@@ -1131,31 +1131,22 @@ function stopAssignmentNavigation({ clearRoute = true, userPaused = false, prese
 function updateResponderGpsMarker(gps) {
   if (!detailMap || typeof L === 'undefined') return;
   clearAmbientGpsMarker();
-  const latLng = [gps.lat, gps.lng];
-
-  const hasLayer = typeof detailMap.hasLayer === 'function';
-  if (!navState.responderMarker || (hasLayer && !detailMap.hasLayer(navState.responderMarker))) {
-    const userIcon = GeoSafeMapping.createCustomIcon('user');
-    navState.responderMarker = L.marker(latLng, { icon: userIcon, zIndexOffset: 500 })
-      .addTo(detailMap)
-      .bindPopup('<strong>Your Current Location</strong>');
-  } else {
-    navState.responderMarker.setLatLng(latLng);
-  }
-
-  if (Number.isFinite(gps.accuracy) && gps.accuracy > 0) {
-    if (!navState.responderAccuracyCircle || (hasLayer && !detailMap.hasLayer(navState.responderAccuracyCircle))) {
-      navState.responderAccuracyCircle = L.circle(latLng, {
-        radius: Math.min(gps.accuracy, 500),
-        color: '#3478C7',
-        weight: 1,
-        fillColor: '#3478C7',
-        fillOpacity: 0.12,
-      }).addTo(detailMap);
-    } else {
-      navState.responderAccuracyCircle.setLatLng(latLng);
-      navState.responderAccuracyCircle.setRadius(Math.min(gps.accuracy, 500));
-    }
+  if (window.GeoSafeMapping && typeof window.GeoSafeMapping.renderLiveGpsMarker === 'function') {
+    const markerState = {
+      marker: navState.responderMarker,
+      accuracyCircle: navState.responderAccuracyCircle,
+      continuousHeading: navState.responderContinuousHeading || null,
+      _compassUnsub: navState.responderCompassUnsub || null,
+    };
+    window.GeoSafeMapping.renderLiveGpsMarker(detailMap, markerState, gps, {
+      title: 'Your Current Location',
+      zIndexOffset: 500,
+    });
+    navState.responderMarker = markerState.marker;
+    navState.responderAccuracyCircle = markerState.accuracyCircle;
+    navState.responderContinuousHeading = markerState.continuousHeading;
+    navState.responderCompassUnsub = markerState._compassUnsub;
+    return;
   }
 }
 

@@ -136,6 +136,9 @@ function createPostgresAdapter() {
     ? {
         connectionString: connStr,
         max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+        keepAlive: true,
         ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
       }
     : {
@@ -145,10 +148,18 @@ function createPostgresAdapter() {
         password: process.env.DB_PASSWORD || '',
         database: process.env.DB_NAME || 'geosafe_db',
         max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+        keepAlive: true,
         ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
       };
 
   const pgPool = new PgPool(poolConfig);
+
+  // Prevent idle Supabase pooler ECONNRESET errors from crashing the Node process
+  pgPool.on('error', (err) => {
+    console.warn('[Postgres Pool] Idle client error (non-fatal):', err.message);
+  });
 
   async function runQuery(clientOrPool, rawSql, params = []) {
     const { sql, values } = translateSqlForPostgres(rawSql, params);

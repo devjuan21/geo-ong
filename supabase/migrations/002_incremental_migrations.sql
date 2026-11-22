@@ -201,11 +201,14 @@ VALUES (
   0,
   0,
   0,
-  'Standby',
+  'Open - Accommodating',
   NULL,
   NULL
 )
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE
+SET
+  status = EXCLUDED.status,
+  updated_at = CURRENT_TIMESTAMP;
 
 SELECT setval(pg_get_serial_sequence('evacuation_centers', 'id'), GREATEST((SELECT MAX(id) FROM evacuation_centers), 1), true);
 

@@ -23,6 +23,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const portalRoutes = require('./routes/portalRoutes');
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 initSocket(server);
 

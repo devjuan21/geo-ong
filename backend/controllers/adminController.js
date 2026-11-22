@@ -3452,7 +3452,12 @@ async function createEmergencyBroadcast(req, res) {
     });
   } catch (err) {
     await conn.rollback();
-    console.error('[Admin API] createEmergencyBroadcast failed:', err.message);
+    console.error('[Admin API] createEmergencyBroadcast failed:', {
+      code: err.code,
+      constraint: err.constraint,
+      detail: err.detail,
+      message: err.message,
+    });
     if (err.code === '23514' || err.code === '23502' || err.code === '22P02') {
       return res.status(400).json({ error: 'Invalid broadcast field value. Please verify category, target scope, and message fields.' });
     }

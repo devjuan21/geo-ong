@@ -507,6 +507,9 @@ function ensureEvacCompassSubscription() {
       GeoSafeMapping.updateGpsMarkerHeading(userMarker, heading, continuousHeading);
     }
   });
+  if (evacMap && typeof GeoSafeMapping.attachCompassDiagnosticsPanel === 'function') {
+    GeoSafeMapping.attachCompassDiagnosticsPanel(evacMap);
+  }
   if (evacMap && typeof evacMap.once === 'function') {
     evacMap.once('unload', () => {
       if (evacCompassUnsub) {

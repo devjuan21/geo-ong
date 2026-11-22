@@ -106,7 +106,7 @@ function initResponderMap() {
 
     const refreshSize = () => {
       if (respMap) {
-        try { respMap.invalidateSize({ animate: false }); } catch (_) {}
+        try { respMap.invalidateSize({ animate: false }); } catch (_) { }
       }
     };
     requestAnimationFrame(refreshSize);
@@ -364,8 +364,15 @@ function startResponderLiveGps() {
   responderLiveGpsTracker = window.GeoSafeMapping.createLiveGpsTracker({
     syncIntervalMs: 10000,
     onLocation: (reading) => {
-      currentGpsLocation = { lat: reading.lat, lng: reading.lng, accuracy: reading.accuracy, isStale: Boolean(reading.isStale) };
-      renderResponderGpsMarker(reading.lat, reading.lng, reading.accuracy, reading.isStale, reading.updatedAt);
+      currentGpsLocation = {
+        lat: reading.lat,
+        lng: reading.lng,
+        accuracy: reading.accuracy,
+        heading: reading.heading,
+        speed: reading.speed,
+        isStale: Boolean(reading.isStale),
+      };
+      renderResponderGpsMarker(reading.lat, reading.lng, reading.accuracy, reading.isStale, reading.updatedAt, reading.heading, reading.speed);
 
       if (!hasCenteredResponderGps && respMap && !selectedTask) {
         hasCenteredResponderGps = true;
@@ -446,60 +453,19 @@ window.acquireResponderGps = async function (silent = false) {
   }
 };
 
-function renderResponderGpsMarker(lat, lng, accuracy, isStale = false, updatedAt = null) {
-  if (!respMap) return;
-  const timeLabel = updatedAt ? new Date(updatedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
-  const statusTag = isStale ? 'Stale' : 'Live';
+const responderGpsMarkerState = { marker: null, accuracyCircle: null };
 
-  const responderGpsIcon = L.divIcon({
-    className: 'geosafe-gps-pulse',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <span class="${isStale ? '' : 'animate-ping'} absolute inline-flex h-8 w-8 rounded-full ${isStale ? 'bg-amber-400 opacity-40' : 'bg-blue-400 opacity-75'}"></span>
-        <div class="w-6 h-6 rounded-full ${isStale ? 'bg-amber-600' : 'bg-[#3478C7]'} border-2 border-white shadow-xl text-white flex items-center justify-center font-bold text-[9px]">
-          ME
-        </div>
-      </div>
-    `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
-  });
-
-  const popupHtml = `
-    <div class="text-xs p-1 space-y-0.5">
-      <div class="flex items-center justify-between gap-2">
-        <strong class="text-blue-900">Responder Position</strong>
-        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isStale ? 'bg-slate-50 text-[#8A6800]' : 'bg-emerald-50 text-[#278653]'}">${statusTag}</span>
-      </div>
-      <span class="block font-mono text-[10px] text-slate-600">${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}</span>
-      ${accuracy ? `<span class="block text-[10px] text-slate-500">Accuracy: ±${Math.round(accuracy)}m</span>` : ''}
-      <span class="block text-[10px] text-slate-400">Updated ${timeLabel}</span>
-    </div>
-  `;
-
-  if (!userGpsMarker) {
-    userGpsMarker = L.marker([lat, lng], { icon: responderGpsIcon, zIndexOffset: 1000 }).addTo(respMap);
-    userGpsMarker.bindPopup(popupHtml);
-  } else {
-    userGpsMarker.setLatLng([lat, lng]);
-    userGpsMarker.setIcon(responderGpsIcon);
-    userGpsMarker.setPopupContent(popupHtml);
-  }
-
-  if (accuracy && accuracy > 0) {
-    if (!userAccuracyCircle) {
-      userAccuracyCircle = L.circle([lat, lng], {
-        radius: accuracy,
-        color: '#3478C7',
-        weight: 1,
-        fillColor: '#3478C7',
-        fillOpacity: 0.1
-      }).addTo(respMap);
-    } else {
-      userAccuracyCircle.setLatLng([lat, lng]);
-      userAccuracyCircle.setRadius(accuracy);
-    }
-  }
+function renderResponderGpsMarker(lat, lng, accuracy, isStale = false, updatedAt = null, heading = null, speed = null) {
+  if (!respMap || !window.GeoSafeMapping || typeof window.GeoSafeMapping.renderLiveGpsMarker !== 'function') return;
+  responderGpsMarkerState.marker = userGpsMarker;
+  window.GeoSafeMapping.renderLiveGpsMarker(
+    respMap,
+    responderGpsMarkerState,
+    { lat, lng, accuracy, heading, speed, updatedAt, isStale },
+    { title: 'Responder Position', zIndexOffset: 1000 }
+  );
+  userGpsMarker = responderGpsMarkerState.marker;
+  userAccuracyCircle = responderGpsMarkerState.accuracyCircle;
 }
 
 /**

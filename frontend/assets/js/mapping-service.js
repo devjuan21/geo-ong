@@ -982,7 +982,7 @@
             <div class="relative flex items-center justify-center" style="width:${sizePx}px;height:${sizePx}px;">
               <span class="animate-ping absolute inline-flex ${circleClass} rounded-full ${pulseBg} opacity-45 pointer-events-none"></span>
               <div style="${staleBg}" class="${circleClass} rounded-full ${stateClasses} flex items-center justify-center border-2 border-white">
-                <div class="geosafe-gps-arrow-rotator flex items-center justify-center" data-has-heading="${hasHeading ? 'true' : 'false'}" style="transform:rotate(${angle}deg);transition:transform 140ms linear;transform-origin:center center;">
+                <div class="geosafe-gps-arrow-rotator flex items-center justify-center" data-has-heading="${hasHeading ? 'true' : 'false'}" style="width:100%;height:100%;transform:rotate(${angle}deg);transition:transform 120ms linear;transform-origin:50% 50%;will-change:transform;">
                   <svg class="${svgClass} text-white drop-shadow-sm" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path>
                   </svg>
@@ -1835,33 +1835,99 @@
     },
 
     /**
-     * Extract genuine compass heading (0-360° clockwise from North) from DeviceOrientationEvent.
-     * Returns null if event has no absolute compass reading.
+     * Extract genuine tilt-compensated geographic compass heading (0-360° clockwise from North)
+     * from DeviceOrientationEvent. Returns { heading, rawHeading, absoluteAvailable, source } or null.
      */
-    extractCompassHeading(event) {
+    extractCompassReading(event) {
       if (!event) return null;
-      // iOS Safari provides webkitCompassHeading directly (clockwise from North)
+      const screenAngle = GeoSafeMapping.getScreenOrientationAngle();
+
+      // 1. iOS Safari provides webkitCompassHeading directly (clockwise from Magnetic/True North)
       if (typeof event.webkitCompassHeading === 'number' && Number.isFinite(event.webkitCompassHeading) && event.webkitCompassHeading >= 0) {
-        return GeoSafeMapping.normalizeHeading(event.webkitCompassHeading);
+        const raw = Number(event.webkitCompassHeading);
+        const heading = GeoSafeMapping.normalizeHeading(raw);
+        return {
+          heading,
+          rawHeading: raw,
+          absoluteAvailable: true,
+          source: 'webkitCompassHeading',
+        };
       }
-      // Standard absolute orientation (Android Chrome / W3C DeviceOrientation)
-      if ((event.type === 'deviceorientationabsolute' || event.absolute === true) && typeof event.alpha === 'number' && Number.isFinite(event.alpha)) {
-        const screenAngle = GeoSafeMapping.getScreenOrientationAngle();
-        return GeoSafeMapping.normalizeHeading(360 - event.alpha + screenAngle);
+
+      // 2. Standard W3C absolute orientation (Android Chrome deviceorientationabsolute / absolute === true)
+      const isAbsolute = event.type === 'deviceorientationabsolute' || event.absolute === true;
+      const hasAlpha = typeof event.alpha === 'number' && Number.isFinite(event.alpha);
+      if (!hasAlpha) return null;
+
+      if (!isAbsolute) {
+        return {
+          heading: null,
+          rawHeading: Number(event.alpha),
+          absoluteAvailable: false,
+          source: 'relative-only',
+        };
       }
-      return null;
+
+      const deg2rad = Math.PI / 180;
+      const a = Number(event.alpha) * deg2rad;
+      const b = Number.isFinite(Number(event.beta)) ? Number(event.beta) * deg2rad : 0;
+      const g = Number.isFinite(Number(event.gamma)) ? Number(event.gamma) * deg2rad : 0;
+
+      const cA = Math.cos(a), sA = Math.sin(a);
+      const cB = Math.cos(b), sB = Math.sin(b);
+      const cG = Math.cos(g), sG = Math.sin(g);
+
+      let east = 0;
+      let north = 0;
+      const absBetaDeg = Math.abs(Number(event.beta) || 0);
+      if (absBetaDeg <= 75) {
+        // Project device top edge (+Y) onto horizontal East-North plane
+        east = -sA * cB;
+        north = cA * cB;
+      } else {
+        // Device held upright/past vertical: project device back (-Z) onto horizontal plane
+        east = -cA * sG - sA * sB * cG;
+        north = -sA * sG + cA * sB * cG;
+      }
+
+      let headingRad = Math.atan2(east, north);
+      if (headingRad < 0) headingRad += 2 * Math.PI;
+      const heading = GeoSafeMapping.normalizeHeading(headingRad * (180 / Math.PI) + screenAngle);
+
+      return {
+        heading,
+        rawHeading: Number(event.alpha),
+        absoluteAvailable: true,
+        source: event.type || 'deviceorientation',
+      };
+    },
+
+    extractCompassHeading(event) {
+      const parsed = GeoSafeMapping.extractCompassReading(event);
+      return parsed && parsed.absoluteAvailable ? parsed.heading : null;
     },
 
     _getCompassHub() {
       if (!window.__geosafeCompassHub) {
         window.__geosafeCompassHub = {
           listening: false,
-          permissionState: 'unknown', // 'unknown' | 'granted' | 'denied' | 'unsupported'
+          supported: typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined',
+          permissionState: (typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined' && typeof window.DeviceOrientationEvent.requestPermission === 'function')
+            ? 'unknown'
+            : (typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined' ? 'not_required' : 'unsupported'),
+          sensorEventReceived: false,
+          absoluteAvailable: false,
+          rawCompassHeading: null,
           rawHeading: null,
           continuousHeading: null,
+          appliedRotationDeg: null,
+          lastGpsHeading: null,
           lastEventAt: 0,
+          unavailableReason: '',
           subscribers: new Set(),
+          diagSubscribers: new Set(),
           handler: null,
+          gestureHookBound: false,
           cleanupBound: false,
         };
       }
@@ -1870,19 +1936,51 @@
 
     getCompassStatus() {
       const hub = GeoSafeMapping._getCompassHub();
+      let reason = hub.unavailableReason || '';
+      if (!reason) {
+        if (!hub.supported) {
+          reason = 'DeviceOrientationEvent API not supported by this browser.';
+        } else if (hub.permissionState === 'denied') {
+          reason = 'Compass permission denied by user or browser policy.';
+        } else if (hub.permissionState === 'unknown') {
+          reason = 'Tap Location or anywhere on the map to grant iOS compass permission.';
+        } else if (!hub.sensorEventReceived) {
+          reason = 'Waiting for device orientation sensor event (desktop/device may lack magnetometer).';
+        } else if (!hub.absoluteAvailable) {
+          reason = 'Device only emitted relative orientation (no absolute north-referenced compass).';
+        }
+      }
       return {
+        supported: hub.supported,
         permissionState: hub.permissionState,
+        sensorEventReceived: hub.sensorEventReceived,
+        absoluteAvailable: hub.absoluteAvailable,
+        rawCompassHeading: hub.rawCompassHeading,
         hasHeading: Number.isFinite(hub.rawHeading),
         heading: hub.rawHeading,
         continuousHeading: hub.continuousHeading,
+        appliedRotationDeg: hub.appliedRotationDeg,
+        lastGpsHeading: hub.lastGpsHeading,
         lastEventAt: hub.lastEventAt,
+        reason,
       };
+    },
+
+    _notifyCompassDiagnostics() {
+      const hub = GeoSafeMapping._getCompassHub();
+      if (!hub.diagSubscribers || hub.diagSubscribers.size === 0) return;
+      const status = GeoSafeMapping.getCompassStatus();
+      hub.diagSubscribers.forEach((cb) => {
+        try { cb(status); } catch (_) { }
+      });
     },
 
     async requestCompassPermission() {
       const hub = GeoSafeMapping._getCompassHub();
       if (typeof window === 'undefined' || typeof window.DeviceOrientationEvent === 'undefined') {
+        hub.supported = false;
         hub.permissionState = 'unsupported';
+        GeoSafeMapping._notifyCompassDiagnostics();
         return 'unsupported';
       }
       if (typeof window.DeviceOrientationEvent.requestPermission === 'function') {
@@ -1892,59 +1990,100 @@
           if (hub.permissionState === 'granted' && hub.subscribers.size > 0) {
             GeoSafeMapping._ensureCompassListeners();
           }
+          GeoSafeMapping._notifyCompassDiagnostics();
           return hub.permissionState;
         } catch (_) {
           hub.permissionState = 'denied';
+          GeoSafeMapping._notifyCompassDiagnostics();
           return 'denied';
         }
       }
-      hub.permissionState = 'granted';
+      hub.permissionState = 'not_required';
       if (hub.subscribers.size > 0) {
         GeoSafeMapping._ensureCompassListeners();
       }
-      return 'granted';
+      GeoSafeMapping._notifyCompassDiagnostics();
+      return 'not_required';
+    },
+
+    _bindGesturePermissionHook() {
+      const hub = GeoSafeMapping._getCompassHub();
+      if (hub.gestureHookBound || typeof document === 'undefined') return;
+      if (typeof window === 'undefined' || typeof window.DeviceOrientationEvent === 'undefined') return;
+      if (typeof window.DeviceOrientationEvent.requestPermission !== 'function') return;
+      if (hub.permissionState !== 'unknown') return;
+
+      hub.gestureHookBound = true;
+      const onFirstGesture = () => {
+        document.removeEventListener('pointerdown', onFirstGesture, true);
+        document.removeEventListener('touchend', onFirstGesture, true);
+        document.removeEventListener('click', onFirstGesture, true);
+        hub.gestureHookBound = false;
+        if (hub.permissionState === 'unknown') {
+          GeoSafeMapping.requestCompassPermission().catch(() => {});
+        }
+      };
+      document.addEventListener('pointerdown', onFirstGesture, { capture: true, passive: true });
+      document.addEventListener('touchend', onFirstGesture, { capture: true, passive: true });
+      document.addEventListener('click', onFirstGesture, { capture: true, passive: true });
     },
 
     _ensureCompassListeners() {
       const hub = GeoSafeMapping._getCompassHub();
       if (hub.listening || typeof window === 'undefined') return;
       if (typeof window.DeviceOrientationEvent === 'undefined') {
+        hub.supported = false;
         hub.permissionState = 'unsupported';
+        GeoSafeMapping._notifyCompassDiagnostics();
         return;
       }
       // iOS 13+ requires explicit user gesture before DeviceOrientationEvent.requestPermission()
       if (typeof window.DeviceOrientationEvent.requestPermission === 'function' && hub.permissionState !== 'granted') {
+        GeoSafeMapping._bindGesturePermissionHook();
+        GeoSafeMapping._notifyCompassDiagnostics();
         return;
       }
       if (hub.permissionState === 'unknown') {
-        hub.permissionState = 'granted';
+        hub.permissionState = 'not_required';
       }
 
       let lastNotifyAt = 0;
       let lastNotifiedContinuous = null;
+      let lastDiagAt = 0;
       hub.handler = (event) => {
-        const heading = GeoSafeMapping.extractCompassHeading(event);
-        if (heading === null) return;
         const now = Date.now();
-        hub.rawHeading = heading;
-        hub.lastEventAt = now;
-        hub.continuousHeading = GeoSafeMapping.computeContinuousAngle(hub.continuousHeading, heading, 0.35);
+        hub.sensorEventReceived = true;
+        const parsed = GeoSafeMapping.extractCompassReading(event);
+        if (parsed) {
+          hub.rawCompassHeading = parsed.rawHeading;
+          if (parsed.absoluteAvailable && parsed.heading !== null) {
+            hub.absoluteAvailable = true;
+            hub.unavailableReason = '';
+            hub.rawHeading = parsed.heading;
+            hub.lastEventAt = now;
+            hub.continuousHeading = GeoSafeMapping.computeContinuousAngle(hub.continuousHeading, parsed.heading, 0.35);
 
-        const diff = lastNotifiedContinuous === null ? Infinity : Math.abs(hub.continuousHeading - lastNotifiedContinuous);
-        if (now - lastNotifyAt < 50 && diff < 1.5) return;
-        lastNotifyAt = now;
-        lastNotifiedContinuous = hub.continuousHeading;
-
-        hub.subscribers.forEach((cb) => {
-          try {
-            cb({
-              heading: hub.rawHeading,
-              continuousHeading: hub.continuousHeading,
-              source: 'compass',
-              updatedAt: now,
-            });
-          } catch (_) { }
-        });
+            const diff = lastNotifiedContinuous === null ? Infinity : Math.abs(hub.continuousHeading - lastNotifiedContinuous);
+            if (now - lastNotifyAt >= 50 || diff >= 1.5) {
+              lastNotifyAt = now;
+              lastNotifiedContinuous = hub.continuousHeading;
+              hub.subscribers.forEach((cb) => {
+                try {
+                  cb({
+                    heading: hub.rawHeading,
+                    continuousHeading: hub.continuousHeading,
+                    source: 'compass',
+                    updatedAt: now,
+                  });
+                } catch (_) { }
+              });
+            }
+          }
+        }
+        if (now - lastDiagAt >= 150) {
+          lastDiagAt = now;
+          GeoSafeMapping._notifyCompassDiagnostics();
+        }
       };
 
       if ('ondeviceorientationabsolute' in window) {
@@ -1960,6 +2099,7 @@
         window.addEventListener('beforeunload', stopAll);
         window.addEventListener('geosafe:logout', stopAll);
       }
+      GeoSafeMapping._notifyCompassDiagnostics();
     },
 
     _teardownCompassListeners() {
@@ -1994,10 +2134,19 @@
       };
     },
 
+    getMapBearing(map) {
+      if (map && typeof map.getBearing === 'function') {
+        const b = Number(map.getBearing());
+        return Number.isFinite(b) ? b : 0;
+      }
+      return 0;
+    },
+
     /**
      * Update an existing Leaflet user marker's directional arrow in-place without recreating the marker.
+     * Accounts for map bearing so the arrow points in the true geographic direction.
      */
-    updateGpsMarkerHeading(marker, headingDeg, continuousAngleDeg = null) {
+    updateGpsMarkerHeading(marker, headingDeg, continuousAngleDeg = null, map = null) {
       if (!marker || typeof marker.getElement !== 'function') return false;
       const el = marker.getElement();
       if (!el) return false;
@@ -2005,10 +2154,72 @@
       if (!rotator) return false;
       const norm = GeoSafeMapping.normalizeHeading(headingDeg);
       if (norm === null) return false;
-      const angle = Number.isFinite(Number(continuousAngleDeg)) ? Number(continuousAngleDeg) : norm;
+      const baseAngle = Number.isFinite(Number(continuousAngleDeg)) ? Number(continuousAngleDeg) : norm;
+      const mapBearing = GeoSafeMapping.getMapBearing(map || marker._map);
+      const appliedAngle = baseAngle - mapBearing;
       rotator.setAttribute('data-has-heading', 'true');
-      rotator.style.transform = `rotate(${angle.toFixed(1)}deg)`;
+      rotator.style.transform = `rotate(${appliedAngle.toFixed(1)}deg)`;
+      const hub = GeoSafeMapping._getCompassHub();
+      hub.appliedRotationDeg = GeoSafeMapping.normalizeHeading(appliedAngle);
       return true;
+    },
+
+    isGpsDebugMode() {
+      if (typeof window === 'undefined') return false;
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        if (params.get('debug') === 'gps' || params.get('gpsDebug') === '1') return true;
+        if (window.localStorage && window.localStorage.getItem('geosafe_gps_debug') === '1') return true;
+      } catch (_) { }
+      const host = String(window.location && window.location.hostname || '').toLowerCase();
+      return host === 'localhost' || host === '127.0.0.1';
+    },
+
+    attachCompassDiagnosticsPanel(map) {
+      if (!map || typeof map.getContainer !== 'function' || !GeoSafeMapping.isGpsDebugMode()) return;
+      const container = map.getContainer();
+      if (!container || container.querySelector('.geosafe-gps-diagnostics')) return;
+
+      const panel = document.createElement('div');
+      panel.className = 'geosafe-gps-diagnostics';
+      panel.style.cssText = 'position:absolute;bottom:8px;left:8px;z-index:800;background:rgba(16,29,53,0.9);color:#F8FAFC;font-size:10px;line-height:1.35;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);max-width:255px;pointer-events:auto;font-family:monospace;';
+      container.appendChild(panel);
+
+      const renderDiag = (s) => {
+        const permLabel = s.permissionState === 'granted'
+          ? 'Granted'
+          : s.permissionState === 'denied'
+            ? 'Denied'
+            : s.permissionState === 'not_required'
+              ? 'Not required'
+              : s.permissionState === 'unsupported'
+                ? 'Unsupported'
+                : 'Prompt pending';
+        const lastTime = s.lastEventAt ? new Date(s.lastEventAt).toLocaleTimeString() : 'None';
+        panel.innerHTML = `
+          <div style="font-weight:700;color:#60A5FA;margin-bottom:2px;">GPS &amp; Compass Diagnostics</div>
+          <div>Orientation API: <b>${s.supported ? 'Yes' : 'No'}</b></div>
+          <div>Compass permission: <b>${permLabel}</b></div>
+          <div>Sensor event received: <b>${s.sensorEventReceived ? 'Yes' : 'No'}</b></div>
+          <div>Absolute orientation: <b>${s.absoluteAvailable ? 'Yes' : 'No'}</b></div>
+          <div>Raw compass heading: <b>${s.rawCompassHeading !== null ? `${s.rawCompassHeading.toFixed(1)}°` : 'N/A'}</b></div>
+          <div>Calculated geo heading: <b>${s.heading !== null ? `${s.heading.toFixed(1)}°` : 'N/A'}</b></div>
+          <div>Last sensor update: <b>${lastTime}</b></div>
+          <div>Current GPS heading: <b>${s.lastGpsHeading !== null ? `${s.lastGpsHeading.toFixed(1)}°` : 'N/A'}</b></div>
+          <div>Marker rotation: <b>${s.appliedRotationDeg !== null ? `${s.appliedRotationDeg.toFixed(1)}°` : 'N/A'}</b></div>
+          ${!s.hasHeading && s.reason ? `<div style="color:#FBBF24;margin-top:2px;">${s.reason}</div>` : ''}
+        `;
+      };
+
+      const hub = GeoSafeMapping._getCompassHub();
+      hub.diagSubscribers.add(renderDiag);
+      renderDiag(GeoSafeMapping.getCompassStatus());
+
+      if (typeof map.once === 'function') {
+        map.once('unload', () => {
+          hub.diagSubscribers.delete(renderDiag);
+        });
+      }
     },
 
     /**
@@ -2016,6 +2227,8 @@
      */
     resolveHeadingForReading(reading, markerState = null) {
       const hub = GeoSafeMapping._getCompassHub();
+      const gpsHeading = reading ? GeoSafeMapping.normalizeHeading(reading.heading) : null;
+      hub.lastGpsHeading = gpsHeading;
       const compassFresh = Number.isFinite(hub.rawHeading) && (Date.now() - hub.lastEventAt < 15000);
       if (compassFresh) {
         return {
@@ -2025,7 +2238,6 @@
         };
       }
       // Fallback to GPS coords.heading ONLY when moving (>= 0.8 m/s) and valid [0, 360]
-      const gpsHeading = reading ? GeoSafeMapping.normalizeHeading(reading.heading) : null;
       const gpsSpeed = reading && Number.isFinite(Number(reading.speed)) ? Number(reading.speed) : null;
       const isMoving = gpsSpeed !== null && gpsSpeed >= 0.8;
       if (gpsHeading !== null && isMoving) {
@@ -2113,7 +2325,8 @@
           GeoSafeMapping.updateGpsMarkerHeading(
             markerState.marker,
             resolvedHeading.heading,
-            resolvedHeading.continuousHeading
+            resolvedHeading.continuousHeading,
+            map
           );
         }
       }
@@ -2124,7 +2337,7 @@
           if (!markerState.marker) return;
           if (typeof map.hasLayer === 'function' && !map.hasLayer(markerState.marker)) return;
           markerState.continuousHeading = continuousHeading;
-          GeoSafeMapping.updateGpsMarkerHeading(markerState.marker, heading, continuousHeading);
+          GeoSafeMapping.updateGpsMarkerHeading(markerState.marker, heading, continuousHeading, map);
         });
         const cleanupMarkerCompass = () => {
           if (markerState._compassUnsub) {
@@ -2136,6 +2349,8 @@
           map.once('unload', cleanupMarkerCompass);
         }
       }
+      GeoSafeMapping.attachCompassDiagnosticsPanel(map);
+      GeoSafeMapping._notifyCompassDiagnostics();
 
       if (accuracy !== null) {
         const ringColor = isStale ? '#D97706' : '#2563EB';

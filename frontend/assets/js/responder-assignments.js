@@ -292,6 +292,16 @@ function renderFilteredAssignments() {
 
   let filtered = [...allAssignments];
 
+  // Ensure active/pending items always appear before completed items, newest first
+  const isCompletedItem = (item) => ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(String(item.status || '').toLowerCase());
+  filtered.sort((a, b) => {
+    const doneDiff = (isCompletedItem(a) ? 1 : 0) - (isCompletedItem(b) ? 1 : 0);
+    if (doneDiff !== 0) return doneDiff;
+    const ta = new Date(a.submittedAt || a.assignedAt || 0).getTime() || 0;
+    const tb = new Date(b.submittedAt || b.assignedAt || 0).getTime() || 0;
+    return tb - ta;
+  });
+
   // Apply tab status filter
   if (currentFilter !== 'All') {
     const targetStatus = currentFilter.toLowerCase();
@@ -368,7 +378,10 @@ function renderFilteredAssignments() {
         </div>
 
         <div>
-          <h4 class="font-bold text-sm sm:text-base text-[#202020]">${a.title || a.category}</h4>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h4 class="font-bold text-sm sm:text-base text-[#202020]">${a.title || a.category}</h4>
+            ${!isRescue && a.category && a.title && a.category !== a.title ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">${a.category}</span>` : ''}
+          </div>
           <p class="text-xs text-[#777777] mt-1 flex items-center gap-1">
             <svg class="w-3.5 h-3.5 text-[#F5B900] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>
             <span class="truncate">${a.location || 'Barangay Bayanan'}</span>

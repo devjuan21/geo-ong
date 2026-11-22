@@ -1338,12 +1338,12 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          ) ia ON TRUE
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.status NOT IN ('false_alarm', 'dismissed')
+         WHERE LOWER(r.status) NOT IN ('false_alarm', 'dismissed', 'rejected')
            AND r.source_rescue_id IS NULL
            AND (
              ia.responder_user_id IS NOT NULL
              OR r.assigned_to IS NOT NULL
-             OR (r.assigned_to IS NULL AND ia.id IS NULL AND r.status IN ('pending', 'verified'))
+             OR (r.assigned_to IS NULL AND ia.id IS NULL AND LOWER(r.status) IN ('pending', 'verified', 'under_review', 'dispatched'))
            )
          ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`
       : `SELECT r.*, ia.id AS assignment_id, ia.responder_user_id, ia.assignment_status,
@@ -1361,11 +1361,11 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
          ) ia ON TRUE
          LEFT JOIN users u ON r.user_id = u.id
          LEFT JOIN user_profiles up ON r.user_id = up.user_id
-         WHERE r.status NOT IN ('false_alarm', 'dismissed')
+         WHERE LOWER(r.status) NOT IN ('false_alarm', 'dismissed', 'rejected')
            AND r.source_rescue_id IS NULL
            AND (
              COALESCE(ia.responder_user_id, r.assigned_to) = ?
-             OR (r.assigned_to IS NULL AND ia.id IS NULL AND r.status IN ('pending', 'verified'))
+             OR (r.assigned_to IS NULL AND ia.id IS NULL AND LOWER(r.status) IN ('pending', 'verified', 'under_review', 'dispatched'))
            )
          ORDER BY COALESCE(ia.assigned_at, r.created_at) DESC`,
     isAdmin ? [] : [userId]
@@ -1710,6 +1710,21 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
         : 'Proceed to assigned scene and report status to Barangay Bayanan EOC.'),
     })),
   ];
+
+  const isCompletedRecord = (item) => {
+    const st = String(item && item.status || '').toLowerCase();
+    return ['completed', 'resolved', 'cancelled', 'false_alarm', 'dismissed'].includes(st);
+  };
+  const recordTimestamp = (item) => {
+    const raw = (item && (item.submittedAt || item.assignedAt)) || null;
+    const ms = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(ms) ? ms : 0;
+  };
+  return combined.sort((a, b) => {
+    const doneDiff = (isCompletedRecord(a) ? 1 : 0) - (isCompletedRecord(b) ? 1 : 0);
+    if (doneDiff !== 0) return doneDiff;
+    return recordTimestamp(b) - recordTimestamp(a);
+  });
 }
 
 router.get('/responder/assignments', requireRole('responder', 'admin'), async (req, res) => {

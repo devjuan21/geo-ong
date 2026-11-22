@@ -173,10 +173,39 @@ ALTER TABLE rescue_requests
   ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ----------------------------------------------------------------------------
--- 8. Official Evacuation Center: Pleasant Covered Court (Pleasant Village)
---    Verified via Google Plus Code 7Q63C25Q+27H (14.4075625, 121.0381875)
---    Status/capacity initialized to Standby/0 pending BDRRMO confirmation
+-- 8. Official Barangay Bayanan Evacuation Centers (Muntinlupa City Poster)
+--    Preserves existing IDs (1, 2, 3, 5) & FKs; updates verified coordinates
 -- ----------------------------------------------------------------------------
+UPDATE evacuation_centers
+SET
+  name = 'Bayanan Elementary Main Court',
+  address = 'National Road, Barangay Bayanan, Muntinlupa City',
+  latitude = 14.40713740,
+  longitude = 121.04530380,
+  status = 'Open - Accommodating',
+  updated_at = CURRENT_TIMESTAMP
+WHERE id = 1;
+
+UPDATE evacuation_centers
+SET
+  name = 'Bayanan Baywalk Covered Court',
+  address = 'Baywalk, Purok 6, Barangay Bayanan, Muntinlupa City',
+  latitude = 14.41097870,
+  longitude = 121.05130140,
+  status = 'Open - Accommodating',
+  updated_at = CURRENT_TIMESTAMP
+WHERE id = 2;
+
+UPDATE evacuation_centers
+SET
+  name = 'Bayanan Elementary School Unit 1 Court',
+  address = 'Bautista St. cor. Baywalk, Barangay Bayanan, Muntinlupa City',
+  latitude = 14.41207000,
+  longitude = 121.05170000,
+  status = 'Open - Accommodating',
+  updated_at = CURRENT_TIMESTAMP
+WHERE id = 3;
+
 INSERT INTO evacuation_centers (
   name,
   address,
@@ -193,10 +222,10 @@ INSERT INTO evacuation_centers (
 )
 VALUES (
   'Pleasant Covered Court',
-  'Hyatt St., Pleasant Village, Barangay Bayanan, Muntinlupa City',
+  'Intercon St. cor. Hyatt St., Pleasant Village, Barangay Bayanan, Muntinlupa City',
   'Barangay Bayanan',
-  14.40756250,
-  121.03818750,
+  14.40765000,
+  121.03779300,
   0,
   0,
   0,
@@ -207,6 +236,9 @@ VALUES (
 )
 ON CONFLICT (name) DO UPDATE
 SET
+  address = EXCLUDED.address,
+  latitude = EXCLUDED.latitude,
+  longitude = EXCLUDED.longitude,
   status = EXCLUDED.status,
   updated_at = CURRENT_TIMESTAMP;
 

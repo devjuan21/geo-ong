@@ -4,6 +4,7 @@ const { validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { ROLE_IDS } = require('../config/roles');
 const { emitNewReport, emitPublicVerifiedReport, emitReportVerificationResult, emitStatusUpdate, emitIncidentResolved } = require('../services/socketService');
+const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { isPointInsideBayanan } = require('../utils/bayananBoundary');
 
 // Canonical incident storage: `reports` is the ONLY incident table written by the application.
@@ -430,6 +431,14 @@ async function updateReportStatus(req, res) {
           residentId: rows[0].user_id,
           assignedTo: rows[0].assigned_to || null,
           reason: trimmedReason,
+        });
+        dispatchIncidentResolvedCommunityBroadcast({
+          incidentId: reportId,
+          referenceNumber: updated.reference_number || `INC-${reportId}`,
+          incidentCategory: rows[0].incident_type,
+          verifiedLocation: rows[0].address || rows[0].location,
+          resolvedAt: rows[0].resolved_at,
+          actorUserId: req.user.id,
         });
       } else if (status === 'verified' || status === 'false_alarm') {
         emitReportVerificationResult({

@@ -660,6 +660,9 @@ class GeoSafeStore {
         }
         return isResponderUser || isAdminUser;
       }
+      if (eventName === 'incident-resolved-notification') {
+        return isResidentUser;
+      }
       if (eventName === 'report-verification-result') {
         if (payload.residentId && currentUser && Number(payload.residentId) !== Number(currentUser.id) && !isAdminUser) {
           return false;
@@ -701,6 +704,9 @@ class GeoSafeStore {
       } else if (eventName === 'rescue-status-updated' || eventName === 'status-update') {
         toastType = 'success';
         toastMsg = payload.message || `Status updated${recordId ? ` for ${recordId}` : ''}${statusText ? `: ${statusText}` : ''}.`;
+      } else if (eventName === 'incident-resolved-notification') {
+        toastType = 'info';
+        toastMsg = payload.message || 'An incident in Barangay Bayanan has been marked as resolved.';
       } else if (eventName === 'administrator-announcement') {
         toastType = 'info';
         toastMsg = `EOC Announcement: ${payload.title || payload.message || 'New operational notice'}`;
@@ -812,6 +818,7 @@ class GeoSafeStore {
         'new-report',
         'public-report-verified',
         'incident-resolved',
+        'incident-resolved-notification',
         'report-verification-result',
         'admin-sync',
         'new-rescue-request',

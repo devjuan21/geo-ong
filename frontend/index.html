@@ -44,85 +44,91 @@
       <!-- Left Column (75% on Desktop: 9/12 cols) -->
       <div class="md:col-span-8 lg:col-span-9 space-y-3 sm:space-y-3.5 min-w-0">
 
-        <!-- 1. Combined Quick Action: Report / Rescue (Section 3: Icon, Title, Emergency Badge, Clear Arrow, No Paragraph) -->
-        <a href="report-rescue.html" class="group flex items-center justify-between p-3 sm:p-3.5 rounded-lg bg-white border-2 border-[#FFE872] shadow-subtle hover:border-[#F5B900] hover:hover:border-slate-300 transition-all active:scale-[0.99]" title="Open Report / Rescue">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-[#D93636] text-white flex items-center justify-center flex-shrink-0 shadow-sm ring-2 ring-[#FFF9E8]">
+        <!-- 1. Prominent Emergency Action: Report / Rescue -->
+        <a href="report-rescue.html" class="group flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-[10px] bg-gradient-to-r from-[#DC2626] to-[#B91C1C] text-white border border-red-700/80 shadow-md hover:shadow-lg hover:from-[#B91C1C] hover:to-[#991B1B] transition-all active:scale-[0.99]" title="Open Report / Rescue">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-[8px] bg-white/15 border border-white/25 text-white flex items-center justify-center flex-shrink-0">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             </div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm sm:text-base font-bold text-[#202020] group-hover:text-[#D93636] transition-colors tracking-tight">Report / Rescue</h2>
-              <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#FFF1F1] text-[#D93636] border border-[#FFC2C2] uppercase">Emergency</span>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="text-sm sm:text-base font-bold text-white tracking-tight">Report / Rescue</h2>
+                <span class="text-[9px] font-bold px-2 py-0.5 rounded-[4px] bg-white/20 text-white border border-white/30 uppercase tracking-wider">Emergency</span>
+              </div>
+              <p class="text-[11px] sm:text-xs text-red-100 truncate mt-0.5">Submit an incident report or request immediate rescue</p>
             </div>
           </div>
-          <div class="w-8 h-8 rounded-md bg-slate-50 group-hover:bg-[#F5B900] flex items-center justify-center text-[#202020] border border-[#FFE872] transition-colors flex-shrink-0 shadow-subtle">
+          <div class="w-8 h-8 rounded-[6px] bg-white/15 group-hover:bg-white text-white group-hover:text-[#DC2626] flex items-center justify-center border border-white/25 transition-colors flex-shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </div>
         </a>
 
-        <!-- 2. Prominent Community Map Card (Section 4: Larger Map, Small Badges & Controls, Uncovered) -->
-        <div class="bg-white rounded-lg border border-slate-200 shadow-subtle p-3 sm:p-4 space-y-2.5">
-      <!-- Section Header -->
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <div class="flex items-center gap-2 flex-wrap">
-          <h2 class="text-sm sm:text-base font-bold text-[#202020] tracking-tight">Community Map</h2>
-          <!-- Number of currently active public incidents (small badge) -->
-          <span id="active-incidents-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-[#8A6800] border border-[#FFE872]">
-            <span class="w-1.5 h-1.5 rounded-full bg-[#F5B900]"></span>
-            <span id="active-incidents-count">0</span> active
-          </span>
-          <!-- Status Indicator outside map (clean compact pill) -->
-          <span id="incident-map-empty" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">
-            <span class="w-1.5 h-1.5 rounded-full bg-[#278653] flex-shrink-0 animate-pulse"></span>
-            <span>No reported incidents in your area.</span>
-          </span>
-        </div>
+        <!-- 2. Prominent Community Map Card -->
+        <div class="bg-white rounded-[10px] border border-slate-200/90 shadow-sm p-3.5 sm:p-4 space-y-3">
+          <!-- Section Header -->
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-sm sm:text-base font-bold text-[#172033] tracking-tight">Community Map</h2>
+              <!-- Number of currently active public incidents (small badge) -->
+              <span id="active-incidents-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[5px] text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#F59E0B]"></span>
+                <span id="active-incidents-count">0</span> active
+              </span>
+              <!-- Status Indicator outside map -->
+              <span id="incident-map-empty" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[5px] text-[10px] font-semibold bg-teal-50 text-[#0D9488] border border-teal-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#0D9488] flex-shrink-0 animate-pulse"></span>
+                <span>No reported incidents in your area.</span>
+              </span>
+            </div>
 
-        <!-- Map Controls (Small & Compact) -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <button id="btn-locate-me" onclick="locateUserOnMap()" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 text-[#202020] border border-slate-200 transition-colors shadow-subtle" title="My Location">
-            <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
-            <span>Location</span>
-          </button>
-          <button onclick="refreshCommunityMap()" class="p-1.5 rounded-md bg-white hover:bg-slate-100 text-[#202020] border border-slate-200 transition-colors shadow-subtle" title="Refresh Map">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-          </button>
-        </div>
-      </div>
+            <!-- Map Controls -->
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <button id="btn-locate-me" onclick="locateUserOnMap()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[6px] text-[11px] font-semibold bg-[#2563EB] hover:bg-blue-700 text-white transition-colors shadow-sm" title="My Location">
+                <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
+                <span>Location</span>
+              </button>
+              <button onclick="refreshCommunityMap()" class="p-1.5 rounded-[6px] bg-slate-50 hover:bg-slate-100 text-[#172033] border border-slate-200 transition-colors" title="Refresh Map">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              </button>
+            </div>
+          </div>
 
-      <!-- Map Display Container - Compact responsive height, 100% visible, zoomable, NEVER covered -->
-      <div class="relative w-full h-72 resident-map-frame rounded-lg border border-slate-200 overflow-hidden shadow-inner">
-        <div id="incident-map" class="w-full h-full z-10"></div>
-      </div>
+          <!-- Map Display Container -->
+          <div class="relative w-full h-72 sm:h-80 resident-map-frame rounded-[8px] border border-slate-200 overflow-hidden shadow-inner">
+            <div id="incident-map" class="w-full h-full z-10"></div>
+          </div>
 
-      <!-- Compact Legend & GPS Status -->
-      <div class="flex items-center justify-between text-[10px] text-[#777777] pt-0.5 flex-wrap gap-2">
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-600"></span>Location</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#D97706]"></span>Incident</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#278653]"></span>Shelter</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#DC2626]"></span>Hospital</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#2563EB]"></span>Health Center</span>
+          <!-- Compact Legend & Bayanan Tag -->
+          <div class="flex items-center justify-between text-[11px] text-[#64748B] pt-0.5 flex-wrap gap-2">
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class="inline-flex items-center gap-1.5 font-medium"><span class="w-2.5 h-2.5 rounded-full bg-[#3B82F6] ring-2 ring-blue-100"></span>Location</span>
+              <span class="inline-flex items-center gap-1.5 font-medium"><span class="w-2.5 h-2.5 rounded-full bg-[#D97706] ring-2 ring-amber-100"></span>Incident</span>
+              <span class="inline-flex items-center gap-1.5 font-medium"><span class="w-2.5 h-2.5 rounded-full bg-[#0D9488] ring-2 ring-teal-100"></span>Shelter</span>
+              <span class="inline-flex items-center gap-1.5 font-medium"><span class="w-2.5 h-2.5 rounded-full bg-[#DC2626] ring-2 ring-red-100"></span>Hospital</span>
+              <span class="inline-flex items-center gap-1.5 font-medium"><span class="w-2.5 h-2.5 rounded-[3px] bg-[#2563EB] ring-2 ring-blue-100"></span>Health Center</span>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold text-[10px] text-[#101D35] bg-slate-100 px-2 py-0.5 rounded-[5px] border border-slate-200">Bayanan Sectors</span>
+            </div>
+          </div>
         </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-bold text-[#8A6800] bg-slate-50 px-2 py-0.5 rounded-full border border-[#FFE872]">Bayanan Sectors</span>
-        </div>
-      </div>
-    </div>
 
         <!-- 3. Recent Reports (Left Column) -->
         <div class="space-y-2.5">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-bold text-[#202020]">Recent Reports</h2>
-            <span id="reports-header-count" class="text-[10px] font-bold text-[#8A6800] bg-slate-50 border border-[#FFE872] px-2 py-0.5 rounded-full">0 records</span>
+            <h2 class="text-sm font-bold text-[#172033]">Recent Reports</h2>
+            <span id="reports-header-count" class="text-[10px] font-semibold text-[#101D35] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-[5px]">0 records</span>
           </div>
 
           <!-- Empty State Container -->
-          <div id="community-reports-empty" class="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-md bg-slate-50 border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0">
+          <div id="community-reports-empty" class="p-4 rounded-[10px] bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
+            <div class="w-9 h-9 rounded-[8px] bg-slate-100 border border-slate-200 text-[#64748B] flex items-center justify-center flex-shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             </div>
-            <span class="text-xs font-bold text-[#202020]">No community reports available.</span>
+            <div>
+              <span class="text-xs font-bold text-[#172033] block">No community reports available.</span>
+              <span class="text-[11px] text-[#64748B]">Verified public incident reports in Barangay Bayanan will appear here.</span>
+            </div>
           </div>
 
           <!-- Populated List -->
@@ -137,60 +143,60 @@
       <div class="md:col-span-4 lg:col-span-3 flex flex-col gap-3 sm:gap-3.5 min-w-0">
 
         <!-- Hazard Alerts Navigation Card -->
-        <a href="hazard-alerts.html" class="group flex flex-col p-3.5 sm:p-4 rounded-lg bg-white border border-slate-200 shadow-subtle hover:border-[#F5B900] hover:hover:border-slate-300 transition-all active:scale-[0.99]" title="Open Hazard Alerts">
+        <a href="hazard-alerts.html" class="group flex flex-col p-3.5 sm:p-4 rounded-[10px] bg-white border border-slate-200/90 shadow-sm hover:border-[#3B82F6] transition-all active:scale-[0.99]" title="Open Hazard Alerts">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2.5 min-w-0">
-              <div class="w-8 h-8 rounded-md bg-slate-50 border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0 shadow-subtle">
+              <div class="w-8 h-8 rounded-[6px] bg-amber-50 border border-amber-200 text-[#F59E0B] flex items-center justify-center flex-shrink-0">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
               </div>
-              <h3 class="text-xs sm:text-sm font-bold text-[#202020] group-hover:text-[#8A6800] truncate transition-colors">Hazard Alerts</h3>
+              <h3 class="text-xs sm:text-sm font-bold text-[#172033] group-hover:text-[#2563EB] truncate transition-colors">Hazard Alerts</h3>
             </div>
-            <div class="w-7 h-7 rounded-full bg-[#F5B900] group-hover:bg-[#E5AC00] flex items-center justify-center text-[#202020] transition-colors flex-shrink-0 shadow-subtle">
+            <div class="w-7 h-7 rounded-[6px] bg-slate-100 group-hover:bg-[#2563EB] flex items-center justify-center text-[#172033] group-hover:text-white transition-colors flex-shrink-0">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </div>
           </div>
 
           <div class="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
-            <span class="text-xs font-semibold text-[#555555]">Latest Advisories</span>
-            <span id="stat-alerts-count" class="text-[11px] font-bold text-[#278653] bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex-shrink-0">0 Active</span>
+            <span class="text-xs font-semibold text-[#64748B]">Latest Advisories</span>
+            <span id="stat-alerts-count" class="text-[11px] font-semibold text-[#0D9488] bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-[5px] flex-shrink-0">0 Active</span>
           </div>
 
           <div id="alerts-widget-list" class="mt-2.5 space-y-2.5 min-w-0">
-            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-[#777777] font-medium">
+            <div class="p-3 bg-[#F1F5F9]/70 rounded-[8px] border border-slate-200 text-xs text-[#64748B] font-medium">
               No active hazard alerts.
             </div>
           </div>
         </a>
 
         <!-- Nearest Evacuation Center Widget (GPS-computed from PostgreSQL centers) -->
-        <div class="bg-white rounded-lg border border-slate-200 shadow-subtle p-3 sm:p-3.5 space-y-2.5">
+        <div class="bg-white rounded-[10px] border border-slate-200/90 shadow-sm p-3.5 sm:p-4 space-y-2.5">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200 text-[#278653] flex items-center justify-center flex-shrink-0 shadow-subtle">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            <div class="w-8 h-8 rounded-[6px] bg-teal-50 border border-teal-200 text-[#0D9488] flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
             </div>
-            <h3 class="text-xs sm:text-sm font-bold text-[#202020] truncate">Nearest Evacuation Center</h3>
+            <h3 class="text-xs sm:text-sm font-bold text-[#172033] truncate">Nearest Evacuation Center</h3>
           </div>
 
-          <div id="nearest-center-container" class="p-2.5 bg-slate-50 rounded-md border border-slate-200 space-y-1">
-            <p id="nearest-center-name" class="text-xs font-bold text-[#202020] truncate">Checking location...</p>
-            <p id="nearest-center-meta" class="text-[11px] text-[#777777]">Enable location access to find the nearest center.</p>
+          <div id="nearest-center-container" class="p-2.5 bg-[#F1F5F9]/70 rounded-[8px] border border-slate-200 space-y-1">
+            <p id="nearest-center-name" class="text-xs font-bold text-[#172033] truncate">Checking location...</p>
+            <p id="nearest-center-meta" class="text-[11px] text-[#64748B]">Enable location access to find the nearest center.</p>
           </div>
 
-          <a href="evacuation-routes.html" class="w-full h-9 px-3 rounded-md bg-slate-50 hover:bg-[#F5B900] border border-[#FFE872] text-xs font-bold text-[#202020] flex items-center justify-between transition-colors shadow-subtle">
-            <span>View Routes</span>
+          <a href="evacuation-routes.html" class="w-full h-9 px-3 rounded-[6px] bg-[#2563EB] hover:bg-blue-700 text-xs font-semibold text-white flex items-center justify-between transition-colors shadow-sm">
+            <span>View Evacuation Routes</span>
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </a>
         </div>
 
         <!-- My Submitted Reports Button Widget -->
-        <a href="report-rescue.html" class="group flex items-center justify-between p-3 sm:p-3.5 rounded-lg bg-white border border-slate-200 shadow-subtle hover:border-[#F5B900] hover:hover:border-slate-300 transition-all active:scale-[0.99]" title="Open My Submitted Reports">
+        <a href="report-rescue.html" class="group flex items-center justify-between p-3.5 sm:p-4 rounded-[10px] bg-white border border-slate-200/90 shadow-sm hover:border-[#3B82F6] transition-all active:scale-[0.99]" title="Open My Submitted Reports">
           <div class="flex items-center gap-2.5 min-w-0">
-            <div class="w-8 h-8 rounded-md bg-slate-50 border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0 shadow-subtle">
+            <div class="w-8 h-8 rounded-[6px] bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center flex-shrink-0">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             </div>
-            <span class="text-xs sm:text-sm font-bold text-[#202020] group-hover:text-[#8A6800] truncate">My Submitted Reports</span>
+            <span class="text-xs sm:text-sm font-bold text-[#172033] group-hover:text-[#2563EB] truncate transition-colors">My Submitted Reports</span>
           </div>
-          <div class="w-7 h-7 rounded-md bg-slate-50 group-hover:bg-[#F5B900] flex items-center justify-center text-[#202020] border border-[#FFE872] transition-colors flex-shrink-0 shadow-subtle">
+          <div class="w-7 h-7 rounded-[6px] bg-slate-100 group-hover:bg-[#2563EB] flex items-center justify-center text-[#172033] group-hover:text-white transition-colors flex-shrink-0">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
           </div>
         </a>
@@ -201,43 +207,43 @@
   </main>
 
   <!-- Incident Details Modal -->
-  <div id="incident-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#202020]/50 backdrop-blur-sm hidden">
-    <div class="bg-white rounded-lg max-w-md w-full p-5 sm:p-6 shadow-modal border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+  <div id="incident-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D35]/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-[10px] max-w-md w-full p-5 sm:p-6 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
       <div class="flex items-start justify-between pb-3 border-b border-slate-200">
         <div>
-          <span id="modal-incident-type" class="text-[10px] font-bold text-[#8A6800] bg-slate-50 border border-[#FFE872] px-2 py-0.5 rounded-full uppercase tracking-wider">Incident</span>
-          <h3 id="modal-incident-title" class="text-sm font-bold text-[#202020] mt-1.5">Incident Title</h3>
+          <span id="modal-incident-type" class="text-[10px] font-bold text-[#2563EB] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-[5px] uppercase tracking-wider">Incident</span>
+          <h3 id="modal-incident-title" class="text-sm font-bold text-[#172033] mt-1.5">Incident Title</h3>
         </div>
-        <button onclick="closeIncidentModal()" class="p-1.5 rounded-md text-[#777777] hover:text-[#202020] hover:bg-slate-100 transition-colors">
+        <button onclick="closeIncidentModal()" class="p-1.5 rounded-[6px] text-[#64748B] hover:text-[#172033] hover:bg-slate-100 transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
 
       <div class="mt-4 space-y-3.5 text-xs">
         <div>
-          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Description</span>
-          <p id="modal-incident-desc" class="text-[#202020] mt-0.5 leading-relaxed"></p>
+          <span class="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">Description</span>
+          <p id="modal-incident-desc" class="text-[#172033] mt-0.5 leading-relaxed"></p>
         </div>
 
-        <div class="grid grid-cols-2 gap-2.5 p-3 bg-slate-50 rounded-lg border border-slate-200">
+        <div class="grid grid-cols-2 gap-2.5 p-3 bg-[#F1F5F9]/70 rounded-[8px] border border-slate-200">
           <div>
-            <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Location</span>
-            <p id="modal-incident-loc" class="font-bold text-[#202020] mt-0.5 truncate"></p>
+            <span class="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">Location</span>
+            <p id="modal-incident-loc" class="font-bold text-[#172033] mt-0.5 truncate"></p>
           </div>
           <div>
-            <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Reported At</span>
-            <p id="modal-incident-time" class="font-bold text-[#202020] mt-0.5"></p>
+            <span class="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">Reported At</span>
+            <p id="modal-incident-time" class="font-bold text-[#172033] mt-0.5"></p>
           </div>
         </div>
 
         <div>
-          <span class="text-[10px] font-bold text-[#777777] uppercase tracking-wider block">Public Status</span>
+          <span class="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block">Public Status</span>
           <p id="modal-incident-status" class="mt-0.5"></p>
         </div>
       </div>
 
       <div class="mt-5 pt-3.5 border-t border-slate-200 flex justify-end">
-        <button onclick="closeIncidentModal()" class="px-4 py-2 rounded-md bg-slate-50 hover:bg-[#FFF3D0] text-[#202020] text-xs font-bold border border-[#FFE872] transition-colors">
+        <button onclick="closeIncidentModal()" class="px-4 py-2 rounded-[6px] bg-[#101D35] hover:bg-slate-800 text-white text-xs font-semibold transition-colors">
           Close
         </button>
       </div>

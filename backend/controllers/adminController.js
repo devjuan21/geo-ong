@@ -16,6 +16,7 @@ const {
   emitIncidentResolved,
 } = require('../services/socketService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
+const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { defaultColorForName } = require('../config/advisoryCategories');
 const { getEocLocation } = require('../config/eocConfig');
 
@@ -1501,6 +1502,13 @@ async function reviewAdminReport(req, res) {
           residentId: current.user_id,
           assignedTo: targetAssignee,
           reason: historyRemark,
+        });
+        dispatchIncidentResolvedCommunityBroadcast({
+          incidentId: recordId,
+          referenceNumber: refNum,
+          incidentCategory: current.incident_type,
+          verifiedLocation: current.address || current.location,
+          actorUserId: req.user.id,
         });
       } else if (targetStatus === 'verified' || isRejection || isClarification) {
         emitReportVerificationResult({
@@ -4544,6 +4552,14 @@ async function closeAdminIncident(req, res) {
       assignedTo: current.assigned_to,
       actorUserId: req.user.id,
       reason: trimmedReason,
+    });
+    dispatchIncidentResolvedCommunityBroadcast({
+      incidentId: recordId,
+      referenceNumber: refNum,
+      incidentCategory: current.incident_type,
+      verifiedLocation: current.address || current.location,
+      resolvedAt,
+      actorUserId: req.user.id,
     });
 
     return res.json({

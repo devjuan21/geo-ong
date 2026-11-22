@@ -166,54 +166,65 @@ const GeoSafeUI = {
       document.body.prepend(sidebarContainer);
     }
 
-    sidebarContainer.className = 'hidden lg:flex fixed top-0 bottom-0 left-0 z-40 w-60 bg-white border-r border-slate-200 flex-col justify-between select-none transition-all';
+    sidebarContainer.className = 'hidden lg:flex fixed top-0 bottom-0 left-0 z-40 w-60 bg-[#101D35] border-r border-slate-800/80 text-white flex-col justify-between select-none transition-all';
 
     const sidebarNavHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
+      const isEmergency = Boolean(item.isEmergencyAction);
+      let itemClasses = 'text-slate-300 hover:text-white hover:bg-white/10 font-medium';
+      let iconClasses = 'text-slate-400';
+
+      if (isActive && isEmergency) {
+        itemClasses = 'bg-[#DC2626] text-white font-semibold shadow-sm';
+        iconClasses = 'text-white';
+      } else if (isActive) {
+        itemClasses = 'bg-[#2563EB] text-white font-semibold shadow-sm';
+        iconClasses = 'text-white';
+      } else if (isEmergency) {
+        itemClasses = 'text-red-200 hover:text-white hover:bg-[#DC2626]/20 border border-red-500/25 font-medium';
+        iconClasses = 'text-red-400';
+      }
+
       return `
-        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs transition-colors ${
-          isActive
-            ? 'bg-slate-900 text-white font-semibold'
-            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
-        }">
+        <a href="${item.href}" data-nav-id="${item.id}" class="flex items-center justify-between gap-3 px-3 py-2.5 rounded-[8px] text-xs transition-colors ${itemClasses}">
           <span class="flex items-center gap-3 min-w-0">
-            <span class="flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-500'}">${this.getIcon(item.icon, 'w-4 h-4')}</span>
+            <span class="flex-shrink-0 ${iconClasses}">${this.getIcon(item.icon, 'w-4 h-4')}</span>
             <span class="truncate">${item.label}</span>
           </span>
-          ${item.id === 'messages' ? '<span data-nav-unread="messages" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white leading-none gs-tabular">0</span>' : ''}
+          ${item.id === 'messages' ? '<span data-nav-unread="messages" class="hidden px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold bg-[#DC2626] text-white leading-none gs-tabular">0</span>' : ''}
         </a>
       `;
     }).join('');
 
     sidebarContainer.innerHTML = `
       <!-- Top: Logo & Branding -->
-      <div class="h-14 flex items-center px-4 border-b border-slate-200 gap-2.5 flex-shrink-0 bg-white">
+      <div class="h-14 flex items-center px-4 border-b border-white/10 gap-2.5 flex-shrink-0">
         <a href="index.html" class="flex items-center gap-2.5 group">
-          <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" style="border-radius: 50%;">
+          <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/20" style="border-radius: 50%;">
           <div class="min-w-0">
-            <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900 block leading-tight">GeoSafe</span>
-            <span class="text-[10px] text-slate-500 font-medium block leading-tight truncate">Barangay Bayanan</span>
+            <span class="gs-brand-nav font-bold text-sm tracking-tight text-white block leading-tight">GeoSafe</span>
+            <span class="text-[10px] text-slate-400 font-medium block leading-tight truncate">Barangay Bayanan</span>
           </div>
         </a>
       </div>
 
       <!-- Center: Navigation Items -->
-      <div class="flex-1 px-3 py-3.5 space-y-1.5 overflow-y-auto">
+      <div class="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
         <div class="px-2.5 pb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
           Resident Portal
         </div>
-        <nav class="space-y-0.5">
+        <nav class="space-y-1">
           ${sidebarNavHtml}
         </nav>
       </div>
 
       <!-- Bottom: SafeZone Status Footer -->
-      <div class="p-3 border-t border-slate-200 bg-white flex-shrink-0">
-        <div class="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-50 border border-slate-200">
-          <div class="w-2 h-2 rounded-full bg-emerald-600 flex-shrink-0"></div>
+      <div class="p-3 border-t border-white/10 flex-shrink-0">
+        <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] bg-white/5 border border-white/10">
+          <div class="w-2 h-2 rounded-full bg-[#0D9488] flex-shrink-0 ring-2 ring-[#0D9488]/30"></div>
           <div class="min-w-0">
-            <span class="block text-xs font-semibold text-slate-900 truncate">Barangay Bayanan</span>
-            <span class="block text-[10px] text-slate-500 font-medium">SafeZone Active</span>
+            <span class="block text-xs font-semibold text-white truncate">Barangay Bayanan</span>
+            <span class="block text-[10px] text-teal-300 font-medium">SafeZone Active</span>
           </div>
         </div>
       </div>
@@ -228,7 +239,7 @@ const GeoSafeUI = {
     if (!container) return;
 
     container.innerHTML = `
-      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white border-b border-slate-200" style="padding-top: env(safe-area-inset-top, 0px);">
+      <header id="geosafe-top-header" class="fixed top-0 left-0 right-0 w-full lg:left-60 lg:w-[calc(100%-15rem)] z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200/90" style="padding-top: env(safe-area-inset-top, 0px);">
         <div class="w-full px-3 sm:px-5 lg:px-6">
           <div class="flex items-center justify-between h-14 gap-2">
             
@@ -237,33 +248,33 @@ const GeoSafeUI = {
               <a href="index.html" class="flex items-center gap-1.5 group flex-shrink-0 lg:hidden">
                 <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" style="border-radius: 50%;">
                 <div class="hidden sm:block">
-                  <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
+                  <span class="gs-brand-nav font-bold text-sm tracking-tight text-[#101D35]">GeoSafe</span>
                 </div>
               </a>
 
               <!-- Greeting, Resident Name & Role Badge -->
               <div class="border-l border-slate-200 pl-2 sm:pl-2.5 lg:border-l-0 lg:pl-0 min-w-0">
-                <span id="header-greeting-label" class="text-[10px] text-slate-500 font-medium block leading-tight">Greeting</span>
+                <span id="header-greeting-label" class="text-[10px] text-[#64748B] font-medium block leading-tight">Greeting</span>
                 <div class="flex items-center gap-1.5">
-                  <span id="header-resident-name" class="text-xs sm:text-sm font-semibold text-slate-900 tracking-tight block truncate max-w-[120px] sm:max-w-[200px]">Resident</span>
-                  <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 hidden sm:inline-block flex-shrink-0">Resident</span>
+                  <span id="header-resident-name" class="text-xs sm:text-sm font-bold text-[#172033] tracking-tight block truncate max-w-[120px] sm:max-w-[200px]">Resident</span>
+                  <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-[4px] bg-slate-100 text-[#101D35] border border-slate-200 hidden sm:inline-block flex-shrink-0">Resident</span>
                 </div>
               </div>
             </div>
 
-            <!-- Right: Status, Notification Bell & Profile Avatar (Matches Responder Header) -->
+            <!-- Right: Subtle Status, Notification Bell & Profile Avatar -->
             <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               <!-- Online / Offline Badge -->
-              <div id="online-status-badge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200">
-                <span class="badge-pulse mr-1"><span class="badge-pulse-ping bg-emerald-400"></span><span class="badge-pulse-dot bg-[#278653]"></span></span>
+              <div id="online-status-badge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-[5px] text-[10px] font-semibold bg-teal-50 text-[#0D9488] border border-teal-200/80">
+                <span class="badge-pulse mr-1"><span class="badge-pulse-ping bg-teal-400"></span><span class="badge-pulse-dot bg-[#0D9488]"></span></span>
                 <span>Online</span>
               </div>
 
               <!-- Notification Bell with Unread Indicator -->
-              <button onclick="GeoSafeUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-md text-[#202020] hover:bg-slate-100 transition-colors focus:outline-none" title="Notifications">
+              <button onclick="GeoSafeUI.openNotificationsModal()" id="header-notif-btn" class="relative p-1.5 rounded-[6px] text-[#172033] hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors focus:outline-none" title="Notifications">
                 ${this.getIcon('bell', 'w-4 h-4 sm:w-5 sm:h-5')}
                 <!-- Unread Indicator (Only shown when actual unread records exist) -->
-                <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#D93636] ring-2 ring-white"></span>
+                <span id="header-notif-badge" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-[#DC2626] ring-2 ring-white"></span>
               </button>
 
               <!-- Interactive Resident Profile Section & Dropdown -->
@@ -272,19 +283,19 @@ const GeoSafeUI = {
                   type="button"
                   id="resident-profile-menu-btn"
                   onclick="GeoSafeUI.toggleProfileDropdown(event)"
-                  class="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded-md hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors focus:outline-none cursor-pointer group"
+                  class="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded-[6px] hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors focus:outline-none cursor-pointer group"
                   aria-haspopup="true"
                   aria-expanded="false"
                   title="Account menu"
                 >
-                  <div id="header-profile-avatar" class="w-7 h-7 rounded-md bg-slate-900 text-amber-400 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                  <div id="header-profile-avatar" class="w-7 h-7 rounded-[6px] bg-[#101D35] text-white font-bold text-xs flex items-center justify-center flex-shrink-0">
                     R
                   </div>
                   <div class="text-left hidden sm:block min-w-0">
-                    <span id="header-profile-name" class="text-xs font-semibold text-slate-900 block leading-tight truncate max-w-[130px]">Resident</span>
-                    <span id="header-profile-role" class="text-[10px] text-slate-500 font-medium block leading-tight">Resident</span>
+                    <span id="header-profile-name" class="text-xs font-semibold text-[#172033] block leading-tight truncate max-w-[130px]">Resident</span>
+                    <span id="header-profile-role" class="text-[10px] text-[#64748B] font-medium block leading-tight">Resident</span>
                   </div>
-                  <svg id="resident-profile-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg id="resident-profile-chevron" class="w-3.5 h-3.5 text-[#64748B] transition-transform duration-200 group-hover:text-[#172033]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                   </svg>
                 </button>
@@ -292,21 +303,21 @@ const GeoSafeUI = {
                 <!-- Dropdown Menu -->
                 <div
                   id="resident-profile-dropdown"
-                  class="hidden absolute right-0 top-full mt-1.5 w-52 bg-white rounded-lg border border-slate-200 shadow-modal py-1 z-50 transform origin-top-right transition-all"
+                  class="hidden absolute right-0 top-full mt-1.5 w-52 bg-white rounded-[10px] border border-slate-200 shadow-lg py-1 z-50 transform origin-top-right transition-all"
                   role="menu"
                   aria-orientation="vertical"
                 >
                   <div class="px-3.5 py-2 border-b border-slate-200 sm:hidden">
-                    <span id="header-profile-name-mobile" class="text-xs font-bold text-[#202020] block truncate">Resident</span>
-                    <span id="header-profile-role-mobile" class="text-[10px] text-[#777777] font-semibold block">Resident</span>
+                    <span id="header-profile-name-mobile" class="text-xs font-bold text-[#172033] block truncate">Resident</span>
+                    <span id="header-profile-role-mobile" class="text-[10px] text-[#64748B] font-semibold block">Resident</span>
                   </div>
                   <a
                     href="profile.html"
                     id="header-menu-item-profile"
                     role="menuitem"
-                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#202020] hover:bg-slate-100 hover:text-[#8A6800] transition-colors"
+                    class="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#172033] hover:bg-blue-50 hover:text-[#2563EB] transition-colors"
                   >
-                    <svg class="w-4 h-4 text-[#777777]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-[#64748B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                     </svg>
                     <span>Profile</span>
@@ -317,9 +328,9 @@ const GeoSafeUI = {
                     id="header-menu-item-logout"
                     role="menuitem"
                     onclick="GeoSafeUI.handleLogout()"
-                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#D93636] hover:bg-[#FFF1F1] transition-colors text-left"
+                    class="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#DC2626] hover:bg-red-50 transition-colors text-left"
                   >
-                    <svg class="w-4 h-4 text-[#D93636]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-[#DC2626]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
                     </svg>
                     <span>Sign Out</span>
@@ -360,25 +371,37 @@ const GeoSafeUI = {
       document.body.appendChild(bottomNavContainer);
     }
 
-    bottomNavContainer.className = 'lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200';
+    bottomNavContainer.className = 'lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#101D35] border-t border-white/10 shadow-[0_-4px_16px_rgba(16,29,53,0.18)]';
 
     const itemsHtml = this.navItems.map(item => {
       const isActive = item.id === activeId;
+      const isEmergency = Boolean(item.isEmergencyAction);
+      let boxClasses = 'bg-transparent hover:bg-white/10 text-slate-300';
+      let iconClasses = 'text-slate-400';
+      let labelClasses = 'font-medium text-slate-300';
+
+      if (isActive && isEmergency) {
+        boxClasses = 'bg-[#DC2626] text-white shadow-sm';
+        iconClasses = 'text-white';
+        labelClasses = 'font-semibold text-white';
+      } else if (isActive) {
+        boxClasses = 'bg-[#2563EB] text-white shadow-sm';
+        iconClasses = 'text-white';
+        labelClasses = 'font-semibold text-white';
+      } else if (isEmergency) {
+        boxClasses = 'bg-red-500/15 hover:bg-red-500/25 text-red-200 border border-red-400/25';
+        iconClasses = 'text-red-300';
+        labelClasses = 'font-semibold text-red-200';
+      }
 
       return `
         <a href="${item.href}" data-nav-id="${item.id}" class="flex-1 flex items-center justify-center py-1 px-1 focus:outline-none">
-          <div class="w-full flex flex-col items-center justify-center py-1.5 px-2 rounded-md transition-colors ${
-            isActive
-              ? 'bg-slate-900 text-white'
-              : 'bg-transparent hover:bg-slate-100 text-slate-600'
-          }">
-            <span class="gs-msg-icon-wrap transition-colors ${isActive ? 'text-amber-400' : 'text-slate-500'}">
+          <div class="w-full flex flex-col items-center justify-center py-1.5 px-1.5 rounded-[6px] transition-colors ${boxClasses}">
+            <span class="gs-msg-icon-wrap transition-colors ${iconClasses}">
               ${this.getIcon(item.icon, 'w-5 h-5')}
               ${item.id === 'messages' ? '<span data-nav-unread="messages" class="gs-msg-badge hidden">0</span>' : ''}
             </span>
-            <span class="gs-bottom-nav-label text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${
-              isActive ? 'font-semibold text-white' : 'font-medium text-slate-600'
-            }">
+            <span class="gs-bottom-nav-label text-[10px] mt-0.5 whitespace-nowrap text-center tracking-tight transition-colors ${labelClasses}">
               ${item.shortLabel}
             </span>
           </div>

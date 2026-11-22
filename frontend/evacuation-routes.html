@@ -21,7 +21,7 @@
     }
   </style>
 </head>
-<body class="bg-slate-50 text-[#202020] antialiased min-h-screen flex flex-col font-sans resident-layout">
+<body class="bg-[#F1F5F9] text-[#172033] antialiased min-h-screen flex flex-col font-sans resident-layout">
 
   <!-- Top Navigation Bar (Desktop, Tablet & Mobile Header) -->
   <div id="geosafe-nav-container"></div>
@@ -36,7 +36,7 @@
         <p class="text-[11px] text-[#777777]">Select an evacuation center and start live GPS navigation with automatic 10-second location synchronization.</p>
       </div>
 
-      <p class="text-[11px] text-[#555555] bg-slate-50 border border-[#FFE872] rounded-md px-2.5 py-1 leading-snug">
+      <p class="text-[11px] text-[#555555] bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1 leading-snug">
         Follow BDRRMC on-ground responders. Always follow official instructions.
       </p>
     </section>
@@ -50,7 +50,7 @@
             id="route-destination-select"
             onchange="handleDestinationSelectChange()"
             title="Destination evacuation center"
-            class="w-full px-2.5 py-1.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#F5B900] truncate"
+            class="w-full px-2.5 py-1.5 rounded-md border border-slate-200 bg-slate-50 text-xs font-semibold text-[#202020] focus:outline-none focus:ring-2 focus:ring-[#2563EB] truncate"
           >
             <option value="" disabled selected>Select an evacuation center...</option>
           </select>
@@ -62,7 +62,7 @@
             type="button"
             id="btn-start-nav"
             onclick="startLiveNavigation()"
-            class="px-3.5 py-1.5 rounded-md bg-[#F5B900] hover:bg-[#E5AC00] disabled:opacity-50 text-[#202020] font-bold text-xs shadow-subtle inline-flex items-center justify-center gap-1.5 transition-all active:scale-95"
+            class="px-3.5 py-1.5 rounded-md bg-[#2563EB] hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs shadow-subtle inline-flex items-center justify-center gap-1.5 transition-all active:scale-95"
           >
             <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11" stroke-linecap="round" stroke-linejoin="round"></polygon></svg>
             <span>Start Navigation</span>
@@ -72,7 +72,7 @@
             type="button"
             id="btn-recenter-nav"
             onclick="recenterNavigationMap()"
-            class="px-3 py-1.5 rounded-md bg-slate-50 hover:bg-[#FFF3D0] text-[#8A6800] border border-[#FFE872] font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
+            class="px-3 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-[#2563EB] border border-blue-200 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors"
             title="Recenter map on your current GPS location"
           >
             <svg class="w-3.5 h-3.5 text-[#3478C7] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
@@ -92,10 +92,10 @@
       </div>
 
       <!-- GPS Status / Permission / Error Notice Banner -->
-      <div id="gps-status-banner" class="hidden px-3 py-2 rounded-md bg-slate-50 border border-[#FFE872] flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div id="gps-status-banner" class="hidden px-3 py-2 rounded-md bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
         <span id="gps-status-text" class="text-[#202020] font-semibold leading-snug">Acquiring device GPS location...</span>
         <div id="gps-status-actions" class="flex items-center gap-1.5 flex-shrink-0">
-          <button type="button" onclick="retryLiveNavigation()" class="px-2.5 py-1 rounded-lg bg-[#F5B900] hover:bg-[#E5AC00] text-[#202020] font-bold text-[11px]">
+          <button type="button" onclick="retryLiveNavigation()" class="px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white font-semibold text-[11px]">
             Retry GPS
           </button>
         </div>
@@ -110,11 +110,11 @@
       <!-- Top Next-Maneuver Banner (Shown on map when live route is active) -->
       <div id="nav-maneuver-banner" class="hidden absolute top-2.5 left-2.5 right-2.5 sm:right-auto sm:max-w-md z-20 pointer-events-auto">
         <div class="bg-[#202020]/95 backdrop-blur-md text-white rounded-lg border border-[#333333] shadow-lg px-3 py-2 flex items-center gap-2.5">
-          <div id="nav-maneuver-icon" class="w-8 h-8 rounded-md bg-[#F5B900] text-[#202020] flex items-center justify-center flex-shrink-0">
+          <div id="nav-maneuver-icon" class="w-8 h-8 rounded-md bg-[#2563EB] text-white flex items-center justify-center flex-shrink-0">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
           </div>
           <div class="min-w-0">
-            <p id="nav-maneuver-distance" class="text-xs font-extrabold text-[#F5B900] leading-tight">—</p>
+            <p id="nav-maneuver-distance" class="text-xs font-extrabold text-[#2563EB] leading-tight">—</p>
             <p id="nav-maneuver-text" class="text-xs font-semibold text-white truncate">Follow highlighted road route</p>
           </div>
         </div>
@@ -122,8 +122,8 @@
 
       <!-- Route Calculation / GPS Loading Feedback -->
       <div id="route-calculating-overlay" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
-        <div class="bg-white/95 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg flex items-center gap-2 border border-[#FFE872] text-xs font-bold text-[#202020]">
-          <div class="w-3.5 h-3.5 border-2 border-[#F5B900] border-t-transparent rounded-full animate-spin"></div>
+        <div class="bg-white/95 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg flex items-center gap-2 border border-slate-200 text-xs font-bold text-[#202020]">
+          <div class="w-3.5 h-3.5 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>
           <span id="route-loading-text">Calculating route...</span>
         </div>
       </div>
@@ -179,7 +179,7 @@
       </div>
 
       <!-- Next Direction Highlight -->
-      <div id="evac-nav-next-step" class="hidden rounded-md bg-slate-50 border border-[#FFE872] px-3 py-2 flex items-center justify-between gap-2">
+      <div id="evac-nav-next-step" class="hidden rounded-md bg-slate-50 border border-slate-200 px-3 py-2 flex items-center justify-between gap-2">
         <div class="min-w-0">
           <span class="text-[10px] font-bold uppercase tracking-wider text-[#8A6800] block">Next Direction</span>
           <p id="evac-nav-next-instruction" class="text-xs font-bold text-[#202020] truncate">—</p>
@@ -215,14 +215,14 @@
     <section id="evacuation-centers-section" aria-label="Evacuation Centers" class="space-y-2 pt-0.5">
       <div class="flex items-center justify-between gap-2">
         <h2 class="text-sm sm:text-base font-extrabold text-[#202020] tracking-tight">Evacuation Centers</h2>
-        <span id="shelters-count-badge" class="text-[11px] font-bold text-[#8A6800] bg-slate-50 border border-[#FFE872] px-2.5 py-0.5 rounded-full">
+        <span id="shelters-count-badge" class="text-[11px] font-bold text-[#2563EB] bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
           0 centers
         </span>
       </div>
 
       <!-- Empty State -->
       <div id="evacuation-centers-empty" class="p-4 bg-white rounded-lg border border-slate-200 flex items-center gap-3 shadow-subtle">
-        <div class="w-8 h-8 rounded-md bg-slate-50 border border-[#FFE872] text-[#8A6800] flex items-center justify-center flex-shrink-0">
+        <div class="w-8 h-8 rounded-md bg-blue-50 border border-blue-200 text-[#2563EB] flex items-center justify-center flex-shrink-0">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
         </div>
         <span class="text-xs sm:text-sm font-bold text-[#202020]">No evacuation centers are currently available.</span>

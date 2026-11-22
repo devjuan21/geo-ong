@@ -2375,8 +2375,12 @@ function renderRescueOutcomePanel(assignment) {
   }
 
   if (form) {
-    form.classList.toggle('hidden', !canEdit);
-    if (canEdit) {
+    const hasHandedOverTransport = transports.some(
+      (tr) => String(tr.transportStatus || '') === 'Handed Over'
+    );
+    const showTransportForm = canEdit && !hasHandedOverTransport;
+    form.classList.toggle('hidden', !showTransportForm);
+    if (showTransportForm) {
       const neededCheck = document.getElementById('out-transport-needed');
       const picker = document.getElementById('out-destination-picker');
       const typeSelect = document.getElementById('out-transport-type');

@@ -469,6 +469,35 @@ function emitIncidentResolved(payload) {
   }
 }
 
+/**
+ * Emit persisted Incident Resolved community notification ONLY to eligible active Resident user rooms.
+ * Never emits to unrestricted global broadcast or Responder-only accounts.
+ */
+function emitIncidentResolvedCommunityNotification(recipientUserIds, payload) {
+  if (!io || !Array.isArray(recipientUserIds) || !recipientUserIds.length || !payload) return 0;
+  const uniqueIds = Array.from(
+    new Set(recipientUserIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))
+  );
+  if (!uniqueIds.length) return 0;
+
+  const safePayload = {
+    notificationId: payload.notificationId || null,
+    title: payload.title || 'Incident Resolved',
+    message: payload.message || '',
+    category: 'incident',
+    incidentId: payload.incidentId || null,
+    referenceNumber: payload.referenceNumber || null,
+    incidentType: payload.incidentType || 'Incident',
+    location: payload.location || 'Barangay Bayanan',
+    resolvedAt: payload.resolvedAt || new Date().toISOString(),
+  };
+
+  uniqueIds.forEach((uid) => {
+    io.to(`user:${uid}`).emit('incident-resolved-notification', safePayload);
+  });
+  return uniqueIds.length;
+}
+
 async function disconnectUserSockets(userId) {
   if (!io || !userId) return;
   try {
@@ -738,6 +767,7 @@ module.exports = {
   emitRescueOutcomeUpdated,
   emitRescueTransportUpdated,
   emitIncidentResolved,
+  emitIncidentResolvedCommunityNotification,
   emitAdminAnnouncement,
   emitConversationMessage,
   emitConversationMessagesRead,

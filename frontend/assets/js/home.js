@@ -199,33 +199,33 @@ function renderCommunityReportsList(reports) {
   if (!container) return;
 
   container.innerHTML = reports.slice(0, 5).map((r) => {
-    let statusClass = 'bg-slate-50 text-[#8A6800] border-[#FFE872]';
+    let statusClass = 'bg-amber-50 text-amber-800 border-amber-200';
     if (r.status === 'Verified') {
-      statusClass = 'bg-emerald-50 text-[#278653] border-emerald-200';
+      statusClass = 'bg-teal-50 text-[#0D9488] border-teal-200';
     } else if (r.status === 'Responding' || r.status === 'Assigned') {
-      statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
+      statusClass = 'bg-blue-50 text-[#2563EB] border-blue-200';
     } else if (r.status === 'Resolved') {
-      statusClass = 'bg-slate-50 text-[#777777] border-slate-200';
+      statusClass = 'bg-slate-100 text-[#64748B] border-slate-200';
     }
 
     return `
-      <div class="p-3.5 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-subtle hover:border-[#F5B900] transition-all flex items-center justify-between gap-3">
+      <div class="p-3.5 sm:p-4 bg-white rounded-[10px] border border-slate-200/90 shadow-sm hover:border-[#3B82F6] transition-all flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
-          <div class="w-9 h-9 rounded-md bg-slate-50 border border-[#FFE872] text-[#F5B900] flex items-center justify-center flex-shrink-0 shadow-subtle">
+          <div class="w-9 h-9 rounded-[8px] bg-amber-50 border border-amber-200 text-[#F59E0B] flex items-center justify-center flex-shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-2">
-              <h4 class="font-bold text-xs sm:text-sm text-[#202020] truncate">${r.title}</h4>
-              <span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold border ${statusClass} flex-shrink-0">
-                ${r.status || 'Verified'}
+              <h4 class="font-bold text-xs sm:text-sm text-[#172033] truncate">${escapeHtmlSafe(r.title)}</h4>
+              <span class="inline-flex px-2 py-0.5 rounded-[4px] text-[9px] font-bold border ${statusClass} flex-shrink-0">
+                ${escapeHtmlSafe(r.status || 'Verified')}
               </span>
             </div>
-            <p class="text-[11px] text-[#777777] truncate mt-0.5">${r.location} | ${GeoSafeUI.formatRelative(r.submittedAt)}</p>
+            <p class="text-[11px] text-[#64748B] truncate mt-0.5">${escapeHtmlSafe(r.location)} | ${escapeHtmlSafe(GeoSafeUI.formatRelative(r.submittedAt))}</p>
           </div>
         </div>
 
-        <button onclick="openIncidentDetailsModal('${r.id}')" class="px-3 py-1.5 rounded-md bg-slate-50 hover:bg-[#FFF3D0] text-[#202020] font-bold text-xs flex-shrink-0 border border-[#FFE872] transition-colors">
+        <button onclick="openIncidentDetailsModal('${escapeHtmlSafe(r.id)}')" class="px-3 py-1.5 rounded-[6px] bg-slate-100 hover:bg-[#2563EB] text-[#172033] hover:text-white font-semibold text-xs flex-shrink-0 border border-slate-200 hover:border-[#2563EB] transition-colors">
           View
         </button>
       </div>
@@ -259,7 +259,7 @@ async function loadHazardAlerts() {
 
     if (count === 0) {
       listEl.innerHTML = `
-        <div class="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-xs text-[#777777] font-medium">
+        <div class="p-3 bg-[#F1F5F9]/70 rounded-[8px] border border-slate-200 text-xs text-[#64748B] font-medium">
           No active hazard alerts.
         </div>
       `;
@@ -275,16 +275,25 @@ async function loadHazardAlerts() {
       const badgeHtml = window.GeoSafeAdvisories
         ? window.GeoSafeAdvisories.renderBadge(advisoryType, { badgeColor: alert.badgeColor })
         : '';
+      const lowerType = String(advisoryType).toLowerCase();
+      let cardAccent = 'bg-[#F1F5F9]/70 border-slate-200';
+      if (lowerType.includes('critical') || lowerType.includes('emergency') || lowerType.includes('evacu')) {
+        cardAccent = 'bg-red-50/70 border-red-200';
+      } else if (lowerType.includes('warn') || lowerType.includes('flood') || lowerType.includes('fire')) {
+        cardAccent = 'bg-amber-50/70 border-amber-200';
+      } else if (lowerType.includes('advis')) {
+        cardAccent = 'bg-blue-50/70 border-blue-200';
+      }
       const title = escapeHtmlSafe(alert.headline || alert.title || 'Hazard Alert');
       const desc = escapeHtmlSafe(alert.description || '');
       const timeStr = alert.publishedAt ? GeoSafeUI.formatRelative(alert.publishedAt) : '';
       return `
-        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 min-w-0">
+        <div class="p-3 rounded-[8px] border ${cardAccent} space-y-1.5 min-w-0">
           <div class="flex items-center justify-between gap-2 min-w-0">
-            <span class="text-xs font-bold text-[#202020] truncate min-w-0 flex-1">${title}</span>
-            ${timeStr ? `<span class="text-[11px] text-[#777777] whitespace-nowrap flex-shrink-0">${escapeHtmlSafe(timeStr)}</span>` : ''}
+            <span class="text-xs font-bold text-[#172033] truncate min-w-0 flex-1">${title}</span>
+            ${timeStr ? `<span class="text-[11px] text-[#64748B] whitespace-nowrap flex-shrink-0">${escapeHtmlSafe(timeStr)}</span>` : ''}
           </div>
-          ${desc ? `<p class="text-xs text-[#555555] truncate leading-snug">${desc}</p>` : ''}
+          ${desc ? `<p class="text-xs text-[#64748B] truncate leading-snug">${desc}</p>` : ''}
           ${badgeHtml ? `<div class="pt-0.5">${badgeHtml}</div>` : ''}
         </div>
       `;
@@ -495,13 +504,13 @@ function updateGpsStatusIndicator(tone, text) {
   if (!el) return;
 
   const toneClasses = {
-    loading: 'bg-slate-50 text-[#8A6800] border-[#FFE872]',
-    success: 'bg-emerald-50 text-[#278653] border-emerald-200',
-    warning: 'bg-[#FFF1F1] text-[#D93636] border-[#FFC2C2]',
-    neutral: 'bg-slate-100 text-[#555555] border-slate-200'
+    loading: 'bg-amber-50 text-amber-800 border-amber-200',
+    success: 'bg-teal-50 text-[#0D9488] border-teal-200',
+    warning: 'bg-red-50 text-[#DC2626] border-red-200',
+    neutral: 'bg-slate-100 text-[#64748B] border-slate-200'
   };
 
-  el.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${toneClasses[tone] || toneClasses.neutral}`;
+  el.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[5px] text-[10px] font-semibold border ${toneClasses[tone] || toneClasses.neutral}`;
   el.textContent = text;
 }
 
@@ -572,7 +581,7 @@ window.locateUserOnMap = async function () {
   const btn = document.getElementById('btn-locate-me');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = `<svg class="animate-spin w-3.5 h-3.5 mr-1 inline-block text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Locating...`;
+    btn.innerHTML = `<svg class="animate-spin w-3.5 h-3.5 mr-1 inline-block text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Locating...`;
   }
 
   try {
@@ -593,7 +602,7 @@ window.locateUserOnMap = async function () {
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `
-        <svg class="w-3.5 h-3.5 text-[#F5B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
+        <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="22" y1="12" x2="18" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="6" y1="12" x2="2" y2="12" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="6" x2="12" y2="2" stroke-width="2" stroke-linecap="round"></line><line x1="12" y1="22" x2="12" y2="18" stroke-width="2" stroke-linecap="round"></line></svg>
         <span>Location</span>
       `;
     }

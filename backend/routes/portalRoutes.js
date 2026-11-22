@@ -17,6 +17,7 @@ const {
   emitPublicVerifiedReport,
 } = require('../services/socketService');
 const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
+const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { getEocLocation } = require('../config/eocConfig');
 
 const router = express.Router();
@@ -2390,6 +2391,13 @@ async function handleResponderAssignmentUpdate(req, res) {
         status: 'resolved',
         residentId: reportRow.user_id,
         assignedTo: req.user.id,
+      });
+      dispatchIncidentResolvedCommunityBroadcast({
+        incidentId: reportRow.id,
+        referenceNumber: refNumber,
+        incidentCategory: reportRow.incident_type,
+        verifiedLocation: reportRow.address || reportRow.location,
+        actorUserId: req.user.id,
       });
     }
 

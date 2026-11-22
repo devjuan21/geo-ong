@@ -145,6 +145,20 @@
   }
 }
 
+/* Resident Portal Visual Identity Tokens (#F1F5F9 Background, #172033 Text) */
+body.resident-layout {
+  background-color: #F1F5F9;
+  color: #172033;
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+#geosafe-bottom-nav .gs-msg-badge {
+  border-color: #101D35;
+}
+
 /* ==========================================================================
    GeoSafe System-Wide Responsive Typography Standardization (Inter)
    ========================================================================== */

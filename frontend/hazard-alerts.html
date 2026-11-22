@@ -12,7 +12,7 @@
 </head>
 
 <body
-  class="bg-slate-50 text-[#202020] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden resident-layout">
+  class="bg-[#F1F5F9] text-[#172033] antialiased min-h-screen flex flex-col font-sans overflow-x-hidden resident-layout">
 
   <!-- Top Navigation Bar (Desktop, Tablet & Mobile Header) -->
   <div id="geosafe-nav-container"></div>
@@ -25,16 +25,16 @@
       <div class="flex items-center gap-2.5 shrink-0">
         <h1 class="text-lg sm:text-xl font-extrabold text-[#202020] tracking-tight whitespace-nowrap">Hazard Alerts</h1>
         <span id="alerts-total-badge"
-          class="text-[10px] font-bold text-[#8A6800] bg-slate-50 border border-[#FFE872] px-2.5 py-0.5 rounded-full whitespace-nowrap">0
+          class="text-[10px] font-bold text-[#2563EB] bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">0
           Active</span>
       </div>
       <div class="flex items-center sm:justify-end gap-2 flex-nowrap overflow-x-auto min-w-0 pb-0.5 sm:pb-0">
         <select id="alerts-filter-type" onchange="applyAlertsFilterAndSort()"
-          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
+          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#2563EB] shrink-0 whitespace-nowrap">
           <option value="All">All Categories</option>
         </select>
         <select id="alerts-filter-status" onchange="loadHazardAlerts()"
-          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#F5B900] shrink-0 whitespace-nowrap">
+          class="h-8 px-2.5 rounded-md border border-slate-200 bg-white text-xs font-semibold text-[#202020] focus:outline-none focus:border-[#2563EB] shrink-0 whitespace-nowrap">
           <option value="active">Active Alerts</option>
           <option value="all">Alert History (All)</option>
         </select>
@@ -43,7 +43,7 @@
 
     <!-- Loading State -->
     <div id="alerts-loading" class="py-10 text-center">
-      <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#FFE872] border-t-[#F5B900] mb-2">
+      <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-blue-200 border-t-[#2563EB] mb-2">
       </div>
       <p class="text-xs font-medium text-[#777777]">Loading alerts...</p>
     </div>
@@ -131,7 +131,7 @@
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
         <a href="evacuation-routes.html"
-          class="px-4 py-2 rounded-md bg-slate-50 hover:bg-[#F5B900] border border-[#FFE872] text-xs font-bold text-[#202020]">Evacuation
+          class="px-4 py-2 rounded-md bg-[#2563EB] hover:bg-blue-700 border border-[#2563EB] text-white text-xs font-semibold">Evacuation
           Routes</a>
         <button type="button" onclick="closeAdvisoryDetailModal()"
           class="px-4 py-2 rounded-md bg-[#202020] text-white text-xs font-bold">Close</button>

@@ -986,6 +986,8 @@ function getSubmissionStatusStyle(status) {
   return 'bg-slate-50 text-[#8A6800] border border-[#FFE872]';
 }
 
+let activeSubmissionDetailKey = null;
+
 window.loadSubmittedReports = async function () {
   const loadingEl = document.getElementById('submitted-reports-loading');
   const errorEl = document.getElementById('submitted-reports-error');
@@ -996,10 +998,13 @@ window.loadSubmittedReports = async function () {
 
   if (!listEl) return;
 
-  if (loadingEl) loadingEl.classList.remove('hidden');
-  if (errorEl) errorEl.classList.add('hidden');
-  if (emptyEl) emptyEl.classList.add('hidden');
-  listEl.classList.add('hidden');
+  const isInitialLoad = !Array.isArray(submittedRecordsCache) || submittedRecordsCache.length === 0;
+  if (isInitialLoad) {
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (errorEl) errorEl.classList.add('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    listEl.classList.add('hidden');
+  }
 
   try {
     const [reportsRes, rescuesRes] = await Promise.all([
@@ -1089,6 +1094,20 @@ window.loadSubmittedReports = async function () {
     }).join('');
 
     listEl.classList.remove('hidden');
+
+    const activeModal = document.getElementById('submission-detail-modal');
+    if (activeSubmissionDetailKey && activeModal && !activeModal.classList.contains('hidden')) {
+      const updatedIdx = submittedRecordsCache.findIndex((rec) => {
+        if (rec.kind !== activeSubmissionDetailKey.kind) return false;
+        if (activeSubmissionDetailKey.dbId && rec.dbId) {
+          return String(rec.dbId) === String(activeSubmissionDetailKey.dbId);
+        }
+        return Boolean(activeSubmissionDetailKey.ref) && String(rec.ref) === String(activeSubmissionDetailKey.ref);
+      });
+      if (updatedIdx !== -1) {
+        window.openSubmissionDetailModal(updatedIdx);
+      }
+    }
   } catch (err) {
     console.error('[Report/Rescue] loadSubmittedReports failed:', err);
     if (loadingEl) loadingEl.classList.add('hidden');
@@ -1101,6 +1120,12 @@ window.loadSubmittedReports = async function () {
 window.openSubmissionDetailModal = function (index) {
   const item = submittedRecordsCache[index];
   if (!item) return;
+
+  activeSubmissionDetailKey = {
+    kind: item.kind,
+    dbId: item.dbId || null,
+    ref: item.ref || ''
+  };
 
   const modal = document.getElementById('submission-detail-modal');
   const typeBadge = document.getElementById('sub-detail-type-badge');
@@ -1196,6 +1221,7 @@ window.openSubmissionDetailModal = function (index) {
 };
 
 window.closeSubmissionDetailModal = function () {
+  activeSubmissionDetailKey = null;
   const modal = document.getElementById('submission-detail-modal');
   if (modal) modal.classList.add('hidden');
 };

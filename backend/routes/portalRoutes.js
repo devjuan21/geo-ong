@@ -1614,7 +1614,7 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
     }
   }
 
-  return [
+  const combined = [
     ...rescueRows.map((r) => ({
       id: r.reference_number || `RES-${r.id}`,
       dbId: r.id,

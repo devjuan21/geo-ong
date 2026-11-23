@@ -9,13 +9,10 @@ const {
   forgotPassword,
   verifyResetOtp,
   resetPassword,
-  verifyRegistrationLocation,
 } = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
-
-router.post(['/verify-location', '/auth/verify-location'], verifyRegistrationLocation);
 
 router.post(
   ['/register', '/auth/register'],

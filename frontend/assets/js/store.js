@@ -1050,31 +1050,6 @@ class GeoSafeStore {
     return check.user;
   }
 
-  async verifyRegistrationLocation(payload = {}) {
-    if (!this.isOnline()) {
-      throw new Error('Network offline. Location verification requires an active internet connection.');
-    }
-
-    const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
-    const endpoint = apiBase.endsWith('/api') ? `${apiBase}/auth/verify-location` : '/api/auth/verify-location';
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || `Location verification failed (HTTP ${response.status}).`);
-    }
-    return data;
-  }
-
   async registerResident(payload = {}) {
     if (!this.isOnline()) {
       throw new Error('Network offline. Resident registration requires an active internet connection.');
@@ -1119,8 +1094,6 @@ class GeoSafeStore {
         password,
         phone_number: phone,
         street_address: street,
-        locationVerificationToken: payload.locationVerificationToken || null,
-        locationStatus: payload.locationStatus || null,
         idPhotoDataUrl: payload.idPhotoDataUrl,
         selfiePhotoDataUrl: payload.selfiePhotoDataUrl
       })

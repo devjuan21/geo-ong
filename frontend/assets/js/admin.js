@@ -5758,7 +5758,6 @@
               <div>${escapeHtml(app.streetAddress || 'No street provided')}</div>
               <div class="text-[11px] text-[#64748B]">${escapeHtml(app.phone || 'No phone')}</div>
             </td>
-            <td class="px-4 py-3 text-xs text-[#475569]">${escapeHtml(app.locationVerificationStatus || 'pending_review')}</td>
             <td class="px-4 py-3 text-xs text-[#475569] whitespace-nowrap">${escapeHtml(submittedText)}</td>
             <td class="px-4 py-3 text-xs whitespace-nowrap">${statusBadge}</td>
             <td class="px-4 py-3 text-xs text-right whitespace-nowrap">
@@ -5825,7 +5824,6 @@
     setText('rv-detail-email', app.email);
     setText('rv-detail-phone', app.phone || 'Not provided');
     setText('rv-detail-address', app.streetAddress || 'Not provided');
-    setText('rv-detail-location', app.locationVerificationStatus || 'pending_review');
     setText('rv-detail-submitted', app.submittedAt ? new Date(app.submittedAt).toLocaleString() : '—');
 
     const pendingBox = document.getElementById('rv-pending-actions-box');

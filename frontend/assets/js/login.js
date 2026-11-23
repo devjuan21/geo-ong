@@ -615,183 +615,6 @@ function setupLoginForm() {
   });
 }
 
-const regLocationState = {
-  attempted: false,
-  status: null,
-  verificationToken: null,
-  accuracy: null,
-};
-
-function renderLocationVerificationStatus({ status, message, accuracy, accuracyThresholdMeters }) {
-  const box = document.getElementById('reg-location-status-box');
-  const badge = document.getElementById('reg-location-status-badge');
-  const msgEl = document.getElementById('reg-location-status-message');
-  const fallbackEl = document.getElementById('reg-location-admin-fallback');
-  const accEl = document.getElementById('reg-location-accuracy-label');
-  const btnText = document.getElementById('btn-verify-location-text');
-
-  if (!box || !badge || !msgEl) return;
-
-  box.classList.remove(
-    'hidden',
-    'bg-emerald-50', 'border-emerald-200',
-    'bg-amber-50', 'border-amber-200',
-    'bg-rose-50', 'border-rose-200',
-    'bg-slate-50', 'border-slate-200'
-  );
-  badge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold';
-
-  const statusMeta = {
-    verified: {
-      label: 'Verified',
-      boxCls: ['bg-emerald-50', 'border-emerald-200'],
-      badgeCls: ['bg-emerald-100', 'text-emerald-800', 'border', 'border-emerald-300'],
-      showFallback: false,
-      btnLabel: 'Re-verify Location',
-    },
-    outside_boundary: {
-      label: 'Outside Boundary',
-      boxCls: ['bg-amber-50', 'border-amber-200'],
-      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
-      showFallback: true,
-      btnLabel: 'Retry Location Verification',
-    },
-    pending_review: {
-      label: 'Pending Review',
-      boxCls: ['bg-amber-50', 'border-amber-200'],
-      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
-      showFallback: true,
-      btnLabel: 'Retry Location Verification',
-    },
-    gps_denied: {
-      label: 'GPS Denied',
-      boxCls: ['bg-rose-50', 'border-rose-200'],
-      badgeCls: ['bg-rose-100', 'text-rose-800', 'border', 'border-rose-300'],
-      showFallback: true,
-      btnLabel: 'Retry Location Verification',
-    },
-    gps_unavailable: {
-      label: 'GPS Unavailable',
-      boxCls: ['bg-slate-50', 'border-slate-200'],
-      badgeCls: ['bg-slate-200', 'text-slate-800', 'border', 'border-slate-300'],
-      showFallback: true,
-      btnLabel: 'Retry Location Verification',
-    },
-    retry_required: {
-      label: 'Retry Required',
-      boxCls: ['bg-amber-50', 'border-amber-200'],
-      badgeCls: ['bg-amber-100', 'text-amber-800', 'border', 'border-amber-300'],
-      showFallback: true,
-      btnLabel: 'Retry Location Verification',
-    },
-  };
-
-  const meta = statusMeta[status] || statusMeta.pending_review;
-  box.classList.add(...meta.boxCls);
-  badge.classList.add(...meta.badgeCls);
-  badge.textContent = meta.label;
-  msgEl.textContent = message || '';
-
-  if (fallbackEl) {
-    fallbackEl.classList.toggle('hidden', !meta.showFallback);
-  }
-  if (accEl) {
-    if (typeof accuracy === 'number' && Number.isFinite(accuracy)) {
-      const threshText = accuracyThresholdMeters ? ` (threshold <= ${accuracyThresholdMeters}m)` : '';
-      accEl.textContent = `GPS Accuracy: +/-${Math.round(accuracy)}m${threshText}`;
-      accEl.classList.remove('hidden');
-    } else {
-      accEl.classList.add('hidden');
-    }
-  }
-  if (btnText) {
-    btnText.textContent = meta.btnLabel;
-  }
-}
-
-function resetRegisterLocationState() {
-  regLocationState.attempted = false;
-  regLocationState.status = null;
-  regLocationState.verificationToken = null;
-  regLocationState.accuracy = null;
-
-  const box = document.getElementById('reg-location-status-box');
-  const accEl = document.getElementById('reg-location-accuracy-label');
-  const btnText = document.getElementById('btn-verify-location-text');
-  if (box) box.classList.add('hidden');
-  if (accEl) accEl.classList.add('hidden');
-  if (btnText) btnText.textContent = 'Verify My Location';
-}
-
-function setupRegisterLocationVerification() {
-  const verifyBtn = document.getElementById('btn-verify-location');
-  if (!verifyBtn) return;
-
-  // Never request geolocation on page load; only on explicit click.
-  verifyBtn.addEventListener('click', async () => {
-    const btnText = document.getElementById('btn-verify-location-text');
-    verifyBtn.disabled = true;
-    if (btnText) btnText.textContent = 'Checking Location...';
-
-    const submitBackendEvaluation = async (payload) => {
-      try {
-        const result = await window.geoSafeStore.verifyRegistrationLocation(payload);
-        regLocationState.attempted = true;
-        regLocationState.status = result.status;
-        regLocationState.verificationToken = result.verificationToken || null;
-        regLocationState.accuracy = result.accuracy ?? null;
-        renderLocationVerificationStatus(result);
-      } catch (err) {
-        regLocationState.attempted = true;
-        regLocationState.status = 'gps_unavailable';
-        regLocationState.verificationToken = null;
-        renderLocationVerificationStatus({
-          status: 'gps_unavailable',
-          message: err.message || 'Unable to verify location with the server. Please try again.',
-        });
-      } finally {
-        verifyBtn.disabled = false;
-      }
-    };
-
-    // Browser geolocation requires a secure context (HTTPS or localhost)
-    if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      await submitBackendEvaluation({ gpsErrorStatus: 'gps_unavailable' });
-      const msgEl = document.getElementById('reg-location-status-message');
-      if (msgEl) {
-        msgEl.textContent = 'Browser geolocation is blocked because this connection is not secure (HTTPS required on non-localhost devices). You can still register for Administrator review.';
-      }
-      return;
-    }
-
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      await submitBackendEvaluation({ gpsErrorStatus: 'gps_unavailable' });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        await submitBackendEvaluation({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        });
-      },
-      async (err) => {
-        const isDenied = err && err.code === 1; // PERMISSION_DENIED
-        await submitBackendEvaluation({
-          gpsErrorStatus: isDenied ? 'gps_denied' : 'gps_unavailable',
-        });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      }
-    );
-  });
-}
-
 const regIdentityPhotoState = {
   idDataUrl: null,
   selfieDataUrl: null,
@@ -999,7 +822,6 @@ function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
-  setupRegisterLocationVerification();
   setupRegisterIdentityCameras();
 
   form.addEventListener('submit', async (e) => {
@@ -1030,10 +852,6 @@ function setupRegisterForm() {
       showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
-    if (!regLocationState.attempted) {
-      showToastNotification('Please click "Verify My Location" before submitting your application.', 'warning');
-      return;
-    }
     if (!regIdentityPhotoState.idDataUrl) {
       showToastNotification('Please capture a clear photo of your Barangay Address ID.', 'warning');
       return;
@@ -1053,15 +871,12 @@ function setupRegisterForm() {
         phone,
         street,
         password,
-        locationVerificationToken: regLocationState.verificationToken,
-        locationStatus: regLocationState.status,
         idPhotoDataUrl: regIdentityPhotoState.idDataUrl,
         selfiePhotoDataUrl: regIdentityPhotoState.selfieDataUrl,
       });
 
       setRegisterSubmittingState(false);
       form.reset();
-      resetRegisterLocationState();
       resetRegisterIdentityPhotos();
 
       // Switch to Sign In tab with empty fields requiring manual credential entry

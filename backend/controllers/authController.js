@@ -13,53 +13,6 @@ const {
   savePrivateIdentityPhoto,
   deletePrivateIdentityPhoto,
 } = require('../services/privateStorageService');
-const {
-  DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
-  LOCATION_VERIFICATION_STATUSES,
-  evaluateResidentLocation,
-} = require('../utils/bayananBoundary');
-
-const ALLOWED_UNVERIFIED_FALLBACK_STATUSES = new Set([
-  LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY,
-  LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW,
-  LOCATION_VERIFICATION_STATUSES.GPS_DENIED,
-  LOCATION_VERIFICATION_STATUSES.GPS_UNAVAILABLE,
-  LOCATION_VERIFICATION_STATUSES.RETRY_REQUIRED,
-]);
-
-async function getConfiguredAccuracyThresholdMeters(dbConn = pool) {
-  try {
-    const [rows] = await dbConn.query(
-      "SELECT setting_value FROM system_settings WHERE setting_key = 'gps_accuracy_threshold_meters' LIMIT 1"
-    );
-    if (rows && rows[0]) {
-      const val = Number(rows[0].setting_value);
-      if (Number.isFinite(val) && val > 0) return val;
-    }
-  } catch (err) {
-    // Fallback to configured default
-  }
-  return DEFAULT_GPS_ACCURACY_THRESHOLD_METERS;
-}
-
-function signLocationVerificationToken(payload) {
-  return jwt.sign(
-    {
-      purpose: 'resident_location_verification',
-      ...payload,
-    },
-    getJwtSecret(),
-    { expiresIn: '30m' }
-  );
-}
-
-function verifyLocationVerificationToken(token) {
-  const decoded = jwt.verify(token, getJwtSecret());
-  if (!decoded || decoded.purpose !== 'resident_location_verification') {
-    throw new Error('Invalid location verification token purpose');
-  }
-  return decoded;
-}
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -164,56 +117,6 @@ async function logSecurityEvent(connOrPool, { userId = null, email = null, event
 }
 
 /**
- * Public pre-registration GPS location verification endpoint.
- * Evaluates coordinates & accuracy against the official Barangay Bayanan polygon
- * and returns a backend-signed verification token.
- */
-async function verifyRegistrationLocation(req, res) {
-  try {
-    const { latitude, longitude, accuracy, gpsErrorStatus } = req.body || {};
-    const accuracyThresholdMeters = await getConfiguredAccuracyThresholdMeters(pool);
-
-    const evaluation = evaluateResidentLocation({
-      latitude,
-      longitude,
-      accuracy,
-      gpsErrorStatus,
-      accuracyThresholdMeters,
-    });
-
-    const tokenPayload = {
-      status: evaluation.status,
-      latitude: evaluation.status === LOCATION_VERIFICATION_STATUSES.VERIFIED || evaluation.status === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW || evaluation.status === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
-        ? Number(latitude)
-        : null,
-      longitude: evaluation.status === LOCATION_VERIFICATION_STATUSES.VERIFIED || evaluation.status === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW || evaluation.status === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
-        ? Number(longitude)
-        : null,
-      accuracy: evaluation.accuracy,
-      boundaryDistanceMeters: evaluation.boundaryDistanceMeters,
-      gpsErrorStatus: gpsErrorStatus || null,
-    };
-
-    const verificationToken = signLocationVerificationToken(tokenPayload);
-
-    return res.json({
-      status: evaluation.status,
-      message: evaluation.message,
-      accuracy: evaluation.accuracy,
-      accuracyThresholdMeters: evaluation.accuracyThresholdMeters,
-      boundaryDistanceMeters: evaluation.boundaryDistanceMeters,
-      canProceed: evaluation.canProceed,
-      verificationToken,
-    });
-  } catch (err) {
-    console.error('[Auth] verifyRegistrationLocation failed:', err.message);
-    return res.status(503).json({
-      error: 'Unable to verify location right now. Please try again.',
-    });
-  }
-}
-
-/**
  * Public self-registration. ALWAYS creates a Resident (role_id = 3).
  * Any attempt to request another role is rejected explicitly (HTTP 403) and logged.
  */
@@ -235,8 +138,6 @@ async function register(req, res) {
     street,
     role,
     role_id,
-    locationVerificationToken,
-    locationStatus,
     idPhotoDataUrl,
     selfiePhotoDataUrl,
   } = req.body;
@@ -294,72 +195,6 @@ async function register(req, res) {
     return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
   }
 
-  // Backend-enforced location verification evaluation (never trust frontend status string alone)
-  let resolvedLocationStatus = LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW;
-  let resolvedLocationMethod = 'none';
-  let resolvedAccuracy = null;
-  let resolvedBoundaryDistance = null;
-  let resolvedLat = null;
-  let resolvedLng = null;
-  let resolvedVerifiedAt = null;
-  let resolvedVerificationStatus = 'Unverified Resident';
-
-  if (locationVerificationToken) {
-    let decoded;
-    try {
-      decoded = verifyLocationVerificationToken(locationVerificationToken);
-    } catch (tokenErr) {
-      return res.status(400).json({
-        error: 'Location verification session expired or invalid. Please click Verify My Location again.',
-      });
-    }
-
-    const accuracyThresholdMeters = await getConfiguredAccuracyThresholdMeters(pool);
-    const reEvaluated = evaluateResidentLocation({
-      latitude: decoded.latitude,
-      longitude: decoded.longitude,
-      accuracy: decoded.accuracy,
-      gpsErrorStatus: decoded.gpsErrorStatus || null,
-      accuracyThresholdMeters,
-    });
-
-    resolvedLocationStatus = reEvaluated.status;
-    resolvedAccuracy = reEvaluated.accuracy;
-    resolvedBoundaryDistance = reEvaluated.boundaryDistanceMeters;
-
-    if (
-      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED ||
-      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.PENDING_REVIEW ||
-      resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.OUTSIDE_BOUNDARY
-    ) {
-      resolvedLat = Number.isFinite(Number(decoded.latitude)) ? Number(decoded.latitude) : null;
-      resolvedLng = Number.isFinite(Number(decoded.longitude)) ? Number(decoded.longitude) : null;
-    }
-
-    if (resolvedLocationStatus === LOCATION_VERIFICATION_STATUSES.VERIFIED) {
-      resolvedLocationMethod = 'gps';
-      resolvedVerifiedAt = new Date();
-      resolvedVerificationStatus = 'Verified Resident';
-    }
-  } else if (locationStatus !== undefined && locationStatus !== null && locationStatus !== '') {
-    const requested = String(locationStatus).trim().toLowerCase();
-    if (requested === LOCATION_VERIFICATION_STATUSES.VERIFIED) {
-      await logSecurityEvent(pool, {
-        email,
-        eventType: 'location_verification_bypass_attempt',
-        attemptedRole: 'resident',
-        req,
-        details: 'Attempted to submit verified location status without backend-signed GPS token',
-      });
-      return res.status(403).json({
-        error: 'Cannot claim verified location without backend GPS verification.',
-      });
-    }
-    if (ALLOWED_UNVERIFIED_FALLBACK_STATUSES.has(requested)) {
-      resolvedLocationStatus = requested;
-    }
-  }
-
   const conn = await pool.getConnection().catch((err) => {
     console.error('[Auth] DB connection error on register:', err.message);
     return null;
@@ -413,25 +248,14 @@ async function register(req, res) {
 
     await conn.query(
       `INSERT INTO user_profiles
-         (user_id, first_name, last_name, phone_number, street_address, barangay, city, province,
-          verification_status, location_verification_status, location_verification_method,
-          location_accuracy_meters, location_boundary_distance_meters, location_verified_lat,
-          location_verified_lng, location_verified_at)
-       VALUES (?, ?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (user_id, first_name, last_name, phone_number, street_address, barangay, city, province, verification_status)
+       VALUES (?, ?, ?, ?, ?, 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', 'Unverified Resident')`,
       [
         newUserId,
         derivedFirstName.slice(0, 80),
         derivedLastName.slice(0, 80),
         cleanPhone,
         cleanStreet,
-        'Unverified Resident',
-        resolvedLocationStatus,
-        resolvedLocationMethod,
-        resolvedAccuracy,
-        resolvedBoundaryDistance,
-        resolvedLat,
-        resolvedLng,
-        resolvedVerifiedAt,
       ]
     );
 
@@ -468,9 +292,6 @@ async function register(req, res) {
           role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
           account_status: 'pending_verification',
-          location_verification_status: resolvedLocationStatus,
-          location_verification_method: resolvedLocationMethod,
-          location_accuracy_meters: resolvedAccuracy,
           status: 'PENDING_VERIFICATION',
         }),
         String(req.ip || '0.0.0.0').slice(0, 45),
@@ -507,8 +328,6 @@ async function register(req, res) {
       role_name: residentRole.name,
       account_status: 'pending_verification',
       verificationStatus: 'Pending Verification',
-      locationVerificationStatus: resolvedLocationStatus,
-      locationVerificationMethod: resolvedLocationMethod,
     };
     return res.status(201).json({
       message: 'Application submitted. Your account is awaiting Administrator verification before you can sign in.',
@@ -519,8 +338,6 @@ async function register(req, res) {
         ...publicUser(row),
         accountStatus: 'pending_verification',
         verificationStatus: 'Pending Verification',
-        locationVerificationStatus: resolvedLocationStatus,
-        locationVerificationMethod: resolvedLocationMethod,
       },
       redirectTo: '/login.html',
     });
@@ -1346,8 +1163,6 @@ async function resetPassword(req, res) {
 }
 
 module.exports = {
-  verifyRegistrationLocation,
-  getConfiguredAccuracyThresholdMeters,
   register,
   login,
   getSession,

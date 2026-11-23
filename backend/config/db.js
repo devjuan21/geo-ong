@@ -178,6 +178,10 @@ function createPostgresAdapter() {
     },
     async getConnection() {
       const client = await pgPool.connect();
+      const onClientError = (err) => {
+        console.warn('[Postgres Client] Checked-out client error (non-fatal):', err && err.message);
+      };
+      client.on('error', onClientError);
       return {
         query(rawSql, params = []) {
           return runQuery(client, rawSql, params);
@@ -194,8 +198,9 @@ function createPostgresAdapter() {
         async rollback() {
           await client.query('ROLLBACK');
         },
-        release() {
-          client.release();
+        release(destroyErr) {
+          client.removeListener('error', onClientError);
+          client.release(destroyErr);
         },
       };
     },

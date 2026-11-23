@@ -125,9 +125,10 @@ function setupPasswordVisibilityToggle() {
 
 function setupForgotPasswordHandler() {
   const forgotBtn = document.getElementById('forgot-password-btn');
-  if (!forgotBtn) return;
+  if (!forgotBtn || forgotBtn.tagName === 'A') return;
 
-  forgotBtn.addEventListener('click', () => {
+  forgotBtn.addEventListener('click', (e) => {
+    e.preventDefault();
     window.location.href = 'forgot-password.html';
   });
 }

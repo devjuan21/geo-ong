@@ -953,6 +953,63 @@
       <!-- ================================================================ -->
       <section id="section-users" class="space-y-6 hidden min-w-0 max-w-full" hidden>
 
+        <!-- Resident Verification Applications Queue -->
+        <div id="resident-verification-queue-card" class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 class="text-base font-bold text-[#202020]">Resident Verification Applications</h2>
+                  <span id="rv-pending-badge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">0 Pending</span>
+                </div>
+                <p class="text-xs text-[#777777]">Review Barangay Address ID and Selfie submissions before activating Resident accounts.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="rv-refresh-btn" type="button"
+                class="h-9 px-3.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors shadow-subtle">
+                Refresh Queue
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <div class="inline-flex rounded-md bg-slate-50 p-1 border border-slate-200 text-xs font-bold">
+              <button type="button" data-rv-status="pending" class="rv-status-tab-btn px-3.5 py-1.5 rounded-md bg-[#202020] text-[#FFF9E8]">Pending</button>
+              <button type="button" data-rv-status="approved" class="rv-status-tab-btn px-3.5 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Approved</button>
+              <button type="button" data-rv-status="rejected" class="rv-status-tab-btn px-3.5 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Rejected</button>
+              <button type="button" data-rv-status="all" class="rv-status-tab-btn px-3.5 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">All</button>
+            </div>
+
+            <div class="w-full sm:w-64 max-w-xs">
+              <input id="rv-search-input" type="text" placeholder="Search applicant name, email, ID..."
+                class="w-full h-9 px-3 rounded-md border border-slate-200 bg-slate-50 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
+            </div>
+          </div>
+
+          <div class="max-h-96 overflow-y-auto overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle custom-scrollbar">
+            <table class="min-w-full divide-y divide-[#EEEEEE] text-left border-collapse">
+              <thead class="bg-slate-50 sticky top-0 z-10 shadow-xs">
+                <tr>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Applicant</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Address & Contact</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Location Check</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Submitted</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Status</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="rv-applications-tbody" class="divide-y divide-[#EEEEEE] bg-white"></tbody>
+            </table>
+            <div id="rv-applications-loading" class="hidden p-6 text-center text-xs text-[#777777] font-medium">
+              Loading resident verification applications...
+            </div>
+            <div id="rv-applications-empty" class="hidden p-6 text-center text-xs font-semibold text-[#777777]">
+              No resident verification applications in this queue.
+            </div>
+          </div>
+        </div>
+
         <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -3025,6 +3082,85 @@
         <button type="button" id="btn-generate-export" onclick="window.GeoSafeAdmin.generateAnalyticsExport()" class="h-8 px-4 rounded bg-[#0f172a] hover:bg-[#1e293b] disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white inline-flex items-center gap-1.5">
           <span id="btn-generate-export-label">Generate Export</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resident Verification Application Review Modal -->
+  <div id="resident-verification-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0B203B]/65 backdrop-blur-sm">
+    <div class="w-full max-w-3xl max-h-[92vh] bg-white rounded-lg border border-slate-200 shadow-2xl flex flex-col overflow-hidden">
+      <div class="bg-[#0B203B] px-5 py-3.5 flex items-center justify-between text-white">
+        <div>
+          <h3 class="text-sm font-bold leading-tight">Resident Identity Verification Application</h3>
+          <p id="rv-modal-subtitle" class="text-[11px] text-[#9EB8D6] leading-tight">Review applicant details and identity photos</p>
+        </div>
+        <button type="button" id="rv-modal-close-btn" aria-label="Close modal" class="p-1.5 rounded-md text-[#9EB8D6] hover:text-white hover:bg-white/10">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4 custom-scrollbar">
+        <div id="rv-modal-error" class="hidden p-3 rounded-md bg-red-50 border border-red-200 text-xs font-medium text-red-700"></div>
+
+        <!-- Applicant Summary -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+          <div><span class="text-[#777777] font-semibold">Full Name:</span> <strong id="rv-detail-name" class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">User Code:</span> <strong id="rv-detail-code" class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Email:</span> <strong id="rv-detail-email" class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Phone:</span> <strong id="rv-detail-phone" class="text-[#202020]">—</strong></div>
+          <div class="sm:col-span-2"><span class="text-[#777777] font-semibold">Street Address:</span> <strong id="rv-detail-address" class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Location Check:</span> <strong id="rv-detail-location" class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Submitted:</span> <strong id="rv-detail-submitted" class="text-[#202020]">—</strong></div>
+        </div>
+
+        <!-- Side-by-Side Authenticated Photos -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="border border-slate-200 rounded-lg p-3 space-y-2 bg-white">
+            <div class="text-xs font-bold text-[#202020]">1. Barangay Address ID</div>
+            <div class="aspect-[4/3] rounded-md bg-slate-900 border border-slate-200 flex items-center justify-center overflow-hidden">
+              <img id="rv-id-photo-img" class="hidden w-full h-full object-contain" alt="Barangay Address ID">
+              <span id="rv-id-photo-status" class="text-xs text-slate-300">Loading ID photo...</span>
+            </div>
+          </div>
+
+          <div class="border border-slate-200 rounded-lg p-3 space-y-2 bg-white">
+            <div class="text-xs font-bold text-[#202020]">2. Selfie Holding Same ID</div>
+            <div class="aspect-[4/3] rounded-md bg-slate-900 border border-slate-200 flex items-center justify-center overflow-hidden">
+              <img id="rv-selfie-photo-img" class="hidden w-full h-full object-contain" alt="Selfie holding Barangay Address ID">
+              <span id="rv-selfie-photo-status" class="text-xs text-slate-300">Loading selfie photo...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Existing Review Decision (when already approved/rejected) -->
+        <div id="rv-existing-review-box" class="hidden p-3.5 rounded-lg border text-xs space-y-1">
+          <div id="rv-existing-review-title" class="font-bold"></div>
+          <div id="rv-existing-review-meta" class="text-[#555555]"></div>
+          <div id="rv-existing-review-reason" class="hidden text-red-700 font-medium pt-1"></div>
+        </div>
+
+        <!-- Review Controls (when pending) -->
+        <div id="rv-pending-actions-box" class="hidden space-y-3 pt-2 border-t border-slate-200">
+          <div>
+            <label for="rv-rejection-reason" class="block text-xs font-bold text-[#202020] mb-1">
+              Rejection Reason <span class="text-[#777777] font-normal">(required only when rejecting)</span>
+            </label>
+            <textarea id="rv-rejection-reason" rows="2" maxlength="500"
+              placeholder="e.g., Address on ID is outside Barangay Bayanan, ID text is unreadable, or selfie does not match ID..."
+              class="w-full p-2.5 rounded-md border border-slate-300 text-xs text-[#202020] focus:outline-none focus:border-[#164579]"></textarea>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-end gap-2.5">
+            <button type="button" id="rv-reject-btn"
+              class="h-9 px-4 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors">
+              Reject Application
+            </button>
+            <button type="button" id="rv-approve-btn"
+              class="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors">
+              Accept Application
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

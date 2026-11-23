@@ -19,3 +19,6 @@ frontend/assets/uploads/incidents/*
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Private identity verification photo fallback storage (never commit)
+backend/private_uploads/

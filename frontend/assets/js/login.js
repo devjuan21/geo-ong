@@ -87,6 +87,7 @@ window.switchAuthTab = function (mode) {
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('login')");
     }
   } else {
+    if (typeof stopAllRegisterCameras === 'function') stopAllRegisterCameras();
     registerForm?.classList.add('hidden');
     loginForm?.classList.remove('hidden');
     if (tabLogin) {
@@ -791,11 +792,215 @@ function setupRegisterLocationVerification() {
   });
 }
 
+const regIdentityPhotoState = {
+  idDataUrl: null,
+  selfieDataUrl: null,
+  streams: { id: null, selfie: null },
+};
+
+function stopCameraStream(slot) {
+  const stream = regIdentityPhotoState.streams[slot];
+  if (stream && typeof stream.getTracks === 'function') {
+    stream.getTracks().forEach((t) => {
+      try { t.stop(); } catch (_) {}
+    });
+  }
+  regIdentityPhotoState.streams[slot] = null;
+  const video = document.getElementById(`reg-${slot}-video`);
+  if (video) {
+    video.srcObject = null;
+    video.classList.add('hidden');
+  }
+}
+
+function stopAllRegisterCameras() {
+  stopCameraStream('id');
+  stopCameraStream('selfie');
+}
+
+function updateIdentitySlotUI(slot) {
+  const dataUrl = slot === 'id' ? regIdentityPhotoState.idDataUrl : regIdentityPhotoState.selfieDataUrl;
+  const isStreaming = Boolean(regIdentityPhotoState.streams[slot]);
+
+  const wrap = document.getElementById(`reg-${slot}-preview-wrap`);
+  const video = document.getElementById(`reg-${slot}-video`);
+  const img = document.getElementById(`reg-${slot}-img`);
+  const badge = document.getElementById(`reg-${slot}-photo-badge`);
+  const openBtn = document.getElementById(`btn-${slot}-open-camera`);
+  const captureBtn = document.getElementById(`btn-${slot}-capture`);
+  const retakeBtn = document.getElementById(`btn-${slot}-retake`);
+  const removeBtn = document.getElementById(`btn-${slot}-remove`);
+
+  if (wrap) wrap.classList.toggle('hidden', !isStreaming && !dataUrl);
+  if (video) video.classList.toggle('hidden', !isStreaming);
+  if (img) {
+    if (dataUrl && !isStreaming) {
+      img.src = dataUrl;
+      img.classList.remove('hidden');
+    } else {
+      img.removeAttribute('src');
+      img.classList.add('hidden');
+    }
+  }
+
+  if (openBtn) openBtn.classList.toggle('hidden', isStreaming || Boolean(dataUrl));
+  if (captureBtn) captureBtn.classList.toggle('hidden', !isStreaming);
+  if (retakeBtn) retakeBtn.classList.toggle('hidden', isStreaming || !dataUrl);
+  if (removeBtn) removeBtn.classList.toggle('hidden', isStreaming || !dataUrl);
+
+  if (badge) {
+    if (dataUrl) {
+      badge.textContent = 'Captured';
+      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800';
+    } else if (isStreaming) {
+      badge.textContent = 'Camera Active';
+      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800';
+    } else {
+      badge.textContent = 'Required';
+      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]';
+    }
+  }
+}
+
+function resetRegisterIdentityPhotos() {
+  stopAllRegisterCameras();
+  regIdentityPhotoState.idDataUrl = null;
+  regIdentityPhotoState.selfieDataUrl = null;
+  const errBox = document.getElementById('reg-camera-error-box');
+  if (errBox) {
+    errBox.textContent = '';
+    errBox.classList.add('hidden');
+  }
+  updateIdentitySlotUI('id');
+  updateIdentitySlotUI('selfie');
+}
+
+function setupRegisterIdentityCameras() {
+  const errBox = document.getElementById('reg-camera-error-box');
+
+  const showCamError = (msg) => {
+    if (errBox) {
+      errBox.textContent = msg;
+      errBox.classList.remove('hidden');
+    }
+    showToastNotification(msg, 'warning');
+  };
+
+  const clearCamError = () => {
+    if (errBox) {
+      errBox.textContent = '';
+      errBox.classList.add('hidden');
+    }
+  };
+
+  const startCameraForSlot = async (slot) => {
+    clearCamError();
+    // Stop other slot camera first so mobile/desktop browsers don't conflict on single-camera devices
+    stopAllRegisterCameras();
+
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      showCamError('Camera API is unavailable in this browser or requires a secure (HTTPS) connection.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: slot === 'selfie' ? 'user' : { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
+        audio: false,
+      });
+
+      regIdentityPhotoState.streams[slot] = stream;
+      const video = document.getElementById(`reg-${slot}-video`);
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+      updateIdentitySlotUI(slot);
+    } catch (err) {
+      stopCameraStream(slot);
+      updateIdentitySlotUI(slot);
+      const isDenied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      showCamError(
+        isDenied
+          ? 'Camera permission was denied. Please allow camera access in your browser settings to capture your verification photo.'
+          : 'Unable to access camera. Please ensure a camera is connected and not in use by another app.'
+      );
+    }
+  };
+
+  const captureFromSlot = (slot) => {
+    clearCamError();
+    const video = document.getElementById(`reg-${slot}-video`);
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      showCamError('Camera preview is still loading. Please wait a moment and try again.');
+      return;
+    }
+
+    const maxDim = 1280;
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    if (slot === 'id') {
+      regIdentityPhotoState.idDataUrl = dataUrl;
+    } else {
+      regIdentityPhotoState.selfieDataUrl = dataUrl;
+    }
+
+    stopCameraStream(slot);
+    updateIdentitySlotUI(slot);
+  };
+
+  ['id', 'selfie'].forEach((slot) => {
+    const openBtn = document.getElementById(`btn-${slot}-open-camera`);
+    const captureBtn = document.getElementById(`btn-${slot}-capture`);
+    const retakeBtn = document.getElementById(`btn-${slot}-retake`);
+    const removeBtn = document.getElementById(`btn-${slot}-remove`);
+
+    if (openBtn) openBtn.addEventListener('click', () => startCameraForSlot(slot));
+    if (captureBtn) captureBtn.addEventListener('click', () => captureFromSlot(slot));
+    if (retakeBtn) {
+      retakeBtn.addEventListener('click', () => {
+        if (slot === 'id') regIdentityPhotoState.idDataUrl = null;
+        else regIdentityPhotoState.selfieDataUrl = null;
+        startCameraForSlot(slot);
+      });
+    }
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        stopCameraStream(slot);
+        if (slot === 'id') regIdentityPhotoState.idDataUrl = null;
+        else regIdentityPhotoState.selfieDataUrl = null;
+        updateIdentitySlotUI(slot);
+      });
+    }
+  });
+
+  window.addEventListener('beforeunload', stopAllRegisterCameras);
+  window.addEventListener('pagehide', stopAllRegisterCameras);
+}
+
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
   setupRegisterLocationVerification();
+  setupRegisterIdentityCameras();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -826,7 +1031,15 @@ function setupRegisterForm() {
       return;
     }
     if (!regLocationState.attempted) {
-      showToastNotification('Please click "Verify My Location" before creating your account.', 'warning');
+      showToastNotification('Please click "Verify My Location" before submitting your application.', 'warning');
+      return;
+    }
+    if (!regIdentityPhotoState.idDataUrl) {
+      showToastNotification('Please capture a clear photo of your Barangay Address ID.', 'warning');
+      return;
+    }
+    if (!regIdentityPhotoState.selfieDataUrl) {
+      showToastNotification('Please capture a selfie holding your Barangay Address ID.', 'warning');
       return;
     }
 
@@ -842,11 +1055,14 @@ function setupRegisterForm() {
         password,
         locationVerificationToken: regLocationState.verificationToken,
         locationStatus: regLocationState.status,
+        idPhotoDataUrl: regIdentityPhotoState.idDataUrl,
+        selfiePhotoDataUrl: regIdentityPhotoState.selfieDataUrl,
       });
 
       setRegisterSubmittingState(false);
       form.reset();
       resetRegisterLocationState();
+      resetRegisterIdentityPhotos();
 
       // Switch to Sign In tab with empty fields requiring manual credential entry
       window.switchAuthTab('login');
@@ -854,10 +1070,10 @@ function setupRegisterForm() {
       const loginEmailInput = document.getElementById('login-email');
       if (loginEmailInput) loginEmailInput.focus();
 
-      showSuccessBanner('Account successfully created. Please sign in with your email and password.');
+      showSuccessBanner('Application submitted! Your account is awaiting Administrator verification. You will be able to sign in once approved.');
     } catch (err) {
       setRegisterSubmittingState(false);
-      showToastNotification(err.message || 'Failed to create account. Please try again.', 'error');
+      showToastNotification(err.message || 'Failed to submit verification application. Please try again.', 'error');
     }
   });
 }

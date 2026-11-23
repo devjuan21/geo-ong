@@ -13,6 +13,10 @@ const {
   createResidentAccount,
   updateAdminUserStatus,
   reviewResidentLocationVerification,
+  getResidentVerificationApplications,
+  getResidentVerificationPhoto,
+  approveResidentVerification,
+  rejectResidentVerification,
   getAdminAuditLogs,
   getAdminRespondersList,
   getAdminLiveResponderLocations,
@@ -122,6 +126,12 @@ router.post(
 );
 router.patch('/users/:id/status', updateAdminUserStatus);
 router.post('/users/:id/location-verification', reviewResidentLocationVerification);
+
+// Resident Identity Verification Queue (Admin-only)
+router.get('/resident-verifications', getResidentVerificationApplications);
+router.get('/resident-verifications/:id/photo/:type', getResidentVerificationPhoto);
+router.post('/resident-verifications/:id/approve', approveResidentVerification);
+router.post('/resident-verifications/:id/reject', rejectResidentVerification);
 
 // 5. Alerts & Notifications (Emergency Broadcasts & Categories)
 router.get('/broadcast-categories', getBroadcastCategories);

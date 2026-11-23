@@ -1,6 +1,16 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, getSession, logout, changePassword, verifyRegistrationLocation } = require('../controllers/authController');
+const {
+  register,
+  login,
+  getSession,
+  logout,
+  changePassword,
+  forgotPassword,
+  verifyResetToken,
+  resetPassword,
+  verifyRegistrationLocation,
+} = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -58,6 +68,29 @@ router.post(
       .withMessage('New password and confirmation do not match'),
   ],
   changePassword
+);
+
+router.post(
+  ['/auth/forgot-password', '/forgot-password'],
+  [body('email').isEmail().normalizeEmail().withMessage('Valid email address is required')],
+  forgotPassword
+);
+
+router.get(['/auth/reset-password/verify', '/reset-password/verify'], verifyResetToken);
+
+router.post(
+  ['/auth/reset-password', '/reset-password'],
+  [
+    body('token').isString().isLength({ min: 32 }).withMessage('Valid password reset token is required'),
+    body('newPassword')
+      .isLength({ min: 8 })
+      .withMessage('New password must be at least 8 characters long'),
+    body('confirmPassword')
+      .optional()
+      .custom((value, { req }) => value === req.body.newPassword)
+      .withMessage('New password and confirmation do not match'),
+  ],
+  resetPassword
 );
 
 router.post(['/logout', '/auth/logout'], logout);

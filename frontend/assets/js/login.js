@@ -128,10 +128,7 @@ function setupForgotPasswordHandler() {
   if (!forgotBtn) return;
 
   forgotBtn.addEventListener('click', () => {
-    showToastNotification(
-      'For password resets or credential recovery, please contact the Barangay Bayanan Emergency Operations Center (EOC) administrator.',
-      'info'
-    );
+    window.location.href = 'forgot-password.html';
   });
 }
 

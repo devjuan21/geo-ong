@@ -92,7 +92,7 @@ async function verifyRequestSession(req) {
 
   try {
     const [rows] = await pool.query(
-      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status, u.must_change_password
+      `SELECT u.id, u.user_code, u.name, u.email, u.role_id, r.name AS role_name, u.status, u.account_status, u.must_change_password, u.password_changed_at
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.id = ?
@@ -105,6 +105,12 @@ async function verifyRequestSession(req) {
     }
 
     const user = rows[0];
+    if (user.password_changed_at && decoded.iat) {
+      const changedSec = Math.floor(new Date(user.password_changed_at).getTime() / 1000);
+      if (Number.isFinite(changedSec) && Number(decoded.iat) < changedSec) {
+        return { ok: false, status: 401, error: 'Session invalidated after password change. Please sign in again.' };
+      }
+    }
     if (user.status !== 'active' || (user.account_status && user.account_status !== 'active')) {
       return { ok: false, status: 403, error: 'Account is disabled or suspended. Please contact the Barangay Bayanan EOC.' };
     }

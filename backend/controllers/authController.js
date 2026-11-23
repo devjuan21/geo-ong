@@ -7,6 +7,7 @@ const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
 const { generateNextUserCode } = require('../services/userIdService');
 const { disconnectUserSockets } = require('../services/socketService');
+const { sendPasswordResetEmail } = require('../services/emailService');
 const {
   DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
   LOCATION_VERIFICATION_STATUSES,
@@ -796,6 +797,282 @@ async function changePassword(req, res) {
   }
 }
 
+const passwordResetRateStore = new Map();
+const RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
+const RESET_RATE_MAX_REQUESTS = 5;
+const RESET_TOKEN_EXPIRY_MINUTES = 30;
+
+function checkPasswordResetRateLimit(key, maxRequests = RESET_RATE_MAX_REQUESTS, windowMs = RESET_RATE_WINDOW_MS) {
+  const now = Date.now();
+  const bucket = passwordResetRateStore.get(key);
+  if (!bucket || now - bucket.windowStart > windowMs) {
+    passwordResetRateStore.set(key, { windowStart: now, count: 1 });
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+  if (bucket.count >= maxRequests) {
+    const retryAfterSec = Math.max(1, Math.ceil((bucket.windowStart + windowMs - now) / 1000));
+    return { allowed: false, retryAfterSec };
+  }
+  bucket.count += 1;
+  return { allowed: true, remaining: Math.max(0, maxRequests - bucket.count) };
+}
+
+function hashResetToken(rawToken) {
+  return crypto.createHash('sha256').update(String(rawToken || '')).digest('hex');
+}
+
+function resolveFrontendOrigin(req) {
+  const configured = String(process.env.FRONTEND_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+  const host = req.get('x-forwarded-host') || req.get('host');
+  if (!host) return '';
+  return `${String(proto).split(',')[0].trim()}://${String(host).split(',')[0].trim()}`;
+}
+
+async function forgotPassword(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
+
+  const ipLimit = checkPasswordResetRateLimit(`ip:${clientIp}`);
+  const emailLimit = checkPasswordResetRateLimit(`email:${email}`);
+  if (!ipLimit.allowed || !emailLimit.allowed) {
+    const retrySec = Math.max(ipLimit.retryAfterSec || 0, emailLimit.retryAfterSec || 0, 60);
+    res.setHeader('Retry-After', String(retrySec));
+    return res.status(429).json({
+      error: 'Too many password reset requests. Please wait a few minutes before trying again.',
+    });
+  }
+
+  const genericResponse = {
+    message: 'If an account exists for this email address, password reset instructions will be sent.',
+  };
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.email, u.status, u.account_status, r.name AS role_name
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE LOWER(u.email) = LOWER(?)
+       LIMIT 1`,
+      [email]
+    );
+
+    const user = rows[0];
+    if (!user || user.status !== 'active' || (user.account_status && user.account_status !== 'active')) {
+      return res.json(genericResponse);
+    }
+
+    const origin = resolveFrontendOrigin(req);
+    if (!origin) {
+      return res.status(500).json({ error: 'Unable to determine application URL for password reset link.' });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashResetToken(rawToken);
+
+    await pool.query(
+      `UPDATE users
+       SET reset_token_hash = ?,
+           reset_token_expires = NOW() + INTERVAL '30 minutes',
+           updated_at = NOW()
+       WHERE id = ?`,
+      [tokenHash, user.id]
+    );
+
+    const resetUrl = `${origin}/reset-password.html?token=${encodeURIComponent(rawToken)}`;
+
+    try {
+      await sendPasswordResetEmail({
+        to: user.email,
+        name: user.name,
+        resetUrl,
+        expiresMinutes: RESET_TOKEN_EXPIRY_MINUTES,
+      });
+    } catch (emailErr) {
+      // Clear unverified token and report failure honestly without leaking whether email exists
+      await pool.query(
+        'UPDATE users SET reset_token_hash = NULL, reset_token_expires = NULL WHERE id = ?',
+        [user.id]
+      ).catch(() => {});
+
+      console.error('[Auth] Password reset email delivery failed:', emailErr.message);
+      await logSecurityEvent(pool, {
+        userId: user.id,
+        email: user.email,
+        eventType: 'password_reset_email_failed',
+        attemptedRole: user.role_name,
+        req,
+        details: String(emailErr.code || emailErr.message || 'Email delivery failed').slice(0, 200),
+      });
+
+      return res.status(503).json({
+        error: 'Unable to send password reset email right now. Please try again later or contact the Barangay Bayanan EOC administrator.',
+      });
+    }
+
+    await logSecurityEvent(pool, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'password_reset_requested',
+      attemptedRole: user.role_name,
+      req,
+      details: 'Password reset link emailed (30m expiry)',
+    });
+
+    return res.json(genericResponse);
+  } catch (err) {
+    console.error('[Auth] forgotPassword failed:', err.message);
+    return res.status(500).json({ error: 'Unable to process password reset request right now.' });
+  }
+}
+
+async function verifyResetToken(req, res) {
+  const rawToken = String((req.query && req.query.token) || (req.body && req.body.token) || '').trim();
+  if (!rawToken || rawToken.length < 32) {
+    return res.status(400).json({ valid: false, error: 'This password reset link is invalid or has expired.' });
+  }
+
+  try {
+    const tokenHash = hashResetToken(rawToken);
+    const [rows] = await pool.query(
+      `SELECT id
+       FROM users
+       WHERE reset_token_hash = ?
+         AND reset_token_expires > NOW()
+         AND status = 'active'
+         AND account_status = 'active'
+       LIMIT 1`,
+      [tokenHash]
+    );
+    if (!rows.length) {
+      return res.status(400).json({ valid: false, error: 'This password reset link is invalid, expired, or has already been used.' });
+    }
+    return res.json({ valid: true });
+  } catch (err) {
+    console.error('[Auth] verifyResetToken failed:', err.message);
+    return res.status(500).json({ valid: false, error: 'Unable to verify password reset link.' });
+  }
+}
+
+async function resetPassword(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+
+  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
+  const ipLimit = checkPasswordResetRateLimit(`reset-ip:${clientIp}`, 10, RESET_RATE_WINDOW_MS);
+  if (!ipLimit.allowed) {
+    res.setHeader('Retry-After', String(ipLimit.retryAfterSec || 60));
+    return res.status(429).json({
+      error: 'Too many password reset attempts. Please wait a few minutes and try again.',
+    });
+  }
+
+  const { token, newPassword, confirmPassword } = req.body || {};
+  const rawToken = String(token || '').trim();
+  if (!rawToken || rawToken.length < 32) {
+    return res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+  }
+  if (!newPassword || String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  }
+  if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+    return res.status(400).json({ error: 'New password and confirmation do not match.' });
+  }
+
+  const tokenHash = hashResetToken(rawToken);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT u.id, u.email, u.password_hash, u.role_id, r.name AS role_name
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE u.reset_token_hash = ?
+         AND u.reset_token_expires > NOW()
+         AND u.status = 'active'
+         AND u.account_status = 'active'
+       LIMIT 1
+       FOR UPDATE OF u`,
+      [tokenHash]
+    );
+
+    const user = rows[0];
+    if (!user) {
+      await conn.rollback();
+      await logSecurityEvent(pool, {
+        userId: null,
+        email: null,
+        eventType: 'password_reset_failed',
+        req,
+        details: 'Invalid, expired, or already-used reset token',
+      });
+      return res.status(400).json({ error: 'This password reset link is invalid, expired, or has already been used.' });
+    }
+
+    const newHash = await bcrypt.hash(String(newPassword), 10);
+    await conn.query(
+      `UPDATE users
+       SET password_hash = ?,
+           reset_token_hash = NULL,
+           reset_token_expires = NULL,
+           must_change_password = FALSE,
+           password_changed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = ?`,
+      [newHash, user.id]
+    );
+
+    await conn.commit();
+
+    await disconnectUserSockets(user.id).catch(() => {});
+
+    await logSecurityEvent(pool, {
+      userId: user.id,
+      email: user.email,
+      eventType: 'password_reset_completed',
+      attemptedRole: user.role_name,
+      req,
+      details: 'Password reset completed via single-use email token',
+    });
+
+    try {
+      const ua = req && req.headers && req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null;
+      await pool.query(
+        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
+         VALUES (?, 'PASSWORD_RESET_COMPLETED', 'users', ?, ?, ?, ?)`,
+        [
+          user.id,
+          String(user.id),
+          JSON.stringify({ sessions_invalidated: true }),
+          String(clientIp).slice(0, 45),
+          ua,
+        ]
+      );
+    } catch (auditErr) {
+      console.warn('[Auth] Could not write audit_logs for password reset:', auditErr.message);
+    }
+
+    return res.json({
+      message: 'Your password has been reset successfully. You may now sign in with your new password.',
+    });
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    console.error('[Auth] resetPassword failed:', err.message);
+    return res.status(500).json({ error: 'Unable to reset password right now. Please try again.' });
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   verifyRegistrationLocation,
   getConfiguredAccuracyThresholdMeters,
@@ -804,6 +1081,11 @@ module.exports = {
   getSession,
   logout,
   changePassword,
+  forgotPassword,
+  verifyResetToken,
+  resetPassword,
+  checkPasswordResetRateLimit,
+  passwordResetRateStore,
   portalForRoleId,
   roleDisplayName,
 };

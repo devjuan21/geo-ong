@@ -125,12 +125,278 @@ function setupPasswordVisibilityToggle() {
 
 function setupForgotPasswordHandler() {
   const forgotBtn = document.getElementById('forgot-password-btn');
-  if (!forgotBtn || forgotBtn.tagName === 'A') return;
+  const modal = document.getElementById('forgot-password-modal');
+  if (!forgotBtn) return;
+  if (!modal) {
+    forgotBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.href = 'forgot-password.html';
+    });
+    return;
+  }
+
+  const closeBtn = document.getElementById('fp-close-btn');
+  const doneBtn = document.getElementById('fp-done-btn');
+  const errorBox = document.getElementById('fp-error-box');
+  const infoBox = document.getElementById('fp-info-box');
+  const stepEmail = document.getElementById('fp-step-email');
+  const stepOtp = document.getElementById('fp-step-otp');
+  const stepReset = document.getElementById('fp-step-reset');
+  const stepSuccess = document.getElementById('fp-step-success');
+
+  const emailInput = document.getElementById('fp-email-input');
+  const otpEmailLabel = document.getElementById('fp-otp-email-label');
+  const otpInput = document.getElementById('fp-otp-input');
+  const expiryLabel = document.getElementById('fp-expiry-label');
+  const resendBtn = document.getElementById('fp-resend-otp-btn');
+  const changeEmailBtn = document.getElementById('fp-change-email-btn');
+  const newPassInput = document.getElementById('fp-new-password');
+  const confirmPassInput = document.getElementById('fp-confirm-password');
+
+  let activeEmail = '';
+  let activeResetToken = '';
+  let cooldownTimer = null;
+  let expiryTimer = null;
+
+  const clearTimers = () => {
+    if (cooldownTimer) { clearInterval(cooldownTimer); cooldownTimer = null; }
+    if (expiryTimer) { clearInterval(expiryTimer); expiryTimer = null; }
+  };
+
+  const showMsg = (type, msg) => {
+    if (errorBox) errorBox.classList.add('hidden');
+    if (infoBox) infoBox.classList.add('hidden');
+    if (type === 'error' && errorBox) {
+      errorBox.textContent = msg;
+      errorBox.classList.remove('hidden');
+    } else if (type === 'info' && infoBox) {
+      infoBox.textContent = msg;
+      infoBox.classList.remove('hidden');
+    }
+  };
+
+  const showStep = (stepName) => {
+    [stepEmail, stepOtp, stepReset, stepSuccess].forEach((el) => el && el.classList.add('hidden'));
+    if (stepName === 'email' && stepEmail) stepEmail.classList.remove('hidden');
+    if (stepName === 'otp' && stepOtp) stepOtp.classList.remove('hidden');
+    if (stepName === 'reset' && stepReset) stepReset.classList.remove('hidden');
+    if (stepName === 'success' && stepSuccess) stepSuccess.classList.remove('hidden');
+  };
+
+  const startTimers = (cooldownSec = 60, expirySec = 300) => {
+    clearTimers();
+    let cd = cooldownSec;
+    let exp = expirySec;
+    const renderCd = () => {
+      if (!resendBtn) return;
+      if (cd > 0) {
+        resendBtn.disabled = true;
+        resendBtn.textContent = `Resend code (${cd}s)`;
+      } else {
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend code';
+      }
+    };
+    const renderExp = () => {
+      if (!expiryLabel) return;
+      if (exp <= 0) {
+        expiryLabel.textContent = 'Code expired';
+        expiryLabel.className = 'text-[11px] font-semibold text-[#DC2626]';
+      } else {
+        const m = String(Math.floor(exp / 60)).padStart(2, '0');
+        const s = String(exp % 60).padStart(2, '0');
+        expiryLabel.textContent = `Expires in ${m}:${s}`;
+        expiryLabel.className = 'text-[11px] font-medium text-[#64748B]';
+      }
+    };
+    renderCd();
+    renderExp();
+    cooldownTimer = setInterval(() => {
+      cd -= 1;
+      renderCd();
+      if (cd <= 0) { clearInterval(cooldownTimer); cooldownTimer = null; }
+    }, 1000);
+    expiryTimer = setInterval(() => {
+      exp -= 1;
+      renderExp();
+      if (exp <= 0) { clearInterval(expiryTimer); expiryTimer = null; }
+    }, 1000);
+  };
+
+  const openModal = () => {
+    clearTimers();
+    activeResetToken = '';
+    showMsg(null, '');
+    showStep('email');
+    if (otpInput) otpInput.value = '';
+    if (newPassInput) newPassInput.value = '';
+    if (confirmPassInput) confirmPassInput.value = '';
+    const loginEmail = document.getElementById('login-email');
+    if (emailInput && loginEmail && loginEmail.value.trim()) {
+      emailInput.value = loginEmail.value.trim();
+    }
+    modal.classList.remove('hidden');
+    if (emailInput) emailInput.focus();
+  };
+
+  const closeModal = () => {
+    clearTimers();
+    modal.classList.add('hidden');
+  };
 
   forgotBtn.addEventListener('click', (e) => {
     e.preventDefault();
-    window.location.href = 'forgot-password.html';
+    openModal();
   });
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (doneBtn) doneBtn.addEventListener('click', () => {
+    closeModal();
+    const loginEmail = document.getElementById('login-email');
+    if (loginEmail && activeEmail) loginEmail.value = activeEmail;
+    const loginPwd = document.getElementById('login-password');
+    if (loginPwd) { loginPwd.value = ''; loginPwd.focus(); }
+  });
+
+  document.querySelectorAll('[data-fp-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.getAttribute('data-fp-toggle'));
+      if (!target) return;
+      target.type = target.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  const requestOtp = async (email, triggerBtn) => {
+    showMsg(null, '');
+    if (triggerBtn) triggerBtn.disabled = true;
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMsg('error', data.error || 'Unable to send verification code.');
+        if (res.status === 429 && data.retryAfterSec) {
+          startTimers(Number(data.retryAfterSec), 300);
+        }
+        return false;
+      }
+      activeEmail = email;
+      if (otpEmailLabel) otpEmailLabel.textContent = email;
+      showStep('otp');
+      showMsg('info', data.message || 'If an account exists for this email address, a 6-digit verification code has been sent.');
+      startTimers(Number(data.resendCooldownSeconds || 60), Number(data.expiresInSeconds || 300));
+      if (otpInput) { otpInput.value = ''; otpInput.focus(); }
+      return true;
+    } catch (_) {
+      showMsg('error', 'Network error contacting GeoSafe server. Please try again.');
+      return false;
+    } finally {
+      if (triggerBtn) triggerBtn.disabled = false;
+    }
+  };
+
+  if (stepEmail) {
+    stepEmail.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = String(emailInput ? emailInput.value : '').trim().toLowerCase();
+      if (!isValidEmail(email)) {
+        showMsg('error', 'Please enter a valid email address.');
+        return;
+      }
+      await requestOtp(email, document.getElementById('fp-send-otp-btn'));
+    });
+  }
+
+  if (resendBtn) {
+    resendBtn.addEventListener('click', async () => {
+      if (!activeEmail || resendBtn.disabled) return;
+      await requestOtp(activeEmail, resendBtn);
+    });
+  }
+
+  if (changeEmailBtn) {
+    changeEmailBtn.addEventListener('click', () => {
+      clearTimers();
+      showMsg(null, '');
+      showStep('email');
+      if (emailInput) emailInput.focus();
+    });
+  }
+
+  if (stepOtp) {
+    stepOtp.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      showMsg(null, '');
+      const otp = String(otpInput ? otpInput.value : '').trim();
+      if (!/^\d{6}$/.test(otp)) {
+        showMsg('error', 'Please enter the 6-digit numeric verification code.');
+        return;
+      }
+      const btn = document.getElementById('fp-verify-otp-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: activeEmail, otp }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.verified || !data.resetToken) {
+          showMsg('error', data.error || 'Invalid or expired verification code.');
+          return;
+        }
+        clearTimers();
+        activeResetToken = data.resetToken;
+        showStep('reset');
+        showMsg('info', 'Code verified. Please enter your new password.');
+        if (newPassInput) newPassInput.focus();
+      } catch (_) {
+        showMsg('error', 'Network error verifying code. Please try again.');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  if (stepReset) {
+    stepReset.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      showMsg(null, '');
+      const newPassword = String(newPassInput ? newPassInput.value : '');
+      const confirmPassword = String(confirmPassInput ? confirmPassInput.value : '');
+      if (newPassword.length < 8) {
+        showMsg('error', 'New password must be at least 8 characters long.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showMsg('error', 'New password and confirmation do not match.');
+        return;
+      }
+      const btn = document.getElementById('fp-reset-submit-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resetToken: activeResetToken, newPassword, confirmPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showMsg('error', data.error || 'Unable to reset password.');
+          return;
+        }
+        activeResetToken = '';
+        showMsg(null, '');
+        showStep('success');
+      } catch (_) {
+        showMsg('error', 'Network error updating password. Please try again.');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
 }
 
 /**

@@ -77,10 +77,10 @@ router.post(
 );
 
 router.post(
-  ['/auth/verify-reset-otp', '/verify-reset-otp'],
+  ['/auth/verify-otp', '/verify-otp'],
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
-    body('otp').isString().matches(/^\d{6}$/).withMessage('Valid 6-digit verification code is required'),
+    body('otp').isString().matches(/^\d{6}$/).withMessage('6-digit verification code is required'),
   ],
   verifyResetOtp
 );
@@ -88,6 +88,8 @@ router.post(
 router.post(
   ['/auth/reset-password', '/reset-password'],
   [
+    body('resetToken').optional().isString().isLength({ min: 32 }),
+    body('token').optional().isString().isLength({ min: 32 }),
     body('newPassword')
       .isLength({ min: 8 })
       .withMessage('New password must be at least 8 characters long'),

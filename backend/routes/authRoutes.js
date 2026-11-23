@@ -7,7 +7,7 @@ const {
   logout,
   changePassword,
   forgotPassword,
-  verifyResetToken,
+  verifyResetOtp,
   resetPassword,
   verifyRegistrationLocation,
 } = require('../controllers/authController');
@@ -76,12 +76,18 @@ router.post(
   forgotPassword
 );
 
-router.get(['/auth/reset-password/verify', '/reset-password/verify'], verifyResetToken);
+router.post(
+  ['/auth/verify-reset-otp', '/verify-reset-otp'],
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
+    body('otp').isString().matches(/^\d{6}$/).withMessage('Valid 6-digit verification code is required'),
+  ],
+  verifyResetOtp
+);
 
 router.post(
   ['/auth/reset-password', '/reset-password'],
   [
-    body('token').isString().isLength({ min: 32 }).withMessage('Valid password reset token is required'),
     body('newPassword')
       .isLength({ min: 8 })
       .withMessage('New password must be at least 8 characters long'),

@@ -1,37 +1,11 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-function getEmailProviderConfig() {
-  const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
-  const smtpHost = String(process.env.SMTP_HOST || '').trim();
-  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-  const smtpUser = String(process.env.SMTP_USER || '').trim();
-  const smtpPass = String(process.env.SMTP_PASS || '').trim();
-  const smtpSecure =
-    String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || smtpPort === 465;
-  const fromAddress =
-    String(process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || process.env.SMTP_FROM || smtpUser || '').trim();
-
-  if (resendApiKey) {
-    return {
-      provider: 'resend',
-      apiKey: resendApiKey,
-      from: fromAddress || 'GeoSafe <onboarding@resend.dev>',
-    };
-  }
-
-  if (smtpHost && smtpUser && smtpPass) {
-    return {
-      provider: 'smtp',
-      host: smtpHost,
-      port: Number.isFinite(smtpPort) ? smtpPort : 587,
-      secure: smtpSecure,
-      user: smtpUser,
-      pass: smtpPass,
-      from: fromAddress || smtpUser,
-    };
-  }
-
-  return null;
+function getResendConfig() {
+  const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+  const from = String(process.env.EMAIL_FROM || process.env.RESEND_FROM_EMAIL || 'GeoSafe <onboarding@resend.dev>').trim();
+  const frontendUrl = String(process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
+  if (!apiKey) return null;
+  return { apiKey, from, frontendUrl };
 }
 
 function escapeHtml(str) {
@@ -43,24 +17,29 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-function buildResetEmailContent({ name, resetUrl, expiresMinutes = 30 }) {
+function buildOtpEmailContent({ name, otp, expiresMinutes = 5, frontendUrl = '' }) {
   const displayName = String(name || 'User').trim() || 'User';
   const safeName = escapeHtml(displayName);
-  const safeUrl = escapeHtml(resetUrl);
+  const safeOtp = escapeHtml(otp);
+  const loginLink = frontendUrl ? `${frontendUrl}/login.html` : '';
 
-  const subject = 'GeoSafe — Password Reset Request';
+  const subject = 'GeoSafe — Password Reset Verification Code';
   const text = [
     `Hello ${displayName},`,
     '',
     'We received a request to reset the password for your GeoSafe — Barangay Bayanan account.',
     '',
-    `Reset your password using this link (valid for ${expiresMinutes} minutes, single-use):`,
-    resetUrl,
+    `Your 6-digit verification code is: ${otp}`,
     '',
-    'If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.',
+    `This code expires in ${expiresMinutes} minutes and can only be used once.`,
+    loginLink ? `Portal: ${loginLink}` : '',
+    '',
+    'If you did not request a password reset, you can safely ignore this email.',
     '',
     'Barangay Bayanan Emergency Operations Center (GeoSafe)',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const html = `
     <div style="font-family: Inter, Arial, sans-serif; background:#F1F5F9; padding:24px; color:#0F172A;">
@@ -72,18 +51,13 @@ function buildResetEmailContent({ name, resetUrl, expiresMinutes = 30 }) {
         <div style="padding:24px; font-size:14px; line-height:1.6;">
           <p style="margin:0 0 12px 0;">Hello <strong>${safeName}</strong>,</p>
           <p style="margin:0 0 16px 0; color:#334155;">
-            We received a request to reset the password for your GeoSafe account. Click the button below to choose a new password.
+            Use the 6-digit verification code below to reset your GeoSafe password:
           </p>
-          <p style="margin:0 0 20px 0;">
-            <a href="${safeUrl}" style="display:inline-block; background:#164579; color:#FFFFFF; text-decoration:none; font-weight:600; font-size:14px; padding:11px 20px; border-radius:6px;">
-              Reset Password
-            </a>
-          </p>
-          <p style="margin:0 0 12px 0; font-size:12px; color:#64748B;">
-            This link expires in <strong>${expiresMinutes} minutes</strong> and can only be used once. If the button does not work, copy and paste this URL into your browser:
-          </p>
-          <p style="margin:0 0 16px 0; font-size:12px; word-break:break-all; color:#164579;">
-            ${safeUrl}
+          <div style="margin:0 0 20px 0; padding:14px 18px; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">
+            <span style="font-family: monospace; font-size:28px; font-weight:800; letter-spacing:8px; color:#0B203B;">${safeOtp}</span>
+          </div>
+          <p style="margin:0 0 16px 0; font-size:12px; color:#64748B;">
+            This code expires in <strong>${expiresMinutes} minutes</strong> and allows at most 5 verification attempts.
           </p>
           <p style="margin:0; font-size:12px; color:#64748B; border-top:1px solid #E2E8F0; padding-top:14px;">
             If you did not request a password reset, you can safely ignore this email.
@@ -96,64 +70,42 @@ function buildResetEmailContent({ name, resetUrl, expiresMinutes = 30 }) {
   return { subject, text, html };
 }
 
-async function sendPasswordResetEmail({ to, name, resetUrl, expiresMinutes = 30 }) {
-  const cfg = getEmailProviderConfig();
+async function sendPasswordResetOtpEmail({ to, name, otp, expiresMinutes = 5 }) {
+  const cfg = getResendConfig();
   if (!cfg) {
-    const err = new Error(
-      'Email delivery service is not configured. Set RESEND_API_KEY (or SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS) in environment variables.'
-    );
+    const err = new Error('Email delivery service is not configured. Set RESEND_API_KEY and EMAIL_FROM.');
     err.code = 'EMAIL_NOT_CONFIGURED';
     throw err;
   }
 
-  const { subject, text, html } = buildResetEmailContent({ name, resetUrl, expiresMinutes });
-
-  if (cfg.provider === 'resend') {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: cfg.from,
-        to: [to],
-        subject,
-        text,
-        html,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(body.message || body.error || `Resend delivery failed (HTTP ${res.status})`);
-      err.code = 'EMAIL_DELIVERY_FAILED';
-      throw err;
-    }
-    return { provider: 'resend', messageId: body.id || null };
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: {
-      user: cfg.user,
-      pass: cfg.pass,
-    },
+  const resend = new Resend(cfg.apiKey);
+  const { subject, text, html } = buildOtpEmailContent({
+    name,
+    otp,
+    expiresMinutes,
+    frontendUrl: cfg.frontendUrl,
   });
 
-  const info = await transporter.sendMail({
+  const { data, error } = await resend.emails.send({
     from: cfg.from,
-    to,
+    to: [to],
     subject,
     text,
     html,
   });
 
-  return { provider: 'smtp', messageId: info && info.messageId ? info.messageId : null };
+  if (error || !data || !data.id) {
+    const msg = (error && (error.message || error.name)) || 'Resend email delivery failed.';
+    const err = new Error(msg);
+    err.code = 'EMAIL_DELIVERY_FAILED';
+    err.providerError = error || null;
+    throw err;
+  }
+
+  return { provider: 'resend', messageId: data.id };
 }
 
 module.exports = {
-  getEmailProviderConfig,
-  sendPasswordResetEmail,
+  getResendConfig,
+  sendPasswordResetOtpEmail,
 };

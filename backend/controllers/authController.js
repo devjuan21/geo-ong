@@ -7,7 +7,7 @@ const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
 const { generateNextUserCode } = require('../services/userIdService');
 const { disconnectUserSockets } = require('../services/socketService');
-const { sendPasswordResetEmail } = require('../services/emailService');
+const { sendPasswordResetOtpEmail } = require('../services/emailService');
 const {
   DEFAULT_GPS_ACCURACY_THRESHOLD_METERS,
   LOCATION_VERIFICATION_STATUSES,
@@ -800,7 +800,9 @@ async function changePassword(req, res) {
 const passwordResetRateStore = new Map();
 const RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
 const RESET_RATE_MAX_REQUESTS = 5;
-const RESET_TOKEN_EXPIRY_MINUTES = 30;
+const OTP_EXPIRY_MINUTES = 5;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 5;
 
 function checkPasswordResetRateLimit(key, maxRequests = RESET_RATE_MAX_REQUESTS, windowMs = RESET_RATE_WINDOW_MS) {
   const now = Date.now();
@@ -817,17 +819,25 @@ function checkPasswordResetRateLimit(key, maxRequests = RESET_RATE_MAX_REQUESTS,
   return { allowed: true, remaining: Math.max(0, maxRequests - bucket.count) };
 }
 
-function hashResetToken(rawToken) {
-  return crypto.createHash('sha256').update(String(rawToken || '')).digest('hex');
+function getOtpHmacSecret() {
+  const configured = String(process.env.OTP_HASH_SECRET || '').trim();
+  if (configured) return configured;
+  return crypto.createHmac('sha256', getJwtSecret()).update('geosafe-otp-hmac-v1').digest('hex');
 }
 
-function resolveFrontendOrigin(req) {
-  const configured = String(process.env.FRONTEND_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '');
-  if (configured) return configured;
-  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
-  const host = req.get('x-forwarded-host') || req.get('host');
-  if (!host) return '';
-  return `${String(proto).split(',')[0].trim()}://${String(host).split(',')[0].trim()}`;
+function hmacHashOtp(otp) {
+  return crypto.createHmac('sha256', getOtpHmacSecret()).update(`otp:${String(otp || '')}`).digest('hex');
+}
+
+function hmacHashResetAuth(rawToken) {
+  return crypto.createHmac('sha256', getOtpHmacSecret()).update(`auth:${String(rawToken || '')}`).digest('hex');
+}
+
+function timingSafeHexEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''), 'hex');
+  const bufB = Buffer.from(String(b || ''), 'hex');
+  if (bufA.length === 0 || bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 async function forgotPassword(req, res) {
@@ -850,7 +860,8 @@ async function forgotPassword(req, res) {
   }
 
   const genericResponse = {
-    message: 'If an account exists for this email address, password reset instructions will be sent.',
+    message: 'If an account exists for this email address, a 6-digit verification code will be sent.',
+    cooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
   };
 
   try {
@@ -868,40 +879,72 @@ async function forgotPassword(req, res) {
       return res.json(genericResponse);
     }
 
-    const origin = resolveFrontendOrigin(req);
-    if (!origin) {
-      return res.status(500).json({ error: 'Unable to determine application URL for password reset link.' });
+    const rawOtp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const otpHash = hmacHashOtp(rawOtp);
+
+    const conn = await pool.getConnection();
+    let otpId = null;
+    try {
+      await conn.beginTransaction();
+
+      // Check 60-second resend cooldown for this account
+      const [recentRows] = await conn.query(
+        `SELECT id, EXTRACT(EPOCH FROM (NOW() - last_sent_at)) AS elapsed_sec
+         FROM password_reset_otps
+         WHERE user_id = ?
+           AND consumed_at IS NULL
+           AND last_sent_at > NOW() - INTERVAL '60 seconds'
+         ORDER BY last_sent_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [user.id]
+      );
+
+      if (recentRows.length > 0) {
+        const elapsed = Number(recentRows[0].elapsed_sec || 0);
+        const waitSec = Math.max(1, Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - elapsed));
+        await conn.rollback();
+        res.setHeader('Retry-After', String(waitSec));
+        return res.status(429).json({
+          error: `Please wait ${waitSec} seconds before requesting another verification code.`,
+          retryAfterSeconds: waitSec,
+        });
+      }
+
+      // Invalidate any prior unconsumed OTPs for this user
+      await conn.query(
+        'UPDATE password_reset_otps SET consumed_at = NOW() WHERE user_id = ? AND consumed_at IS NULL',
+        [user.id]
+      );
+
+      const [insRes] = await conn.query(
+        `INSERT INTO password_reset_otps (
+           user_id, otp_hash, expires_at, attempts, max_attempts, last_sent_at, request_ip
+         )
+         VALUES (?, ?, NOW() + INTERVAL '5 minutes', 0, ?, NOW(), ?)`,
+        [user.id, otpHash, OTP_MAX_ATTEMPTS, String(clientIp).slice(0, 45)]
+      );
+      otpId = insRes.insertId;
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback().catch(() => {});
+      throw txErr;
+    } finally {
+      conn.release();
     }
 
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = hashResetToken(rawToken);
-
-    await pool.query(
-      `UPDATE users
-       SET reset_token_hash = ?,
-           reset_token_expires = NOW() + INTERVAL '30 minutes',
-           updated_at = NOW()
-       WHERE id = ?`,
-      [tokenHash, user.id]
-    );
-
-    const resetUrl = `${origin}/reset-password.html?token=${encodeURIComponent(rawToken)}`;
-
     try {
-      await sendPasswordResetEmail({
+      await sendPasswordResetOtpEmail({
         to: user.email,
         name: user.name,
-        resetUrl,
-        expiresMinutes: RESET_TOKEN_EXPIRY_MINUTES,
+        otp: rawOtp,
+        expiresMinutes: OTP_EXPIRY_MINUTES,
       });
     } catch (emailErr) {
-      // Clear unverified token and report failure honestly without leaking whether email exists
-      await pool.query(
-        'UPDATE users SET reset_token_hash = NULL, reset_token_expires = NULL WHERE id = ?',
-        [user.id]
-      ).catch(() => {});
-
-      console.error('[Auth] Password reset email delivery failed:', emailErr.message);
+      if (otpId) {
+        await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [otpId]).catch(() => {});
+      }
+      console.error('[Auth] Password reset OTP email delivery failed:', emailErr.message);
       await logSecurityEvent(pool, {
         userId: user.id,
         email: user.email,
@@ -912,7 +955,7 @@ async function forgotPassword(req, res) {
       });
 
       return res.status(503).json({
-        error: 'Unable to send password reset email right now. Please try again later or contact the Barangay Bayanan EOC administrator.',
+        error: 'Unable to send verification email right now. Please try again later or contact the Barangay Bayanan EOC administrator.',
       });
     }
 
@@ -922,7 +965,7 @@ async function forgotPassword(req, res) {
       eventType: 'password_reset_requested',
       attemptedRole: user.role_name,
       req,
-      details: 'Password reset link emailed (30m expiry)',
+      details: '6-digit OTP emailed via Resend (5m expiry)',
     });
 
     return res.json(genericResponse);
@@ -932,31 +975,117 @@ async function forgotPassword(req, res) {
   }
 }
 
-async function verifyResetToken(req, res) {
-  const rawToken = String((req.query && req.query.token) || (req.body && req.body.token) || '').trim();
-  if (!rawToken || rawToken.length < 32) {
-    return res.status(400).json({ valid: false, error: 'This password reset link is invalid or has expired.' });
+async function verifyResetOtp(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
   }
 
+  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+  const rawOtp = String((req.body && req.body.otp) || '').trim();
+  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
+
+  const ipLimit = checkPasswordResetRateLimit(`verify-ip:${clientIp}`, 15, RESET_RATE_WINDOW_MS);
+  if (!ipLimit.allowed) {
+    res.setHeader('Retry-After', String(ipLimit.retryAfterSec || 60));
+    return res.status(429).json({
+      error: 'Too many verification attempts. Please wait a few minutes before trying again.',
+    });
+  }
+
+  if (!/^\d{6}$/.test(rawOtp)) {
+    return res.status(400).json({ error: 'Please enter a valid 6-digit verification code.' });
+  }
+
+  const conn = await pool.getConnection();
   try {
-    const tokenHash = hashResetToken(rawToken);
-    const [rows] = await pool.query(
-      `SELECT id
-       FROM users
-       WHERE reset_token_hash = ?
-         AND reset_token_expires > NOW()
-         AND status = 'active'
-         AND account_status = 'active'
-       LIMIT 1`,
-      [tokenHash]
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT o.id, o.user_id, o.otp_hash, o.expires_at, o.attempts, o.max_attempts,
+              u.email, r.name AS role_name
+       FROM password_reset_otps o
+       JOIN users u ON u.id = o.user_id
+       JOIN roles r ON r.id = u.role_id
+       WHERE LOWER(u.email) = LOWER(?)
+         AND u.status = 'active'
+         AND u.account_status = 'active'
+         AND o.consumed_at IS NULL
+         AND o.verified_at IS NULL
+       ORDER BY o.created_at DESC, o.id DESC
+       LIMIT 1
+       FOR UPDATE OF o`,
+      [email]
     );
-    if (!rows.length) {
-      return res.status(400).json({ valid: false, error: 'This password reset link is invalid, expired, or has already been used.' });
+
+    const otpRow = rows[0];
+    if (!otpRow) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'Invalid or expired verification code.' });
     }
-    return res.json({ valid: true });
+
+    if (new Date(otpRow.expires_at).getTime() <= Date.now()) {
+      await conn.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [otpRow.id]);
+      await conn.commit();
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
+    }
+
+    if (Number(otpRow.attempts) >= Number(otpRow.max_attempts || OTP_MAX_ATTEMPTS)) {
+      await conn.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [otpRow.id]);
+      await conn.commit();
+      return res.status(400).json({
+        error: 'Maximum verification attempts exceeded. Please request a new verification code.',
+        remainingAttempts: 0,
+      });
+    }
+
+    const candidateHash = hmacHashOtp(rawOtp);
+    if (!timingSafeHexEqual(candidateHash, otpRow.otp_hash)) {
+      const nextAttempts = Number(otpRow.attempts) + 1;
+      const maxAtt = Number(otpRow.max_attempts || OTP_MAX_ATTEMPTS);
+      const exhausted = nextAttempts >= maxAtt;
+      await conn.query(
+        `UPDATE password_reset_otps
+         SET attempts = ?,
+             consumed_at = CASE WHEN ? THEN NOW() ELSE consumed_at END
+         WHERE id = ?`,
+        [nextAttempts, exhausted, otpRow.id]
+      );
+      await conn.commit();
+
+      const remainingAttempts = Math.max(0, maxAtt - nextAttempts);
+      return res.status(400).json({
+        error: exhausted
+          ? 'Maximum verification attempts exceeded. Please request a new verification code.'
+          : `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`,
+        remainingAttempts,
+      });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetAuthHash = hmacHashResetAuth(resetToken);
+
+    await conn.query(
+      `UPDATE password_reset_otps
+       SET verified_at = NOW(),
+           reset_auth_hash = ?,
+           reset_auth_expires_at = NOW() + INTERVAL '10 minutes'
+       WHERE id = ?`,
+      [resetAuthHash, otpRow.id]
+    );
+
+    await conn.commit();
+    return res.json({
+      verified: true,
+      resetToken,
+      message: 'Verification code confirmed. You may now set a new password.',
+    });
   } catch (err) {
-    console.error('[Auth] verifyResetToken failed:', err.message);
-    return res.status(500).json({ valid: false, error: 'Unable to verify password reset link.' });
+    await conn.rollback().catch(() => {});
+    console.error('[Auth] verifyResetOtp failed:', err.message);
+    return res.status(500).json({ error: 'Unable to verify code right now.' });
+  } finally {
+    conn.release();
   }
 }
 
@@ -975,10 +1104,10 @@ async function resetPassword(req, res) {
     });
   }
 
-  const { token, newPassword, confirmPassword } = req.body || {};
-  const rawToken = String(token || '').trim();
+  const { resetToken, token, newPassword, confirmPassword } = req.body || {};
+  const rawToken = String(resetToken || token || '').trim();
   if (!rawToken || rawToken.length < 32) {
-    return res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    return res.status(400).json({ error: 'Your password reset session is invalid or has expired.' });
   }
   if (!newPassword || String(newPassword).length < 8) {
     return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
@@ -987,35 +1116,51 @@ async function resetPassword(req, res) {
     return res.status(400).json({ error: 'New password and confirmation do not match.' });
   }
 
-  const tokenHash = hashResetToken(rawToken);
+  const authHash = hmacHashResetAuth(rawToken);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
     const [rows] = await conn.query(
-      `SELECT u.id, u.email, u.password_hash, u.role_id, r.name AS role_name
-       FROM users u
+      `SELECT o.id AS otp_id, u.id, u.email, u.password_hash, u.role_id, r.name AS role_name
+       FROM password_reset_otps o
+       JOIN users u ON u.id = o.user_id
        JOIN roles r ON r.id = u.role_id
-       WHERE u.reset_token_hash = ?
-         AND u.reset_token_expires > NOW()
+       WHERE o.reset_auth_hash = ?
+         AND o.verified_at IS NOT NULL
+         AND o.consumed_at IS NULL
+         AND o.reset_auth_expires_at > NOW()
          AND u.status = 'active'
          AND u.account_status = 'active'
        LIMIT 1
-       FOR UPDATE OF u`,
-      [tokenHash]
+       FOR UPDATE OF o, u`,
+      [authHash]
     );
 
-    const user = rows[0];
-    if (!user) {
+    const row = rows[0];
+    if (!row) {
       await conn.rollback();
       await logSecurityEvent(pool, {
         userId: null,
         email: null,
         eventType: 'password_reset_failed',
         req,
-        details: 'Invalid, expired, or already-used reset token',
+        details: 'Invalid, expired, or already-used OTP reset authorization',
       });
-      return res.status(400).json({ error: 'This password reset link is invalid, expired, or has already been used.' });
+      return res.status(400).json({ error: 'Your password reset authorization is invalid, expired, or has already been used.' });
+    }
+
+    // Consume reset authorization atomically so it cannot be replayed
+    const [consumedRes] = await conn.query(
+      'UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ? AND consumed_at IS NULL RETURNING id',
+      [row.otp_id]
+    );
+    const consumedCount = Array.isArray(consumedRes)
+      ? consumedRes.length
+      : Number((consumedRes && (consumedRes.affectedRows || consumedRes.rowCount || (consumedRes.rows && consumedRes.rows.length))) || 0);
+    if (consumedCount === 0) {
+      await conn.rollback();
+      return res.status(400).json({ error: 'This password reset authorization has already been used.' });
     }
 
     const newHash = await bcrypt.hash(String(newPassword), 10);
@@ -1028,20 +1173,20 @@ async function resetPassword(req, res) {
            password_changed_at = NOW(),
            updated_at = NOW()
        WHERE id = ?`,
-      [newHash, user.id]
+      [newHash, row.id]
     );
 
     await conn.commit();
 
-    await disconnectUserSockets(user.id).catch(() => {});
+    await disconnectUserSockets(row.id).catch(() => {});
 
     await logSecurityEvent(pool, {
-      userId: user.id,
-      email: user.email,
+      userId: row.id,
+      email: row.email,
       eventType: 'password_reset_completed',
-      attemptedRole: user.role_name,
+      attemptedRole: row.role_name,
       req,
-      details: 'Password reset completed via single-use email token',
+      details: 'Password reset completed via single-use Email OTP',
     });
 
     try {
@@ -1050,9 +1195,9 @@ async function resetPassword(req, res) {
         `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
          VALUES (?, 'PASSWORD_RESET_COMPLETED', 'users', ?, ?, ?, ?)`,
         [
-          user.id,
-          String(user.id),
-          JSON.stringify({ sessions_invalidated: true }),
+          row.id,
+          String(row.id),
+          JSON.stringify({ method: 'email_otp', sessions_invalidated: true }),
           String(clientIp).slice(0, 45),
           ua,
         ]
@@ -1082,7 +1227,7 @@ module.exports = {
   logout,
   changePassword,
   forgotPassword,
-  verifyResetToken,
+  verifyResetOtp,
   resetPassword,
   checkPasswordResetRateLimit,
   passwordResetRateStore,

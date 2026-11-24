@@ -6,12 +6,7 @@ const pool = require('../models/db');
 const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
 const { generateNextUserCode } = require('../services/userIdService');
-const { disconnectUserSockets, emitAdminResidentApplicationEvent } = require('../services/socketService');
-const {
-  parseAndValidateImageDataUrl,
-  savePrivateIdentityPhoto,
-  deletePrivateIdentityPhoto,
-} = require('../services/privateStorageService');
+const { disconnectUserSockets } = require('../services/socketService');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -137,8 +132,6 @@ async function register(req, res) {
     street,
     role,
     role_id,
-    idPhotoDataUrl,
-    selfiePhotoDataUrl,
   } = req.body;
 
   // Explicitly reject any attempt to self-register as Responder or Administrator
@@ -186,34 +179,15 @@ async function register(req, res) {
   const cleanPhone = (phone_number || phone || '').trim().slice(0, 30) || null;
   const cleanStreet = (street_address || street || '').trim().slice(0, 255) || null;
 
-  const correlationId = crypto.randomUUID();
-  let stage = 'request_received';
-
-  // Validate required identity photos before DB transaction
-  try {
-    parseAndValidateImageDataUrl(idPhotoDataUrl, 'Barangay Address ID');
-    parseAndValidateImageDataUrl(selfiePhotoDataUrl, 'Selfie holding your Barangay Address ID');
-    stage = 'photos_validated';
-  } catch (photoErr) {
-    return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
-  }
-
   const conn = await pool.getConnection().catch((err) => {
-    console.error('[Auth] DB connection error on register:', { correlationId, stage, message: err.message });
+    console.error('[Auth] DB connection error on register:', err.message);
     return null;
   });
   if (!conn) {
-    return res.status(503).json({
-      error: 'Registration is temporarily unavailable (DB_CONNECT_FAILED). Please try again.',
-      errorCode: 'DB_CONNECT_FAILED',
-      correlationId,
-    });
+    return res.status(503).json({ error: 'Registration is temporarily unavailable. Please try again.' });
   }
 
-  let savedIdPhoto = null;
-  let savedSelfiePhoto = null;
   try {
-    stage = 'db_tx_started';
     await conn.beginTransaction();
 
     const [roleRows] = await conn.query(
@@ -236,32 +210,12 @@ async function register(req, res) {
     const password_hash = await bcrypt.hash(password, 10);
     const [result] = await conn.query(
       `INSERT INTO users (user_code, name, email, password_hash, role_id, role, status, account_status)
-       VALUES (?, ?, ?, ?, ?, 'resident', 'pending_verification', 'pending_verification')`,
+       VALUES (?, ?, ?, ?, ?, 'resident', 'active', 'active')`,
       [userCode, fullName, email, password_hash, residentRole.id]
     );
 
     const newUserId = result.insertId;
 
-    // Persist private identity photos before committing the application record
-    stage = 'id_upload_started';
-    savedIdPhoto = await savePrivateIdentityPhoto({
-      dataUrl: idPhotoDataUrl,
-      label: 'Barangay Address ID',
-      prefix: `user_${newUserId}_id`,
-      correlationId,
-    });
-    stage = 'id_upload_ok';
-
-    stage = 'selfie_upload_started';
-    savedSelfiePhoto = await savePrivateIdentityPhoto({
-      dataUrl: selfiePhotoDataUrl,
-      label: 'Selfie holding your Barangay Address ID',
-      prefix: `user_${newUserId}_selfie`,
-      correlationId,
-    });
-    stage = 'selfie_upload_ok';
-
-    stage = 'profile_insert';
     await conn.query(
       `INSERT INTO user_profiles
          (user_id, first_name, last_name, phone_number, street_address, barangay, city, province, verification_status)
@@ -275,40 +229,21 @@ async function register(req, res) {
       ]
     );
 
-    const [appResult] = await conn.query(
-      `INSERT INTO resident_verification_applications
-         (user_id, status, id_photo_path, id_photo_mime, id_photo_size,
-          selfie_photo_path, selfie_photo_mime, selfie_photo_size, submitted_at)
-       VALUES (?, 'pending_verification', ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        newUserId,
-        savedIdPhoto.storageRef,
-        savedIdPhoto.mimeType,
-        savedIdPhoto.byteLength,
-        savedSelfiePhoto.storageRef,
-        savedSelfiePhoto.mimeType,
-        savedSelfiePhoto.byteLength,
-      ]
-    );
-    const applicationId = appResult?.insertId || (Array.isArray(appResult) && appResult[0]?.id) || null;
-    const submittedAt = new Date().toISOString();
-
     await conn.query(
       `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
-       VALUES (?, 'RESIDENT_APPLICATION_SUBMITTED', 'USER_MANAGEMENT', ?, ?, ?, ?)`,
+       VALUES (?, 'USER_REGISTERED', 'USER_MANAGEMENT', ?, ?, ?, ?)`,
       [
         newUserId,
         String(newUserId),
         JSON.stringify({
           user_code: userCode,
-          application_id: applicationId,
           name: fullName,
           email,
           role: residentRole.name,
           role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
-          account_status: 'pending_verification',
-          status: 'PENDING_VERIFICATION',
+          account_status: 'active',
+          status: 'SUCCESS',
         }),
         String(req.ip || '0.0.0.0').slice(0, 45),
         req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null,
@@ -317,14 +252,6 @@ async function register(req, res) {
 
     await conn.commit();
 
-    // Notify connected Administrators in real time without exposing PII or photo URLs
-    emitAdminResidentApplicationEvent('resident-application-submitted', {
-      applicationId,
-      userId: newUserId,
-      status: 'pending_verification',
-      submittedAt,
-    });
-
     const row = {
       id: newUserId,
       user_code: userCode,
@@ -332,52 +259,25 @@ async function register(req, res) {
       email,
       role_id: residentRole.id,
       role_name: residentRole.name,
-      account_status: 'pending_verification',
-      verificationStatus: 'Pending Verification',
+      account_status: 'active',
     };
     return res.status(201).json({
-      message: 'Application submitted. Your account is awaiting Administrator verification before you can sign in.',
-      requiresVerification: true,
-      accountStatus: 'pending_verification',
-      applicationId,
-      user: {
-        ...publicUser(row),
-        accountStatus: 'pending_verification',
-        verificationStatus: 'Pending Verification',
-      },
+      message: 'Registration successful. Please sign in with your new Resident account.',
+      user: publicUser(row),
       redirectTo: '/login.html',
     });
   } catch (err) {
     await conn.rollback().catch(() => {});
-    if (savedIdPhoto?.storageRef) {
-      deletePrivateIdentityPhoto(savedIdPhoto.storageRef).catch(() => {});
-    }
-    if (savedSelfiePhoto?.storageRef) {
-      deletePrivateIdentityPhoto(savedSelfiePhoto.storageRef).catch(() => {});
-    }
     if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
       return res.status(409).json({ error: 'Email already registered' });
     }
     console.error('[Auth] register failed:', {
-      correlationId,
-      stage,
-      code: err.code || err.causeCode || null,
+      code: err.code || null,
       constraint: err.constraint || null,
       message: err.message,
     });
-    if (err.isStorageError || String(err.code || '').startsWith('STORAGE_')) {
-      return res.status(503).json({
-        error: `Identity photo storage is currently unavailable (${err.code || 'STORAGE_UPLOAD_FAILED'}). Please verify Supabase Storage configuration.`,
-        errorCode: err.code || 'STORAGE_UPLOAD_FAILED',
-        correlationId,
-      });
-    }
-    return res.status(err.statusCode || 503).json({
-      error: err.statusCode === 400
-        ? err.message
-        : `Registration is temporarily unavailable (${err.code || 'SERVICE_ERROR'}). Please try again.`,
-      errorCode: err.code || 'SERVICE_ERROR',
-      correlationId,
+    return res.status(503).json({
+      error: 'Registration is temporarily unavailable. Please try again.',
     });
   } finally {
     conn.release();

@@ -13,10 +13,6 @@ const {
   createResidentAccount,
   updateAdminUserStatus,
   reviewResidentLocationVerification,
-  getResidentVerificationApplications,
-  getResidentVerificationPhoto,
-  approveResidentVerification,
-  rejectResidentVerification,
   getAdminAuditLogs,
   getAdminRespondersList,
   getAdminLiveResponderLocations,
@@ -35,7 +31,6 @@ const {
   getAdminFacilities,
   createAdminFacility,
   updateAdminFacility,
-  getAdminStorageDiagnostics,
 } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
@@ -134,20 +129,11 @@ router.post(
 router.patch('/users/:id/status', updateAdminUserStatus);
 router.post('/users/:id/location-verification', reviewResidentLocationVerification);
 
-// Resident Identity Verification Queue (Admin-only)
-router.get('/resident-verifications', getResidentVerificationApplications);
-router.get('/resident-verifications/:id/photo/:type', getResidentVerificationPhoto);
-router.post('/resident-verifications/:id/approve', approveResidentVerification);
-router.post('/resident-verifications/:id/reject', rejectResidentVerification);
-
 // Password Assistance Tickets (Admin-only)
 router.get('/password-assistance', getPasswordAssistanceTickets);
 router.post('/password-assistance/:id/review', markTicketInReview);
 router.post('/password-assistance/:id/approve', approvePasswordAssistanceTicket);
 router.post('/password-assistance/:id/reject', rejectPasswordAssistanceTicket);
-
-// Safe Storage Connectivity Diagnostic (Admin-only)
-router.get('/diagnostics/storage', getAdminStorageDiagnostics);
 
 // 5. Alerts & Notifications (Emergency Broadcasts & Categories)
 router.get('/broadcast-categories', getBroadcastCategories);

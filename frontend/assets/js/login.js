@@ -91,7 +91,6 @@ window.switchAuthTab = function (mode) {
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('login')");
     }
   } else {
-    if (typeof stopAllRegisterCameras === 'function') stopAllRegisterCameras();
     registerForm?.classList.add('hidden');
     loginForm?.classList.remove('hidden');
     if (tabLogin) {
@@ -299,11 +298,11 @@ function setRegisterSubmittingState(isSubmitting) {
 
   if (isSubmitting) {
     submitBtn.classList.add('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Submitting Application...';
+    if (btnText) btnText.textContent = 'Creating Resident Account...';
     if (btnSpinner) btnSpinner.classList.remove('hidden');
   } else {
     submitBtn.classList.remove('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Submit Application';
+    if (btnText) btnText.textContent = 'Create Resident Account';
     if (btnSpinner) btnSpinner.classList.add('hidden');
   }
 }
@@ -459,393 +458,16 @@ function setupLoginForm() {
   });
 }
 
-const regIdentityPhotoState = {
-  idDataUrl: null,
-  selfieDataUrl: null,
-  streams: { id: null, selfie: null },
-};
-
-function stopCameraStream(slot) {
-  const stream = regIdentityPhotoState.streams[slot];
-  if (stream && typeof stream.getTracks === 'function') {
-    stream.getTracks().forEach((t) => {
-      try { t.stop(); } catch (_) {}
-    });
-  }
-  regIdentityPhotoState.streams[slot] = null;
-  const video = document.getElementById(`reg-${slot}-video`);
-  if (video) {
-    video.srcObject = null;
-    video.classList.add('hidden');
-  }
-}
-
-function stopAllRegisterCameras() {
-  stopCameraStream('id');
-  stopCameraStream('selfie');
-}
-
-function updateIdentitySlotUI(slot) {
-  const dataUrl = slot === 'id' ? regIdentityPhotoState.idDataUrl : regIdentityPhotoState.selfieDataUrl;
-  const isStreaming = Boolean(regIdentityPhotoState.streams[slot]);
-
-  const wrap = document.getElementById(`reg-${slot}-preview-wrap`);
-  const video = document.getElementById(`reg-${slot}-video`);
-  const img = document.getElementById(`reg-${slot}-img`);
-  const badge = document.getElementById(`reg-${slot}-photo-badge`);
-  const openBtn = document.getElementById(`btn-${slot}-open-camera`);
-  const captureBtn = document.getElementById(`btn-${slot}-capture`);
-  const retakeBtn = document.getElementById(`btn-${slot}-retake`);
-  const removeBtn = document.getElementById(`btn-${slot}-remove`);
-
-  if (wrap) wrap.classList.toggle('hidden', !isStreaming && !dataUrl);
-  if (video) video.classList.toggle('hidden', !isStreaming);
-  if (img) {
-    if (dataUrl && !isStreaming) {
-      img.src = dataUrl;
-      img.classList.remove('hidden');
-    } else {
-      img.removeAttribute('src');
-      img.classList.add('hidden');
-    }
-  }
-
-  if (openBtn) openBtn.classList.toggle('hidden', isStreaming || Boolean(dataUrl));
-  if (captureBtn) captureBtn.classList.toggle('hidden', !isStreaming);
-  if (retakeBtn) retakeBtn.classList.toggle('hidden', isStreaming || !dataUrl);
-  if (removeBtn) removeBtn.classList.toggle('hidden', isStreaming || !dataUrl);
-
-  if (badge) {
-    if (dataUrl) {
-      badge.textContent = 'Captured';
-      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800';
-    } else if (isStreaming) {
-      badge.textContent = 'Camera Active';
-      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800';
-    } else {
-      badge.textContent = 'Required';
-      badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]';
-    }
-  }
-}
-
-function resetRegisterIdentityPhotos() {
-  stopAllRegisterCameras();
-  regIdentityPhotoState.idDataUrl = null;
-  regIdentityPhotoState.selfieDataUrl = null;
-  const errBox = document.getElementById('reg-camera-error-box');
-  if (errBox) {
-    errBox.textContent = '';
-    errBox.classList.add('hidden');
-  }
-  updateIdentitySlotUI('id');
-  updateIdentitySlotUI('selfie');
-}
-
-function setupRegisterIdentityCameras() {
-  const errBox = document.getElementById('reg-camera-error-box');
-
-  const showCamError = (msg) => {
-    if (errBox) {
-      errBox.textContent = msg;
-      errBox.classList.remove('hidden');
-    }
-    showToastNotification(msg, 'warning');
-  };
-
-  const clearCamError = () => {
-    if (errBox) {
-      errBox.textContent = '';
-      errBox.classList.add('hidden');
-    }
-  };
-
-  const waitForVideoReadyFrame = (video, timeoutMs = 4000) => new Promise((resolve) => {
-    if (!video) return resolve(false);
-    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      return requestAnimationFrame(() => resolve(true));
-    }
-    let settled = false;
-    const done = (ok) => {
-      if (settled) return;
-      settled = true;
-      video.removeEventListener('loadeddata', onReady);
-      video.removeEventListener('canplay', onReady);
-      clearTimeout(timer);
-      if (ok) {
-        requestAnimationFrame(() => resolve(true));
-      } else {
-        resolve(false);
-      }
-    };
-    const onReady = () => {
-      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-        done(true);
-      }
-    };
-    const timer = setTimeout(() => {
-      done(video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
-    }, timeoutMs);
-    video.addEventListener('loadeddata', onReady);
-    video.addEventListener('canplay', onReady);
-  });
-
-  const isCanvasBlankOrBlack = (ctx, width, height) => {
-    try {
-      const imgData = ctx.getImageData(0, 0, width, height).data;
-      const step = Math.max(4, Math.floor((width * height) / 400) * 4);
-      let maxLuma = 0;
-      let minLuma = 255;
-      let nonZeroAlpha = 0;
-      for (let i = 0; i < imgData.length; i += step) {
-        const a = imgData[i + 3];
-        if (a > 0) nonZeroAlpha++;
-        const luma = 0.2126 * imgData[i] + 0.7152 * imgData[i + 1] + 0.0722 * imgData[i + 2];
-        if (luma > maxLuma) maxLuma = luma;
-        if (luma < minLuma) minLuma = luma;
-      }
-      if (nonZeroAlpha === 0) return true;
-      // Reject only truly uninitialized/pure-black empty frames (0,0,0), allowing low-light/covered camera testing
-      if (maxLuma < 2) return true;
-      return false;
-    } catch (_) {
-      return false;
-    }
-  };
-
-  const startCameraForSlot = async (slot) => {
-    clearCamError();
-    // Stop other slot camera first so mobile/desktop browsers don't conflict on single-camera devices
-    stopAllRegisterCameras();
-
-    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-      showCamError('Camera API is unavailable in this browser or requires a secure (HTTPS) connection.');
-      return;
-    }
-
-    const captureBtn = document.getElementById(`btn-${slot}-capture`);
-    const defaultCaptureLabel = slot === 'id' ? 'Capture ID Photo' : 'Capture Selfie';
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: slot === 'selfie' ? 'user' : { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 960 },
-        },
-        audio: false,
-      });
-
-      regIdentityPhotoState.streams[slot] = stream;
-      // Reveal <video> container BEFORE attaching srcObject & calling play() so browser decodes visible frames
-      updateIdentitySlotUI(slot);
-      if (captureBtn) {
-        captureBtn.disabled = true;
-        captureBtn.textContent = 'Initializing Camera...';
-      }
-
-      const video = document.getElementById(`reg-${slot}-video`);
-      if (video) {
-        video.srcObject = stream;
-        await video.play().catch(() => {});
-        await waitForVideoReadyFrame(video, 4000);
-      }
-      if (captureBtn) {
-        captureBtn.disabled = false;
-        captureBtn.textContent = defaultCaptureLabel;
-      }
-    } catch (err) {
-      stopCameraStream(slot);
-      updateIdentitySlotUI(slot);
-      if (captureBtn) {
-        captureBtn.disabled = false;
-        captureBtn.textContent = defaultCaptureLabel;
-      }
-      const isDenied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
-      showCamError(
-        isDenied
-          ? 'Camera permission was denied. Please allow camera access in your browser settings to capture your verification photo.'
-          : 'Unable to access camera. Please ensure a camera is connected and not in use by another app.'
-      );
-    }
-  };
-
-  const captureFromSlot = (slot) => {
-    clearCamError();
-    const video = document.getElementById(`reg-${slot}-video`);
-    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
-      showCamError('Camera preview is still loading. Please wait a moment and try again.');
-      return;
-    }
-
-    const maxDim = 1280;
-    let width = video.videoWidth;
-    let height = video.videoHeight;
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height);
-      width = Math.round(width * ratio);
-      height = Math.round(height * ratio);
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, width, height);
-
-    if (isCanvasBlankOrBlack(ctx, width, height)) {
-      showCamError('Captured frame was blank or black. Please uncover your camera lens or wait a moment for exposure to adjust, then click Capture again.');
-      return;
-    }
-
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    if (!dataUrl || !dataUrl.startsWith('data:image/jpeg;base64,') || dataUrl.length < 3000) {
-      showCamError('Unable to generate a valid photo from camera. Please try capturing again.');
-      return;
-    }
-
-    if (slot === 'id') {
-      regIdentityPhotoState.idDataUrl = dataUrl;
-    } else {
-      regIdentityPhotoState.selfieDataUrl = dataUrl;
-    }
-
-    stopCameraStream(slot);
-    updateIdentitySlotUI(slot);
-  };
-
-  ['id', 'selfie'].forEach((slot) => {
-    const openBtn = document.getElementById(`btn-${slot}-open-camera`);
-    const captureBtn = document.getElementById(`btn-${slot}-capture`);
-    const retakeBtn = document.getElementById(`btn-${slot}-retake`);
-    const removeBtn = document.getElementById(`btn-${slot}-remove`);
-
-    if (openBtn) openBtn.addEventListener('click', () => startCameraForSlot(slot));
-    if (captureBtn) captureBtn.addEventListener('click', () => captureFromSlot(slot));
-    if (retakeBtn) {
-      retakeBtn.addEventListener('click', () => {
-        if (slot === 'id') regIdentityPhotoState.idDataUrl = null;
-        else regIdentityPhotoState.selfieDataUrl = null;
-        startCameraForSlot(slot);
-      });
-    }
-    if (removeBtn) {
-      removeBtn.addEventListener('click', () => {
-        stopCameraStream(slot);
-        if (slot === 'id') regIdentityPhotoState.idDataUrl = null;
-        else regIdentityPhotoState.selfieDataUrl = null;
-        updateIdentitySlotUI(slot);
-      });
-    }
-  });
-
-  window.addEventListener('beforeunload', stopAllRegisterCameras);
-  window.addEventListener('pagehide', stopAllRegisterCameras);
-}
-
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
-  let currentWizardStep = 1;
   let isSubmitting = false;
-
-  const wizardErrBox = document.getElementById('reg-wizard-error-box');
-  const showWizardError = (msg) => {
-    if (wizardErrBox) {
-      if (!msg) {
-        wizardErrBox.textContent = '';
-        wizardErrBox.classList.add('hidden');
-      } else {
-        wizardErrBox.textContent = msg;
-        wizardErrBox.classList.remove('hidden');
-      }
-    }
-    if (msg) showToastNotification(msg, 'warning');
-  };
-
-  const showWizardStep = (step) => {
-    currentWizardStep = step;
-    showWizardError(null);
-    if (step !== 3 && typeof stopAllRegisterCameras === 'function') {
-      stopAllRegisterCameras();
-    }
-    if (typeof updateIdentitySlotUI === 'function') {
-      updateIdentitySlotUI('id');
-      updateIdentitySlotUI('selfie');
-    }
-    [1, 2, 3].forEach((n) => {
-      const panel = document.getElementById(`reg-wizard-step-${n}`);
-      const ind = document.getElementById(`reg-step-ind-${n}`);
-      if (panel) panel.classList.toggle('hidden', n !== step);
-      if (ind) {
-        if (n === step) {
-          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-bold bg-[#0B203B] text-white transition-colors';
-        } else if (n < step) {
-          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold bg-emerald-100 text-emerald-800 transition-colors';
-        } else {
-          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold text-[#64748B] transition-colors';
-        }
-      }
-    });
-  };
-
-  const step1NextBtn = document.getElementById('btn-reg-step1-next');
-  const step2BackBtn = document.getElementById('btn-reg-step2-back');
-  const step2NextBtn = document.getElementById('btn-reg-step2-next');
-  const step3BackBtn = document.getElementById('btn-reg-step3-back');
-
-  if (step1NextBtn) {
-    step1NextBtn.addEventListener('click', () => {
-      const firstName = (document.getElementById('reg-first-name')?.value || '').trim();
-      const lastName = (document.getElementById('reg-last-name')?.value || '').trim();
-      if (!firstName || !lastName) {
-        showWizardError('Please enter both your first name and last name.');
-        return;
-      }
-      showWizardStep(2);
-      const emailEl = document.getElementById('reg-email');
-      if (emailEl && !emailEl.value) emailEl.focus();
-    });
-  }
-
-  if (step2BackBtn) {
-    step2BackBtn.addEventListener('click', () => showWizardStep(1));
-  }
-
-  if (step2NextBtn) {
-    step2NextBtn.addEventListener('click', () => {
-      const email = (document.getElementById('reg-email')?.value || '').trim().toLowerCase();
-      const password = document.getElementById('reg-password')?.value || '';
-      const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
-      if (!email || !isValidEmail(email)) {
-        showWizardError('Please enter a valid email address.');
-        return;
-      }
-      if (!password || password.length < 8) {
-        showWizardError('Password must be at least 8 characters long.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        showWizardError('Passwords do not match. Please verify your password confirmation.');
-        return;
-      }
-      showWizardStep(3);
-    });
-  }
-
-  if (step3BackBtn) {
-    step3BackBtn.addEventListener('click', () => showWizardStep(2));
-  }
-
-  setupRegisterIdentityCameras();
-  showWizardStep(1);
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (isSubmitting) return;
     hideErrorBanner();
-    showWizardError(null);
 
     const firstName = (document.getElementById('reg-first-name')?.value || '').trim();
     const lastName = (document.getElementById('reg-last-name')?.value || '').trim();
@@ -856,21 +478,19 @@ function setupRegisterForm() {
     const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
 
     if (!firstName || !lastName) {
-      showWizardStep(1);
-      showWizardError('Please enter both your first name and last name.');
+      showToastNotification('Please enter both your first name and last name.', 'warning');
       return;
     }
-    if (!email || !isValidEmail(email) || !password || password.length < 8 || password !== confirmPassword) {
-      showWizardStep(2);
-      showWizardError('Please check your email and password details.');
+    if (!email || !isValidEmail(email)) {
+      showToastNotification('Please enter a valid email address.', 'warning');
       return;
     }
-    if (!regIdentityPhotoState.idDataUrl) {
-      showWizardError('Please capture a clear photo of your Barangay Address ID.');
+    if (!password || password.length < 8) {
+      showToastNotification('Password must be at least 8 characters long.', 'warning');
       return;
     }
-    if (!regIdentityPhotoState.selfieDataUrl) {
-      showWizardError('Please capture a selfie holding your Barangay Address ID.');
+    if (password !== confirmPassword) {
+      showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
 
@@ -885,27 +505,22 @@ function setupRegisterForm() {
         phone,
         street,
         password,
-        idPhotoDataUrl: regIdentityPhotoState.idDataUrl,
-        selfiePhotoDataUrl: regIdentityPhotoState.selfieDataUrl,
       });
 
       isSubmitting = false;
       setRegisterSubmittingState(false);
       form.reset();
-      resetRegisterIdentityPhotos();
-      showWizardStep(1);
 
-      // Switch to Sign In tab with empty fields requiring manual credential entry
       window.switchAuthTab('login');
       clearLoginFormFields();
       const loginEmailInput = document.getElementById('login-email');
       if (loginEmailInput) loginEmailInput.focus();
 
-      showSuccessBanner('Application submitted! Your account is awaiting Administrator verification. You will be able to sign in once approved.');
+      showSuccessBanner('Account successfully created. Please sign in with your email and password.');
     } catch (err) {
       isSubmitting = false;
       setRegisterSubmittingState(false);
-      showWizardError(err.message || 'Failed to submit verification application. Please try again.');
+      showToastNotification(err.message || 'Failed to create account. Please try again.', 'error');
     }
   });
 }

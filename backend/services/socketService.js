@@ -753,22 +753,6 @@ function getLiveResponderLocations() {
 }
 
 /**
- * Emits a resident verification lifecycle notification exclusively to connected Administrators.
- * Payload must exclude private photos and sensitive identity details.
- */
-function emitAdminResidentApplicationEvent(eventName, payload = {}) {
-  if (!io || !eventName) return;
-  const safePayload = {
-    applicationId: payload.applicationId || null,
-    userId: payload.userId || null,
-    status: payload.status || null,
-    submittedAt: payload.submittedAt || null,
-    reviewedAt: payload.reviewedAt || null,
-  };
-  io.to('role:Administrator').to('role:admin').emit(eventName, safePayload);
-}
-
-/**
  * Emits a password assistance ticket notification exclusively to connected Administrators.
  * Never includes temporary passwords or sensitive account details.
  */
@@ -798,7 +782,6 @@ module.exports = {
   emitIncidentResolved,
   emitIncidentResolvedCommunityNotification,
   emitAdminAnnouncement,
-  emitAdminResidentApplicationEvent,
   emitAdminPasswordAssistanceEvent,
   emitConversationMessage,
   emitConversationMessagesRead,

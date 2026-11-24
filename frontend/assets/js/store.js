@@ -620,8 +620,6 @@ class GeoSafeStore {
       'messages:access-updated',
       'conversation:archive-updated',
       'admin:conversation-activity',
-      'resident-application-submitted',
-      'resident-application-reviewed',
       'password-assistance-submitted',
       'password-assistance-updated',
       'messages:incoming-notification',
@@ -840,8 +838,6 @@ class GeoSafeStore {
         'messages:incoming-notification',
         'responder:location-updated',
         'responder:location-offline',
-        'resident-application-submitted',
-        'resident-application-reviewed',
         'password-assistance-submitted',
         'password-assistance-updated'
       ];
@@ -1076,9 +1072,6 @@ class GeoSafeStore {
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
-    if (!payload.idPhotoDataUrl || !payload.selfiePhotoDataUrl) {
-      throw new Error('Both Barangay Address ID photo and Selfie holding the ID are required.');
-    }
 
     const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
     const endpoint = apiBase.endsWith('/api') ? `${apiBase}/register` : '/api/register';
@@ -1097,9 +1090,7 @@ class GeoSafeStore {
         email,
         password,
         phone_number: phone,
-        street_address: street,
-        idPhotoDataUrl: payload.idPhotoDataUrl,
-        selfiePhotoDataUrl: payload.selfiePhotoDataUrl
+        street_address: street
       })
     });
 

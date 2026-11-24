@@ -2200,20 +2200,43 @@ async function updateAdminUserStatus(req, res) {
   }
 }
 
+function mapDbLocStatusToUi(dbStatus) {
+  const normalized = String(dbStatus || '').trim().toLowerCase();
+  if (normalized === 'verified') return 'verified';
+  if (normalized === 'outside_boundary' || normalized === 'unable_to_verify') return 'unable_to_verify';
+  return 'not_reviewed';
+}
+
 async function reviewResidentLocationVerification(req, res) {
   const targetUserId = parseInt(req.params.id, 10);
   if (!Number.isFinite(targetUserId)) {
     return res.status(400).json({ error: 'Invalid user ID.' });
   }
 
-  const decision = String((req.body && req.body.decision) || '').trim().toLowerCase();
-  const reason = String((req.body && req.body.reason) || '').trim();
+  const rawStatus = String((req.body && req.body.status) || '').trim().toLowerCase();
+  const rawDecision = String((req.body && req.body.decision) || '').trim().toLowerCase();
+  const rawRemarks = String((req.body && (req.body.remarks !== undefined ? req.body.remarks : req.body.reason)) || '').trim();
 
-  if (!['approve', 'reject'].includes(decision)) {
-    return res.status(400).json({ error: 'Decision must be either "approve" or "reject".' });
+  let targetUiStatus = '';
+  if (rawStatus) {
+    if (rawStatus === 'verified') targetUiStatus = 'verified';
+    else if (rawStatus === 'unable_to_verify' || rawStatus === 'outside_boundary') targetUiStatus = 'unable_to_verify';
+    else if (rawStatus === 'not_reviewed' || rawStatus === 'pending_review') targetUiStatus = 'not_reviewed';
+    else {
+      return res.status(400).json({ error: 'Verification status must be Not Reviewed, Verified, or Unable to Verify.' });
+    }
+  } else if (rawDecision) {
+    if (rawDecision === 'approve') targetUiStatus = 'verified';
+    else if (rawDecision === 'reject') targetUiStatus = 'unable_to_verify';
+    else {
+      return res.status(400).json({ error: 'Decision must be either "approve" or "reject".' });
+    }
+  } else {
+    return res.status(400).json({ error: 'Location verification status is required.' });
   }
-  if (!reason || reason.length < 3) {
-    return res.status(400).json({ error: 'A concise reason (minimum 3 characters) is required for manual verification decisions.' });
+
+  if (targetUiStatus === 'unable_to_verify' && (!rawRemarks || rawRemarks.length < 3)) {
+    return res.status(400).json({ error: 'A reason (minimum 3 characters) is required when selecting Unable to Verify.' });
   }
 
   const conn = await pool.getConnection();
@@ -2222,8 +2245,8 @@ async function reviewResidentLocationVerification(req, res) {
 
     const [rows] = await conn.query(
       `SELECT u.id, u.name, u.email, u.role_id,
-              up.verification_status, up.location_verification_status, up.location_verification_method,
-              up.location_review_reason
+              up.id AS profile_id, up.verification_status, up.location_verification_status,
+              up.location_verification_method, up.location_review_reason
        FROM users u
        LEFT JOIN user_profiles up ON up.user_id = u.id
        WHERE u.id = ? LIMIT 1`,
@@ -2241,26 +2264,46 @@ async function reviewResidentLocationVerification(req, res) {
       return res.status(400).json({ error: 'Location verification review applies only to Resident accounts.' });
     }
 
-    const newLocStatus = decision === 'approve' ? 'verified' : 'outside_boundary';
-    const newVerifStatus = decision === 'approve' ? 'Verified Resident' : 'Unverified Resident';
-    const cleanReason = reason.slice(0, 500);
+    const newLocStatus =
+      targetUiStatus === 'verified'
+        ? 'verified'
+        : targetUiStatus === 'unable_to_verify'
+          ? 'outside_boundary'
+          : 'pending_review';
+    const newVerifStatus = targetUiStatus === 'verified' ? 'Verified Resident' : 'Unverified Resident';
+    const newMethod = targetUiStatus === 'not_reviewed' ? 'none' : 'manual_admin';
+    const cleanRemarks = rawRemarks ? rawRemarks.slice(0, 500) : null;
 
-    await conn.query(
-      `UPDATE user_profiles
-       SET location_verification_status = ?,
-           verification_status = ?,
-           location_verification_method = 'manual_admin',
-           location_verified_by = ?,
-           location_verified_at = CURRENT_TIMESTAMP,
-           location_review_reason = ?,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = ?`,
-      [newLocStatus, newVerifStatus, req.user.id, cleanReason, targetUserId]
-    );
+    if (target.profile_id) {
+      await conn.query(
+        `UPDATE user_profiles
+         SET location_verification_status = ?,
+             verification_status = ?,
+             location_verification_method = ?,
+             location_verified_by = ?,
+             location_verified_at = CURRENT_TIMESTAMP,
+             location_review_reason = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?`,
+        [newLocStatus, newVerifStatus, newMethod, req.user.id, cleanRemarks, targetUserId]
+      );
+    } else {
+      await conn.query(
+        `INSERT INTO user_profiles
+           (user_id, first_name, last_name, barangay, city, province, verification_status,
+            location_verification_status, location_verification_method, location_verified_by,
+            location_verified_at, location_review_reason)
+         VALUES (?, ?, '', 'Barangay Bayanan', 'Muntinlupa City', 'Metro Manila', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
+        [targetUserId, String(target.name || 'Resident').slice(0, 80), newVerifStatus, newLocStatus, newMethod, req.user.id, cleanRemarks]
+      );
+    }
 
-    const auditAction = decision === 'approve'
-      ? 'RESIDENT_LOCATION_VERIFICATION_APPROVED'
-      : 'RESIDENT_LOCATION_VERIFICATION_REJECTED';
+    const auditAction =
+      targetUiStatus === 'verified'
+        ? 'RESIDENT_LOCATION_VERIFICATION_APPROVED'
+        : targetUiStatus === 'unable_to_verify'
+          ? 'RESIDENT_LOCATION_VERIFICATION_REJECTED'
+          : 'RESIDENT_LOCATION_VERIFICATION_RESET';
 
     await writeAuditLog(conn, {
       userId: req.user.id,
@@ -2276,28 +2319,44 @@ async function reviewResidentLocationVerification(req, res) {
       newValues: {
         verification_status: newVerifStatus,
         location_verification_status: newLocStatus,
-        location_verification_method: 'manual_admin',
+        ui_status: targetUiStatus,
+        location_verification_method: newMethod,
         reviewed_by_admin_id: req.user.id,
-        decision,
-        reason: cleanReason,
+        remarks: cleanRemarks,
       },
       req,
     });
 
     await conn.commit();
+
+    const [updatedRows] = await pool.query(
+      `SELECT up.location_verified_at, verifier.name AS location_verified_by_name
+       FROM user_profiles up
+       LEFT JOIN users verifier ON verifier.id = up.location_verified_by
+       WHERE up.user_id = ? LIMIT 1`,
+      [targetUserId]
+    );
+    const updatedMeta = updatedRows[0] || {};
+
     return res.json({
-      message: decision === 'approve'
-        ? 'Resident location verification approved.'
-        : 'Resident location verification rejected.',
+      message:
+        targetUiStatus === 'verified'
+          ? 'Barangay address marked as Verified.'
+          : targetUiStatus === 'unable_to_verify'
+            ? 'Barangay address marked as Unable to Verify.'
+            : 'Barangay address verification reset to Not Reviewed.',
       resident: {
         id: target.id,
         name: target.name,
         email: target.email,
         verificationStatus: newVerifStatus,
         locationVerificationStatus: newLocStatus,
-        locationVerificationMethod: 'manual_admin',
+        locationVerificationUiStatus: targetUiStatus,
+        locationVerificationMethod: newMethod,
         locationVerifiedBy: req.user.id,
-        locationReviewReason: cleanReason,
+        locationVerifiedByName: updatedMeta.location_verified_by_name || req.user.name || null,
+        locationVerifiedAt: updatedMeta.location_verified_at || new Date().toISOString(),
+        locationReviewReason: cleanRemarks || '',
       },
     });
   } catch (err) {
@@ -4865,7 +4924,15 @@ async function getUserIdentityDocuments(req, res) {
     }
 
     const [userRows] = await pool.query(
-      'SELECT id, role_id, role FROM users WHERE id = ? LIMIT 1',
+      `SELECT u.id, u.role_id, u.role,
+              up.street_address, up.barangay, up.city,
+              up.location_verification_status, up.location_verification_method,
+              up.location_verified_at, up.location_verified_by, up.location_review_reason,
+              verifier.name AS location_verified_by_name
+         FROM users u
+         LEFT JOIN user_profiles up ON up.user_id = u.id
+         LEFT JOIN users verifier ON verifier.id = up.location_verified_by
+        WHERE u.id = ? LIMIT 1`,
       [userId]
     );
     if (!userRows.length) {
@@ -4889,6 +4956,20 @@ async function getUserIdentityDocuments(req, res) {
       hasIdPhoto: Boolean(doc && doc.id_photo_path),
       hasSelfiePhoto: Boolean(doc && doc.selfie_photo_path),
       submittedAt: doc ? doc.submitted_at : null,
+      registeredAddress: {
+        streetAddress: targetUser.street_address || '',
+        barangay: targetUser.barangay || '',
+        city: targetUser.city || '',
+      },
+      locationVerification: {
+        status: mapDbLocStatusToUi(targetUser.location_verification_status),
+        rawStatus: targetUser.location_verification_status || 'pending_review',
+        method: targetUser.location_verification_method || 'none',
+        verifiedAt: targetUser.location_verified_at || null,
+        verifiedBy: targetUser.location_verified_by || null,
+        verifiedByName: targetUser.location_verified_by_name || null,
+        remarks: targetUser.location_review_reason || '',
+      },
     });
   } catch (err) {
     console.error('[Admin] getUserIdentityDocuments error:', err.message);

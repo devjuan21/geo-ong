@@ -2761,6 +2761,7 @@
           ? `Submitted: ${new Date(meta.submittedAt).toLocaleString()}`
           : 'No submission timestamp';
       }
+      renderResidentLocationVerification(meta.registeredAddress, meta.locationVerification);
 
       const slots = [
         { key: 'id', available: Boolean(meta.hasIdPhoto) },
@@ -2795,6 +2796,125 @@
       if (submittedEl) submittedEl.textContent = '';
       setUserDocSlotState('id', 'unavailable', 'Document unavailable');
       setUserDocSlotState('selfie', 'unavailable', 'Document unavailable');
+    }
+  }
+
+  function applyLocationBadge(status) {
+    const badge = document.getElementById('user-loc-status-badge');
+    if (!badge) return;
+    if (status === 'verified') {
+      badge.textContent = 'Verified';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-emerald-100 text-emerald-800';
+    } else if (status === 'unable_to_verify') {
+      badge.textContent = 'Unable to Verify';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-amber-100 text-amber-800';
+    } else {
+      badge.textContent = 'Not Reviewed';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-slate-200 text-slate-700';
+    }
+  }
+
+  function handleLocationStatusSelectChange() {
+    const selectEl = document.getElementById('user-loc-status-select');
+    const labelEl = document.getElementById('user-loc-remarks-label');
+    const errEl = document.getElementById('user-loc-error');
+    if (errEl) errEl.classList.add('hidden');
+    if (!selectEl || !labelEl) return;
+    if (selectEl.value === 'unable_to_verify') {
+      labelEl.textContent = 'Reason / Administrator Remarks (Required for Unable to Verify)';
+    } else {
+      labelEl.textContent = 'Administrator Remarks (Optional)';
+    }
+  }
+
+  function renderResidentLocationVerification(address, loc) {
+    const streetEl = document.getElementById('user-loc-street');
+    const brgyEl = document.getElementById('user-loc-barangay');
+    const cityEl = document.getElementById('user-loc-city');
+    const selectEl = document.getElementById('user-loc-status-select');
+    const remarksEl = document.getElementById('user-loc-remarks');
+    const metaEl = document.getElementById('user-loc-reviewed-meta');
+    const errEl = document.getElementById('user-loc-error');
+    const successEl = document.getElementById('user-loc-success');
+
+    if (errEl) errEl.classList.add('hidden');
+    if (successEl) successEl.classList.add('hidden');
+
+    if (streetEl) streetEl.textContent = (address && address.streetAddress) ? address.streetAddress : 'Not provided';
+    if (brgyEl) brgyEl.textContent = (address && address.barangay) ? address.barangay : 'Not provided';
+    if (cityEl) cityEl.textContent = (address && address.city) ? address.city : 'Not provided';
+
+    const uiStatus = (loc && loc.status) ? loc.status : 'not_reviewed';
+    applyLocationBadge(uiStatus);
+    if (selectEl) selectEl.value = uiStatus;
+    if (remarksEl) remarksEl.value = (loc && loc.remarks) ? loc.remarks : '';
+    handleLocationStatusSelectChange();
+
+    if (metaEl) {
+      if (loc && loc.verifiedAt) {
+        const who = loc.verifiedByName ? ` by ${loc.verifiedByName}` : '';
+        metaEl.textContent = `Last reviewed${who} on ${new Date(loc.verifiedAt).toLocaleString()}`;
+        metaEl.classList.remove('hidden');
+      } else {
+        metaEl.textContent = '';
+        metaEl.classList.add('hidden');
+      }
+    }
+  }
+
+  async function submitUserLocationVerification() {
+    if (!state.users.selectedUser) return;
+    const errEl = document.getElementById('user-loc-error');
+    const successEl = document.getElementById('user-loc-success');
+    const saveBtn = document.getElementById('user-loc-save-btn');
+    const selectEl = document.getElementById('user-loc-status-select');
+    const remarksEl = document.getElementById('user-loc-remarks');
+
+    if (errEl) errEl.classList.add('hidden');
+    if (successEl) successEl.classList.add('hidden');
+
+    const status = selectEl ? selectEl.value : 'not_reviewed';
+    const remarks = remarksEl ? remarksEl.value.trim() : '';
+
+    if (status === 'unable_to_verify' && (!remarks || remarks.length < 3)) {
+      const msg = 'Please provide a reason (at least 3 characters) when selecting Unable to Verify.';
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+      }
+      window.GeoSafeToast?.flagInvalidField?.(remarksEl, msg);
+      return;
+    }
+
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      const result = await apiRequest(`/users/${state.users.selectedUser.id}/location-verification`, {
+        method: 'POST',
+        body: JSON.stringify({ status, remarks }),
+      });
+
+      const resData = result.resident || {};
+      const nextStatus = resData.locationVerificationUiStatus || status;
+      applyLocationBadge(nextStatus);
+
+      const metaEl = document.getElementById('user-loc-reviewed-meta');
+      if (metaEl && resData.locationVerifiedAt) {
+        const who = resData.locationVerifiedByName ? ` by ${resData.locationVerifiedByName}` : '';
+        metaEl.textContent = `Last reviewed${who} on ${new Date(resData.locationVerifiedAt).toLocaleString()}`;
+        metaEl.classList.remove('hidden');
+      }
+      if (successEl) {
+        successEl.textContent = result.message || 'Location verification saved.';
+        successEl.classList.remove('hidden');
+      }
+      loadUsersList();
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = err.message || 'Unable to save location verification.';
+        errEl.classList.remove('hidden');
+      }
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
     }
   }
 
@@ -2834,13 +2954,18 @@
     document.getElementById('user-modal-error').classList.add('hidden');
 
     const docsWrap = document.getElementById('user-modal-identity-docs');
+    const locWrap = document.getElementById('user-modal-location-verification');
     const isResident =
       String(userRole || '').trim().toLowerCase() === 'resident' ||
       String(userCode || '').trim().toUpperCase().startsWith('RSDNT');
     if (docsWrap) {
       docsWrap.classList.toggle('hidden', !isResident);
     }
+    if (locWrap) {
+      locWrap.classList.toggle('hidden', !isResident);
+    }
     if (isResident) {
+      renderResidentLocationVerification(null, null);
       loadUserIdentityDocuments(id);
     } else {
       userDocLoadToken++;
@@ -6149,6 +6274,8 @@
     closeUserStatusModal,
     openUserDocLightbox,
     closeUserDocLightbox,
+    handleLocationStatusSelectChange,
+    submitUserLocationVerification,
     submitUserStatusUpdate,
     openLocationReviewModal,
     closeLocationReviewModal,

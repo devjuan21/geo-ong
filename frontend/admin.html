@@ -2492,6 +2492,66 @@
         </div>
       </div>
 
+      <!-- Resident Barangay Address Verification Section -->
+      <div id="user-modal-location-verification" class="hidden rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+          <div>
+            <h4 class="text-xs font-bold text-[#202020]">Barangay Address Verification</h4>
+            <p class="text-[11px] text-[#777777]">Compare the submitted Barangay ID photo above with the registered address.</p>
+          </div>
+          <span id="user-loc-status-badge" class="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-slate-200 text-slate-700">Not Reviewed</span>
+        </div>
+
+        <div class="rounded-md border border-slate-200 bg-white p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+          <div>
+            <span class="text-[10px] font-bold text-[#777777] uppercase block">House No. &amp; Street / Purok</span>
+            <span id="user-loc-street" class="font-semibold text-[#202020]">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-[#777777] uppercase block">Barangay</span>
+            <span id="user-loc-barangay" class="font-semibold text-[#202020]">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-[#777777] uppercase block">City</span>
+            <span id="user-loc-city" class="font-semibold text-[#202020]">—</span>
+          </div>
+        </div>
+
+        <div id="user-loc-reviewed-meta" class="hidden text-[10px] font-medium text-[#64748B]"></div>
+        <div id="user-loc-error"
+          class="hidden p-2 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-[11px] font-semibold text-[#D93636]"></div>
+        <div id="user-loc-success"
+          class="hidden p-2 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-800"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label for="user-loc-status-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Verification Status</label>
+            <select id="user-loc-status-select"
+              onchange="window.GeoSafeAdmin.handleLocationStatusSelectChange()"
+              class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-bold text-[#202020] focus:outline-none focus:border-[#164579]">
+              <option value="not_reviewed">Not Reviewed</option>
+              <option value="verified">Verified</option>
+              <option value="unable_to_verify">Unable to Verify</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <button type="button" id="user-loc-save-btn"
+              onclick="window.GeoSafeAdmin.submitUserLocationVerification()"
+              class="w-full h-9 px-3 rounded-md bg-[#164579] hover:bg-[#103661] text-white text-xs font-bold transition-colors">
+              Save Location Verification
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label for="user-loc-remarks" id="user-loc-remarks-label" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">
+            Administrator Remarks (Optional)
+          </label>
+          <textarea id="user-loc-remarks" rows="2" placeholder="Optional remarks or reason if unable to verify Barangay Bayanan residency..."
+            class="w-full p-2 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#164579]"></textarea>
+        </div>
+      </div>
+
       <div>
         <label for="user-modal-status-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Account
           Status</label>
@@ -3266,7 +3326,7 @@
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
-  <script src="./assets/js/admin.js?v=20261124d"></script>
+  <script src="./assets/js/admin.js?v=20261124e"></script>
 </body>
 
 </html>

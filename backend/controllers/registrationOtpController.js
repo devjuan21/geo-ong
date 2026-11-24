@@ -186,9 +186,20 @@ async function requestRegistrationOtp(req, res) {
         await pool.query('UPDATE registration_email_otps SET consumed_at = NOW() WHERE id = ?', [otpId]).catch(() => {});
       }
       regOtpCooldownStore.delete(email);
-      console.error('[RegOTP] Registration OTP email delivery failed:', emailErr.message);
+      const errCode = String(emailErr.code || 'EMAIL_DELIVERY_FAILED');
+      const errMsg = String(emailErr.message || '');
+      console.error(`[RegOTP] Registration OTP email delivery failed (${errCode}):`, errMsg);
+
+      let safeUserError = 'Unable to send registration verification email right now. Please try again later.';
+      if (errCode === 'EMAIL_NOT_CONFIGURED') {
+        safeUserError = 'Email delivery service is not configured on the server (missing RESEND_API_KEY).';
+      } else if (/domain is not verified|only send testing emails|testing emails to your own/i.test(errMsg)) {
+        safeUserError = 'Resend sender domain is not verified. Configure a verified EMAIL_FROM domain in Resend to send to Gmail recipients.';
+      }
+
       return res.status(503).json({
-        error: 'Unable to send registration verification email right now. Please try again later.',
+        error: safeUserError,
+        errorCode: errCode,
       });
     }
 

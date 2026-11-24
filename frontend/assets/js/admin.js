@@ -281,6 +281,7 @@
     reports: 'Disaster Reports & Rescue Requests',
     responders: 'Responder Personnel & Dispatch',
     users: 'User Account Management',
+    'password-assistance': 'Password Reset Requests',
     alerts: 'Emergency Alerts & Notifications',
     analytics: 'Reports & Analytics',
     settings: 'System Settings & Maintenance',
@@ -386,7 +387,7 @@
   }
 
   function switchAdminSection(sectionKey) {
-    const validSections = ['dashboard', 'reports', 'responders', 'users', 'alerts', 'analytics', 'settings', 'audit', 'messages', 'facilities'];
+    const validSections = ['dashboard', 'reports', 'responders', 'users', 'password-assistance', 'alerts', 'analytics', 'settings', 'audit', 'messages', 'facilities'];
     const target = validSections.includes(sectionKey) ? sectionKey : 'dashboard';
     state.currentSection = target;
 
@@ -428,8 +429,9 @@
       loadRespondersList();
     } else if (target === 'users') {
       loadResidentVerificationQueue();
-      loadPasswordAssistanceTickets();
       loadUsersList();
+    } else if (target === 'password-assistance') {
+      loadPasswordAssistanceTickets();
     } else if (target === 'alerts') {
       loadBroadcastCategories();
       handleExpirationDurationChange();
@@ -5778,8 +5780,13 @@
       const counts = data.counts || { pending: 0 };
       rvQueueState.items = apps;
 
+      const pendingCount = Number(counts.pending || 0);
+      const navBadgeEl = document.getElementById('pa-nav-badge');
+      if (navBadgeEl) {
+        navBadgeEl.textContent = String(pendingCount);
+        navBadgeEl.classList.toggle('hidden', pendingCount <= 0);
+      }
       if (badgeEl) {
-        const pendingCount = Number(counts.pending || 0);
         badgeEl.textContent = `${pendingCount} Pending`;
         badgeEl.className = pendingCount > 0
           ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200'
@@ -6040,8 +6047,13 @@
       const counts = data.counts || { pending: 0 };
       paQueueState.items = tickets;
 
+      const pendingCount = Number(counts.pending || 0);
+      const navBadgeEl = document.getElementById('pa-nav-badge');
+      if (navBadgeEl) {
+        navBadgeEl.textContent = String(pendingCount);
+        navBadgeEl.classList.toggle('hidden', pendingCount <= 0);
+      }
       if (badgeEl) {
-        const pendingCount = Number(counts.pending || 0);
         badgeEl.textContent = `${pendingCount} Pending`;
         badgeEl.className = pendingCount > 0
           ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200'
@@ -6073,7 +6085,7 @@
           : String(t.description || '');
 
         return `
-          <tr class="hover:bg-slate-50 transition-colors">
+          <tr onclick="window.GeoSafeAdmin.openPasswordAssistanceModal(${Number(t.id)})" class="hover:bg-slate-50 transition-colors cursor-pointer">
             <td class="px-4 py-3 text-xs font-mono font-bold text-[#0B203B] whitespace-nowrap">${escapeHtml(t.ticketReference || '')}</td>
             <td class="px-4 py-3 text-xs">
               <div class="font-bold text-[#202020]">${escapeHtml(t.submittedName || '')}</div>
@@ -6084,7 +6096,7 @@
             <td class="px-4 py-3 text-xs text-[#475569] whitespace-nowrap">${escapeHtml(submittedText)}</td>
             <td class="px-4 py-3 text-xs whitespace-nowrap">${statusBadge}</td>
             <td class="px-4 py-3 text-xs text-right whitespace-nowrap">
-              <button type="button" onclick="window.GeoSafeAdmin.openPasswordAssistanceModal(${Number(t.id)})"
+              <button type="button" onclick="event.stopPropagation(); window.GeoSafeAdmin.openPasswordAssistanceModal(${Number(t.id)})"
                 class="h-8 px-3 rounded-md bg-[#0B203B] hover:bg-[#164579] text-white text-[11px] font-bold transition-colors">
                 Review Ticket
               </button>

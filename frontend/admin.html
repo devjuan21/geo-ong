@@ -1598,15 +1598,16 @@
           <div class="md:col-span-2 min-[1200px]:col-span-6 flex flex-col bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle">
             <div class="border-b border-slate-200 pb-3 mb-4">
               <h2 class="text-sm font-bold text-[#202020] uppercase tracking-wider">System Configuration</h2>
-              <p class="text-xs text-[#777777] mt-1">Configurable operational parameters stored in PostgreSQL system_settings table.</p>
+              <p class="text-xs text-[#777777] mt-1">Manage active operational parameters for Barangay Bayanan EOC.</p>
             </div>
 
             <div id="settings-save-feedback" class="hidden mb-3 p-2.5 rounded-md text-xs font-semibold"></div>
 
             <div id="system-settings-list" class="space-y-3 flex-1"></div>
 
-            <div id="system-settings-empty" class="hidden flex-1 flex items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-5 text-center text-xs text-[#64748B]">
-              No active configurable parameters in PostgreSQL <code class="mx-1 font-mono text-[#202020]">system_settings</code>. Core operational thresholds are managed via environment configuration.
+            <div id="system-settings-empty" class="hidden flex-1 flex flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-5 py-6 text-center">
+              <p class="text-xs font-bold text-[#202020]">No Configurable Settings</p>
+              <p class="text-xs text-[#64748B] mt-1 max-w-sm leading-relaxed">There are currently no active settings available to manage.</p>
             </div>
 
             <div id="system-settings-loading" class="p-6 text-center text-xs text-[#777777]">Loading system settings...</div>

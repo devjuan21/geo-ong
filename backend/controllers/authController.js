@@ -353,7 +353,10 @@ async function register(req, res) {
       });
     }
     return res.status(err.statusCode || 503).json({
-      error: err.statusCode === 400 ? err.message : 'Registration is temporarily unavailable. Please try again.',
+      error: err.statusCode === 400
+        ? err.message
+        : `Registration is temporarily unavailable (${err.code || 'SERVICE_ERROR'}). Please try again.`,
+      errorCode: err.code || 'SERVICE_ERROR',
     });
   } finally {
     conn.release();

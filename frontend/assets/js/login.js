@@ -299,11 +299,11 @@ function setRegisterSubmittingState(isSubmitting) {
 
   if (isSubmitting) {
     submitBtn.classList.add('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Creating Resident Account...';
+    if (btnText) btnText.textContent = 'Submitting Application...';
     if (btnSpinner) btnSpinner.classList.remove('hidden');
   } else {
     submitBtn.classList.remove('opacity-80', 'cursor-wait');
-    if (btnText) btnText.textContent = 'Create Resident Account';
+    if (btnText) btnText.textContent = 'Submit Application';
     if (btnSpinner) btnSpinner.classList.add('hidden');
   }
 }
@@ -606,7 +606,7 @@ function setupRegisterIdentityCameras() {
       }
       if (nonZeroAlpha === 0) return true;
       // Reject completely black frames or completely flat single-color frames
-      if (maxLuma < 8 || (maxLuma - minLuma) < 3) return true;
+      if (maxLuma < 12 || (maxLuma - minLuma) < 6) return true;
       return false;
     } catch (_) {
       return false;

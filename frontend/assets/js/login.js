@@ -605,8 +605,8 @@ function setupRegisterIdentityCameras() {
         if (luma < minLuma) minLuma = luma;
       }
       if (nonZeroAlpha === 0) return true;
-      // Reject completely black frames or completely flat single-color frames
-      if (maxLuma < 12 || (maxLuma - minLuma) < 6) return true;
+      // Reject only truly uninitialized/pure-black empty frames (0,0,0), allowing low-light/covered camera testing
+      if (maxLuma < 2) return true;
       return false;
     } catch (_) {
       return false;

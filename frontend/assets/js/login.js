@@ -1045,12 +1045,108 @@ function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
+  let currentWizardStep = 1;
+  let isSubmitting = false;
+
+  const wizardErrBox = document.getElementById('reg-wizard-error-box');
+  const showWizardError = (msg) => {
+    if (wizardErrBox) {
+      if (!msg) {
+        wizardErrBox.textContent = '';
+        wizardErrBox.classList.add('hidden');
+      } else {
+        wizardErrBox.textContent = msg;
+        wizardErrBox.classList.remove('hidden');
+      }
+    }
+    if (msg) showToastNotification(msg, 'warning');
+  };
+
+  const showWizardStep = (step) => {
+    currentWizardStep = step;
+    showWizardError(null);
+    if (step !== 3 && typeof stopAllRegisterCameras === 'function') {
+      stopAllRegisterCameras();
+      updateIdentitySlotUI('id');
+      updateIdentitySlotUI('selfie');
+    }
+    [1, 2, 3].forEach((n) => {
+      const panel = document.getElementById(`reg-wizard-step-${n}`);
+      const ind = document.getElementById(`reg-step-ind-${n}`);
+      if (panel) panel.classList.toggle('hidden', n !== step);
+      if (ind) {
+        if (n === step) {
+          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-bold bg-[#0B203B] text-white transition-colors';
+        } else if (n < step) {
+          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold bg-emerald-100 text-emerald-800 transition-colors';
+        } else {
+          ind.className = 'px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold text-[#64748B] transition-colors';
+        }
+      }
+    });
+  };
+
+  const step1NextBtn = document.getElementById('btn-reg-step1-next');
+  const step2BackBtn = document.getElementById('btn-reg-step2-back');
+  const step2NextBtn = document.getElementById('btn-reg-step2-next');
+  const step3BackBtn = document.getElementById('btn-reg-step3-back');
+
+  if (step1NextBtn) {
+    step1NextBtn.addEventListener('click', () => {
+      const firstName = (document.getElementById('reg-first-name')?.value || '').trim();
+      const lastName = (document.getElementById('reg-last-name')?.value || '').trim();
+      if (!firstName || !lastName) {
+        showWizardError('Please enter both your first name and last name.');
+        return;
+      }
+      showWizardStep(2);
+      const emailEl = document.getElementById('reg-email');
+      if (emailEl && !emailEl.value) emailEl.focus();
+    });
+  }
+
+  if (step2BackBtn) {
+    step2BackBtn.addEventListener('click', () => showWizardStep(1));
+  }
+
+  if (step2NextBtn) {
+    step2NextBtn.addEventListener('click', () => {
+      const email = (document.getElementById('reg-email')?.value || '').trim().toLowerCase();
+      const password = document.getElementById('reg-password')?.value || '';
+      const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
+      if (!email || !isValidEmail(email)) {
+        showWizardError('Please enter a valid email address.');
+        return;
+      }
+      if (!password || password.length < 8) {
+        showWizardError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showWizardError('Passwords do not match. Please verify your password confirmation.');
+        return;
+      }
+      if (!regEmailOtpState.verified || !regEmailOtpState.emailVerificationToken || regEmailOtpState.email !== email) {
+        showWizardError('Please verify your email address with the 6-digit code before continuing.');
+        return;
+      }
+      showWizardStep(3);
+    });
+  }
+
+  if (step3BackBtn) {
+    step3BackBtn.addEventListener('click', () => showWizardStep(2));
+  }
+
   setupRegisterEmailOtp();
   setupRegisterIdentityCameras();
+  showWizardStep(1);
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     hideErrorBanner();
+    showWizardError(null);
 
     const firstName = (document.getElementById('reg-first-name')?.value || '').trim();
     const lastName = (document.getElementById('reg-last-name')?.value || '').trim();
@@ -1061,34 +1157,30 @@ function setupRegisterForm() {
     const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
 
     if (!firstName || !lastName) {
-      showToastNotification('Please enter both your first name and last name.', 'warning');
+      showWizardStep(1);
+      showWizardError('Please enter both your first name and last name.');
       return;
     }
-    if (!email || !isValidEmail(email)) {
-      showToastNotification('Please enter a valid email address.', 'warning');
-      return;
-    }
-    if (!password || password.length < 8) {
-      showToastNotification('Password must be at least 8 characters long.', 'warning');
-      return;
-    }
-    if (password !== confirmPassword) {
-      showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
+    if (!email || !isValidEmail(email) || !password || password.length < 8 || password !== confirmPassword) {
+      showWizardStep(2);
+      showWizardError('Please check your email and password details.');
       return;
     }
     if (!regEmailOtpState.verified || !regEmailOtpState.emailVerificationToken || regEmailOtpState.email !== email) {
-      showToastNotification('Please verify your email address with a 6-digit code before submitting.', 'warning');
+      showWizardStep(2);
+      showWizardError('Please verify your email address with a 6-digit code before submitting.');
       return;
     }
     if (!regIdentityPhotoState.idDataUrl) {
-      showToastNotification('Please capture a clear photo of your Barangay Address ID.', 'warning');
+      showWizardError('Please capture a clear photo of your Barangay Address ID.');
       return;
     }
     if (!regIdentityPhotoState.selfieDataUrl) {
-      showToastNotification('Please capture a selfie holding your Barangay Address ID.', 'warning');
+      showWizardError('Please capture a selfie holding your Barangay Address ID.');
       return;
     }
 
+    isSubmitting = true;
     setRegisterSubmittingState(true);
 
     try {
@@ -1104,10 +1196,12 @@ function setupRegisterForm() {
         selfiePhotoDataUrl: regIdentityPhotoState.selfieDataUrl,
       });
 
+      isSubmitting = false;
       setRegisterSubmittingState(false);
       form.reset();
       resetRegisterEmailOtpState();
       resetRegisterIdentityPhotos();
+      showWizardStep(1);
 
       // Switch to Sign In tab with empty fields requiring manual credential entry
       window.switchAuthTab('login');
@@ -1117,8 +1211,9 @@ function setupRegisterForm() {
 
       showSuccessBanner('Application submitted! Your account is awaiting Administrator verification. You will be able to sign in once approved.');
     } catch (err) {
+      isSubmitting = false;
       setRegisterSubmittingState(false);
-      showToastNotification(err.message || 'Failed to submit verification application. Please try again.', 'error');
+      showWizardError(err.message || 'Failed to submit verification application. Please try again.');
     }
   });
 }

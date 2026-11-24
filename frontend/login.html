@@ -179,186 +179,221 @@
         </div>
       </form>
 
-      <!-- 2. RESIDENT REGISTRATION FORM -->
+      <!-- 2. RESIDENT REGISTRATION FORM (3-STEP WIZARD) -->
       <form id="register-form" class="hidden space-y-3" novalidate>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label for="reg-first-name" class="block text-xs font-semibold text-[#1E293B] mb-1">First Name <span class="text-[#DC2626]">*</span></label>
-            <input type="text" id="reg-first-name" required autocomplete="given-name" placeholder="Juan"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+        <!-- 3-Step Wizard Progress Indicator -->
+        <div id="reg-wizard-progress" class="grid grid-cols-3 gap-1.5 p-1 rounded-[6px] bg-[#F1F5F9] border border-[#E2E8F0]">
+          <div id="reg-step-ind-1" class="px-2 py-1.5 rounded-[4px] text-center text-[11px] font-bold bg-[#0B203B] text-white transition-colors">
+            1. Personal Info
           </div>
-          <div>
-            <label for="reg-last-name" class="block text-xs font-semibold text-[#1E293B] mb-1">Last Name <span class="text-[#DC2626]">*</span></label>
-            <input type="text" id="reg-last-name" required autocomplete="family-name" placeholder="Dela Cruz"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          <div id="reg-step-ind-2" class="px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold text-[#64748B] transition-colors">
+            2. Account &amp; Email
           </div>
-        </div>
-
-        <div>
-          <label for="reg-email" class="block text-xs font-semibold text-[#1E293B] mb-1">Email Address <span class="text-[#DC2626]">*</span></label>
-          <input type="email" id="reg-email" required autocomplete="email" placeholder="resident@example.com"
-            class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label for="reg-phone" class="block text-xs font-semibold text-[#1E293B] mb-1">Mobile Number</label>
-            <input type="tel" id="reg-phone" autocomplete="tel" placeholder="0917 000 0000"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-          </div>
-          <div>
-            <label for="reg-street" class="block text-xs font-semibold text-[#1E293B] mb-1">House No. &amp; Street</label>
-            <input type="text" id="reg-street" autocomplete="street-address" placeholder="Purok 2"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          <div id="reg-step-ind-3" class="px-2 py-1.5 rounded-[4px] text-center text-[11px] font-semibold text-[#64748B] transition-colors">
+            3. Identity Photos
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label for="reg-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Password <span class="text-[#DC2626]">*</span></label>
-            <input type="password" id="reg-password" required minlength="8" autocomplete="new-password" placeholder="Min 8 characters"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+        <div id="reg-wizard-error-box" class="hidden rounded-[6px] border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#DC2626]"></div>
+
+        <!-- STEP 1: Personal Information -->
+        <div id="reg-wizard-step-1" class="space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="reg-first-name" class="block text-xs font-semibold text-[#1E293B] mb-1">First Name <span class="text-[#DC2626]">*</span></label>
+              <input type="text" id="reg-first-name" required autocomplete="given-name" placeholder="Juan"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
+            <div>
+              <label for="reg-last-name" class="block text-xs font-semibold text-[#1E293B] mb-1">Last Name <span class="text-[#DC2626]">*</span></label>
+              <input type="text" id="reg-last-name" required autocomplete="family-name" placeholder="Dela Cruz"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
           </div>
-          <div>
-            <label for="reg-confirm-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Confirm Password <span class="text-[#DC2626]">*</span></label>
-            <input type="password" id="reg-confirm-password" required minlength="8" autocomplete="new-password" placeholder="Re-enter password"
-              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="reg-phone" class="block text-xs font-semibold text-[#1E293B] mb-1">Mobile Number</label>
+              <input type="tel" id="reg-phone" autocomplete="tel" placeholder="0917 000 0000"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
+            <div>
+              <label for="reg-street" class="block text-xs font-semibold text-[#1E293B] mb-1">House No. &amp; Street</label>
+              <input type="text" id="reg-street" autocomplete="street-address" placeholder="Purok 2"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
           </div>
+
+          <button type="button" id="btn-reg-step1-next"
+            class="w-full h-10 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors">
+            Next
+          </button>
         </div>
 
-        <!-- Step 2: Email Verification (6-Digit OTP) -->
-        <div id="reg-email-otp-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2.5">
-          <div class="flex items-center justify-between gap-2">
-            <h3 class="text-xs font-bold text-[#0F172A]">Email Verification <span class="text-[#DC2626]">*</span></h3>
-            <span id="reg-email-otp-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
+        <!-- STEP 2: Account Information & Email Verification -->
+        <div id="reg-wizard-step-2" class="hidden space-y-3">
+          <div>
+            <label for="reg-email" class="block text-xs font-semibold text-[#1E293B] mb-1">Email Address (Gmail) <span class="text-[#DC2626]">*</span></label>
+            <input type="email" id="reg-email" required autocomplete="email" placeholder="resident@gmail.com"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
           </div>
-          <p class="text-[11px] text-[#64748B] leading-snug">
-            Verify your Gmail address with a 6-digit code before submitting your identity documents.
-          </p>
 
-          <div id="reg-otp-feedback-box" class="hidden rounded-[6px] border px-2.5 py-2 text-[11px] font-medium"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="reg-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Password <span class="text-[#DC2626]">*</span></label>
+              <input type="password" id="reg-password" required minlength="8" autocomplete="new-password" placeholder="Min 8 characters"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
+            <div>
+              <label for="reg-confirm-password" class="block text-xs font-semibold text-[#1E293B] mb-1">Confirm Password <span class="text-[#DC2626]">*</span></label>
+              <input type="password" id="reg-confirm-password" required minlength="8" autocomplete="new-password" placeholder="Re-enter password"
+                class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            </div>
+          </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="button" id="btn-reg-send-otp"
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
-              Send Verification Code
+          <!-- Email Verification (6-Digit OTP) -->
+          <div id="reg-email-otp-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-xs font-bold text-[#0F172A]">Email Verification <span class="text-[#DC2626]">*</span></h3>
+              <span id="reg-email-otp-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
+            </div>
+
+            <div id="reg-otp-feedback-box" class="hidden rounded-[6px] border px-2.5 py-2 text-[11px] font-medium"></div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-reg-send-otp"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
+                Send Verification Code
+              </button>
+            </div>
+
+            <div id="reg-otp-entry-box" class="hidden space-y-2 pt-2 border-t border-[#E2E8F0]">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[11px] text-[#475569]">Sent to <strong id="reg-otp-sent-email-label" class="text-[#0F172A]"></strong></span>
+                <span id="reg-otp-expiry-label" class="text-[11px] font-medium text-[#64748B]">Expires in 05:00</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <input type="text" id="reg-otp-input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit code"
+                  class="w-36 h-9 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-center font-mono text-sm tracking-[0.25em] text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+                <button type="button" id="btn-reg-verify-otp"
+                  class="h-9 px-3.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
+                  Verify Code
+                </button>
+                <button type="button" id="btn-reg-resend-otp" disabled
+                  class="text-[11px] font-semibold text-[#164579] hover:underline disabled:text-[#94A3B8] disabled:no-underline">
+                  Resend code (60s)
+                </button>
+              </div>
+            </div>
+
+            <div id="reg-otp-verified-box" class="hidden rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-800">
+              Email address verified. Click Next to capture your identity photos.
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <button type="button" id="btn-reg-step2-back"
+              class="h-10 px-4 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-sm transition-colors">
+              Back
+            </button>
+            <button type="button" id="btn-reg-step2-next"
+              class="h-10 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors">
+              Next
             </button>
           </div>
-
-          <div id="reg-otp-entry-box" class="hidden space-y-2 pt-2 border-t border-[#E2E8F0]">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[11px] text-[#475569]">Code sent to <strong id="reg-otp-sent-email-label" class="text-[#0F172A]"></strong></span>
-              <span id="reg-otp-expiry-label" class="text-[11px] font-medium text-[#64748B]">Expires in 05:00</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <input type="text" id="reg-otp-input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit code"
-                class="w-36 h-9 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-center font-mono text-sm tracking-[0.25em] text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-              <button type="button" id="btn-reg-verify-otp"
-                class="h-9 px-3.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
-                Verify Code
-              </button>
-              <button type="button" id="btn-reg-resend-otp" disabled
-                class="text-[11px] font-semibold text-[#164579] hover:underline disabled:text-[#94A3B8] disabled:no-underline">
-                Resend code (60s)
-              </button>
-            </div>
-          </div>
-
-          <div id="reg-otp-verified-box" class="hidden rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-800">
-            Email address verified. Please capture both identity photos below to submit your application.
-          </div>
         </div>
 
-        <!-- Required Identity Verification Photos (Camera Capture Only) -->
-        <div id="reg-identity-photos-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-3">
-          <div>
-            <h3 class="text-xs font-bold text-[#0F172A]">Identity Verification Photos <span class="text-[#DC2626]">*</span></h3>
-            <p class="text-[11px] text-[#64748B] leading-snug mt-0.5">
-              Camera permission is requested only when you click Capture. Both live photos are required for Administrator verification.
-            </p>
+        <!-- STEP 3: Identity Photo Verification (FINAL STEP) -->
+        <div id="reg-wizard-step-3" class="hidden space-y-3">
+          <div id="reg-identity-photos-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2.5">
+            <div class="rounded-[6px] border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1.5 text-[10px] text-[#1E3A8A] leading-snug">
+              <strong>Privacy Notice:</strong> Captured photos are stored privately and reviewed only by authorized Barangay Bayanan Administrators.
+            </div>
+
+            <div id="reg-camera-error-box" class="hidden rounded-[6px] border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] font-medium text-[#DC2626]"></div>
+
+            <!-- Photo 1: Barangay Address ID -->
+            <div class="rounded-[6px] border border-[#E2E8F0] bg-white p-2.5 space-y-1.5" data-photo-slot="id">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-semibold text-[#0F172A]">1. Barangay Address ID <span class="text-[#DC2626]">*</span></span>
+                <span id="reg-id-photo-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
+              </div>
+              <p class="text-[10px] text-[#64748B] leading-snug">
+                Valid ID visibly showing a Barangay Bayanan, Muntinlupa City address.
+              </p>
+              <div id="reg-id-preview-wrap" class="hidden relative rounded-[6px] overflow-hidden border border-[#CBD5E1] bg-[#0F172A]">
+                <video id="reg-id-video" class="hidden w-full max-h-44 object-cover" autoplay playsinline muted></video>
+                <img id="reg-id-img" class="hidden w-full max-h-44 object-contain bg-[#0F172A]" alt="Captured Barangay Address ID preview">
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="btn-id-open-camera"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
+                  Open Camera
+                </button>
+                <button type="button" id="btn-id-capture"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
+                  Capture ID Photo
+                </button>
+                <button type="button" id="btn-id-retake"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs transition-colors">
+                  Retake
+                </button>
+                <button type="button" id="btn-id-remove"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-red-200 bg-red-50 hover:bg-red-100 text-[#DC2626] font-semibold text-xs transition-colors">
+                  Remove
+                </button>
+              </div>
+            </div>
+
+            <!-- Photo 2: Selfie Holding the Same ID -->
+            <div class="rounded-[6px] border border-[#E2E8F0] bg-white p-2.5 space-y-1.5" data-photo-slot="selfie">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-semibold text-[#0F172A]">2. Selfie Holding the Same ID <span class="text-[#DC2626]">*</span></span>
+                <span id="reg-selfie-photo-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
+              </div>
+              <p class="text-[10px] text-[#64748B] leading-snug">
+                Selfie showing your face while holding the same ID with details visible.
+              </p>
+              <div id="reg-selfie-preview-wrap" class="hidden relative rounded-[6px] overflow-hidden border border-[#CBD5E1] bg-[#0F172A]">
+                <video id="reg-selfie-video" class="hidden w-full max-h-44 object-cover" autoplay playsinline muted></video>
+                <img id="reg-selfie-img" class="hidden w-full max-h-44 object-contain bg-[#0F172A]" alt="Captured selfie holding ID preview">
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="btn-selfie-open-camera"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
+                  Open Camera
+                </button>
+                <button type="button" id="btn-selfie-capture"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
+                  Capture Selfie
+                </button>
+                <button type="button" id="btn-selfie-retake"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs transition-colors">
+                  Retake
+                </button>
+                <button type="button" id="btn-selfie-remove"
+                  class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-red-200 bg-red-50 hover:bg-red-100 text-[#DC2626] font-semibold text-xs transition-colors">
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div class="rounded-[6px] border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-2 text-[10px] text-[#1E3A8A] leading-snug">
-            <strong>Privacy Notice:</strong> Your ID and selfie are stored in private, Administrator-only storage and are used solely to verify Barangay Bayanan residency.
-          </div>
-
-          <div id="reg-camera-error-box" class="hidden rounded-[6px] border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] font-medium text-[#DC2626]"></div>
-
-          <!-- Photo 1: Barangay Address ID -->
-          <div class="rounded-[6px] border border-[#E2E8F0] bg-white p-2.5 space-y-2" data-photo-slot="id">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-semibold text-[#0F172A]">1. Barangay Address ID <span class="text-[#DC2626]">*</span></span>
-              <span id="reg-id-photo-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
-            </div>
-            <p class="text-[10px] text-[#64748B] leading-snug">
-              Capture a clear, readable photo of a valid ID visibly showing an address in Barangay Bayanan, Muntinlupa City.
-            </p>
-            <div id="reg-id-preview-wrap" class="hidden relative rounded-[6px] overflow-hidden border border-[#CBD5E1] bg-[#0F172A]">
-              <video id="reg-id-video" class="hidden w-full max-h-48 object-cover" autoplay playsinline muted></video>
-              <img id="reg-id-img" class="hidden w-full max-h-48 object-contain bg-[#0F172A]" alt="Captured Barangay Address ID preview">
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="button" id="btn-id-open-camera"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
-                Open Camera
-              </button>
-              <button type="button" id="btn-id-capture"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
-                Capture ID Photo
-              </button>
-              <button type="button" id="btn-id-retake"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs transition-colors">
-                Retake
-              </button>
-              <button type="button" id="btn-id-remove"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-red-200 bg-red-50 hover:bg-red-100 text-[#DC2626] font-semibold text-xs transition-colors">
-                Remove
-              </button>
-            </div>
-          </div>
-
-          <!-- Photo 2: Selfie Holding the Same ID -->
-          <div class="rounded-[6px] border border-[#E2E8F0] bg-white p-2.5 space-y-2" data-photo-slot="selfie">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-semibold text-[#0F172A]">2. Selfie Holding the Same ID <span class="text-[#DC2626]">*</span></span>
-              <span id="reg-selfie-photo-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
-            </div>
-            <p class="text-[10px] text-[#64748B] leading-snug">
-              Capture a clear selfie holding the same Barangay Address ID so both your face and the ID details are visible.
-            </p>
-            <div id="reg-selfie-preview-wrap" class="hidden relative rounded-[6px] overflow-hidden border border-[#CBD5E1] bg-[#0F172A]">
-              <video id="reg-selfie-video" class="hidden w-full max-h-48 object-cover" autoplay playsinline muted></video>
-              <img id="reg-selfie-img" class="hidden w-full max-h-48 object-contain bg-[#0F172A]" alt="Captured selfie holding ID preview">
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="button" id="btn-selfie-open-camera"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
-                Open Camera
-              </button>
-              <button type="button" id="btn-selfie-capture"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
-                Capture Selfie
-              </button>
-              <button type="button" id="btn-selfie-retake"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs transition-colors">
-                Retake
-              </button>
-              <button type="button" id="btn-selfie-remove"
-                class="hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-red-200 bg-red-50 hover:bg-red-100 text-[#DC2626] font-semibold text-xs transition-colors">
-                Remove
-              </button>
-            </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <button type="button" id="btn-reg-step3-back"
+              class="h-11 px-4 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-sm transition-colors">
+              Back
+            </button>
+            <button type="submit" id="register-submit-btn"
+              class="h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#164579]">
+              <span id="register-btn-text">Submit Application</span>
+              <svg id="register-btn-spinner" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </button>
           </div>
         </div>
-
-        <button type="submit" id="register-submit-btn"
-          class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#164579]">
-          <span id="register-btn-text">Submit Verification Application</span>
-          <svg id="register-btn-spinner" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-          </svg>
-        </button>
 
         <p class="text-center text-xs text-[#64748B] pt-1">
           Already have an account?

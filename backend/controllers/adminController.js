@@ -15,6 +15,7 @@ const {
   emitReportVerificationResult,
   emitIncidentResolved,
 } = require('../services/socketService');
+const { readPrivateIdentityPhoto } = require('../services/privateStorageService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { defaultColorForName } = require('../config/advisoryCategories');
@@ -4852,7 +4853,97 @@ async function updateAdminFacility(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/users/:id/identity-documents
+ * Admin-only metadata check for a Resident's submitted identity documents.
+ */
+async function getUserIdentityDocuments(req, res) {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID.' });
+    }
+
+    const [userRows] = await pool.query(
+      'SELECT id, role_id, role FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    const targetUser = userRows[0];
+    const [docRows] = await pool.query(
+      `SELECT id, id_photo_path, selfie_photo_path, submitted_at
+         FROM resident_verification_applications
+        WHERE user_id = ?
+        ORDER BY submitted_at DESC, id DESC
+        LIMIT 1`,
+      [userId]
+    );
+
+    const doc = docRows[0] || null;
+    return res.json({
+      userId,
+      isResident: Number(targetUser.role_id) === ROLE_IDS.RESIDENT || String(targetUser.role || '').toLowerCase() === 'resident',
+      hasIdPhoto: Boolean(doc && doc.id_photo_path),
+      hasSelfiePhoto: Boolean(doc && doc.selfie_photo_path),
+      submittedAt: doc ? doc.submitted_at : null,
+    });
+  } catch (err) {
+    console.error('[Admin] getUserIdentityDocuments error:', err.message);
+    return res.status(500).json({ error: 'Failed to load identity document metadata.' });
+  }
+}
+
+/**
+ * GET /api/admin/users/:id/identity-documents/:type
+ * Admin-only private stream of a Resident's Barangay Address ID ('id') or Selfie ('selfie').
+ */
+async function getUserIdentityDocumentPhoto(req, res) {
+  try {
+    const userId = Number(req.params.id);
+    const photoType = String(req.params.type || '').trim().toLowerCase();
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Invalid user ID.' });
+    }
+    if (photoType !== 'id' && photoType !== 'selfie') {
+      return res.status(400).json({ error: 'Invalid document type. Must be id or selfie.' });
+    }
+
+    const [docRows] = await pool.query(
+      `SELECT id_photo_path, id_photo_mime, selfie_photo_path, selfie_photo_mime
+         FROM resident_verification_applications
+        WHERE user_id = ?
+        ORDER BY submitted_at DESC, id DESC
+        LIMIT 1`,
+      [userId]
+    );
+    if (!docRows.length) {
+      return res.status(404).json({ error: 'No identity documents found for this account.' });
+    }
+
+    const doc = docRows[0];
+    const storageRef = photoType === 'id' ? doc.id_photo_path : doc.selfie_photo_path;
+    const expectedMime = photoType === 'id' ? doc.id_photo_mime : doc.selfie_photo_mime;
+    if (!storageRef) {
+      return res.status(404).json({ error: 'Requested identity document is unavailable.' });
+    }
+
+    const { buffer, mimeType } = await readPrivateIdentityPhoto(storageRef);
+    res.setHeader('Content-Type', mimeType || expectedMime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.send(buffer);
+  } catch (err) {
+    console.error('[Admin] getUserIdentityDocumentPhoto error:', err.message);
+    return res.status(err.statusCode || 404).json({ error: 'Identity document could not be loaded.' });
+  }
+}
+
 module.exports = {
+  getUserIdentityDocuments,
+  getUserIdentityDocumentPhoto,
   getAdminOverview,
   getAdminStats,
   getVulnerableResidents,

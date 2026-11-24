@@ -1062,6 +1062,8 @@ class GeoSafeStore {
     const password = payload.password || '';
     const phone = (payload.phone || '').trim();
     const street = (payload.street || '').trim();
+    const idPhotoDataUrl = (payload.idPhotoDataUrl || '').trim();
+    const selfiePhotoDataUrl = (payload.selfiePhotoDataUrl || '').trim();
 
     if (!fullName || fullName.length < 2) {
       throw new Error('Please enter your full name (at least 2 characters).');
@@ -1071,6 +1073,9 @@ class GeoSafeStore {
     }
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
+    }
+    if (!idPhotoDataUrl || !selfiePhotoDataUrl) {
+      throw new Error('Both a Barangay Address ID photo and a selfie holding the same ID are required.');
     }
 
     const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
@@ -1090,7 +1095,9 @@ class GeoSafeStore {
         email,
         password,
         phone_number: phone,
-        street_address: street
+        street_address: street,
+        idPhotoDataUrl,
+        selfiePhotoDataUrl
       })
     });
 

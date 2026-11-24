@@ -13,6 +13,8 @@ const {
   createResidentAccount,
   updateAdminUserStatus,
   reviewResidentLocationVerification,
+  getUserIdentityDocuments,
+  getUserIdentityDocumentPhoto,
   getAdminAuditLogs,
   getAdminRespondersList,
   getAdminLiveResponderLocations,
@@ -128,6 +130,8 @@ router.post(
 );
 router.patch('/users/:id/status', updateAdminUserStatus);
 router.post('/users/:id/location-verification', reviewResidentLocationVerification);
+router.get('/users/:id/identity-documents', getUserIdentityDocuments);
+router.get('/users/:id/identity-documents/:type', getUserIdentityDocumentPhoto);
 
 // Password Assistance Tickets (Admin-only)
 router.get('/password-assistance', getPasswordAssistanceTickets);

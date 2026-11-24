@@ -2603,7 +2603,7 @@
           ${formatShortDate(u.registeredAt)}
         </td>
         <td class="px-4 py-3 text-xs text-right whitespace-nowrap space-x-1.5">
-          <button type="button" onclick="window.GeoSafeAdmin.openUserStatusModal(${u.id}, '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', '${u.status}', '${escapeHtml(displayId)}')" class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
+          <button type="button" onclick="window.GeoSafeAdmin.openUserStatusModal(${u.id}, '${escapeHtml(u.name)}', '${escapeHtml(u.email)}', '${u.status}', '${escapeHtml(displayId)}', '${escapeHtml(u.role || '')}')" class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
             Manage Status
           </button>
         </td>
@@ -2692,8 +2692,135 @@
     }
   }
 
-  function openUserStatusModal(id, name, email, currentStatus, userCode) {
-    state.users.selectedUser = { id, name, email, currentStatus, userCode };
+  let userDocObjectUrls = { id: null, selfie: null };
+  let userDocLoadToken = 0;
+
+  function revokeUserDocObjectUrls() {
+    ['id', 'selfie'].forEach((slot) => {
+      if (userDocObjectUrls[slot]) {
+        try {
+          URL.revokeObjectURL(userDocObjectUrls[slot]);
+        } catch (_) {}
+        userDocObjectUrls[slot] = null;
+      }
+      const img = document.getElementById(`user-doc-${slot}-img`);
+      if (img) {
+        img.removeAttribute('src');
+        img.classList.add('hidden');
+      }
+      const enlargeBtn = document.getElementById(`user-doc-${slot}-enlarge-btn`);
+      if (enlargeBtn) enlargeBtn.classList.add('hidden');
+    });
+  }
+
+  function setUserDocSlotState(slot, mode, message = '') {
+    const loadingEl = document.getElementById(`user-doc-${slot}-loading`);
+    const imgEl = document.getElementById(`user-doc-${slot}-img`);
+    const unavailableEl = document.getElementById(`user-doc-${slot}-unavailable`);
+    const enlargeBtn = document.getElementById(`user-doc-${slot}-enlarge-btn`);
+
+    if (loadingEl) loadingEl.classList.toggle('hidden', mode !== 'loading');
+    if (imgEl) imgEl.classList.toggle('hidden', mode !== 'ready');
+    if (unavailableEl) {
+      unavailableEl.classList.toggle('hidden', mode !== 'unavailable');
+      if (mode === 'unavailable' && message) {
+        unavailableEl.textContent = message;
+      }
+    }
+    if (enlargeBtn) enlargeBtn.classList.toggle('hidden', mode !== 'ready');
+  }
+
+  async function fetchProtectedIdentityDocBlob(userId, slot) {
+    const baseUrl = window.geoSafeStore?.config?.API_BASE_URL || '/api';
+    const resp = await fetch(`${baseUrl}/admin/users/${userId}/identity-documents/${slot}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  async function loadUserIdentityDocuments(userId) {
+    const token = ++userDocLoadToken;
+    const submittedEl = document.getElementById('user-modal-docs-submitted-at');
+    if (submittedEl) submittedEl.textContent = 'Checking documents...';
+
+    revokeUserDocObjectUrls();
+    setUserDocSlotState('id', 'loading');
+    setUserDocSlotState('selfie', 'loading');
+
+    try {
+      const meta = await apiRequest(`/users/${userId}/identity-documents`);
+      if (token !== userDocLoadToken) return;
+
+      if (submittedEl) {
+        submittedEl.textContent = meta.submittedAt
+          ? `Submitted: ${new Date(meta.submittedAt).toLocaleString()}`
+          : 'No submission timestamp';
+      }
+
+      const slots = [
+        { key: 'id', available: Boolean(meta.hasIdPhoto) },
+        { key: 'selfie', available: Boolean(meta.hasSelfiePhoto) },
+      ];
+
+      await Promise.all(
+        slots.map(async ({ key, available }) => {
+          if (!available) {
+            setUserDocSlotState(key, 'unavailable', 'Document unavailable — no photo on file');
+            return;
+          }
+          try {
+            const objectUrl = await fetchProtectedIdentityDocBlob(userId, key);
+            if (token !== userDocLoadToken) {
+              URL.revokeObjectURL(objectUrl);
+              return;
+            }
+            userDocObjectUrls[key] = objectUrl;
+            const imgEl = document.getElementById(`user-doc-${key}-img`);
+            if (imgEl) imgEl.src = objectUrl;
+            setUserDocSlotState(key, 'ready');
+          } catch (_) {
+            if (token === userDocLoadToken) {
+              setUserDocSlotState(key, 'unavailable', 'Document unavailable — unable to load');
+            }
+          }
+        })
+      );
+    } catch (_) {
+      if (token !== userDocLoadToken) return;
+      if (submittedEl) submittedEl.textContent = '';
+      setUserDocSlotState('id', 'unavailable', 'Document unavailable');
+      setUserDocSlotState('selfie', 'unavailable', 'Document unavailable');
+    }
+  }
+
+  function openUserDocLightbox(slot) {
+    const objectUrl = userDocObjectUrls[slot];
+    const modal = document.getElementById('user-doc-lightbox-modal');
+    const img = document.getElementById('user-doc-lightbox-img');
+    const title = document.getElementById('user-doc-lightbox-title');
+    if (!objectUrl || !modal || !img) return;
+
+    if (title) {
+      title.textContent = slot === 'selfie' ? 'Selfie Holding the Same ID' : 'Barangay Address ID Photo';
+    }
+    img.src = objectUrl;
+    modal.classList.remove('hidden');
+  }
+
+  function closeUserDocLightbox() {
+    const modal = document.getElementById('user-doc-lightbox-modal');
+    const img = document.getElementById('user-doc-lightbox-img');
+    if (modal) modal.classList.add('hidden');
+    if (img) img.removeAttribute('src');
+  }
+
+  function openUserStatusModal(id, name, email, currentStatus, userCode, userRole = '') {
+    state.users.selectedUser = { id, name, email, currentStatus, userCode, userRole };
     const modal = document.getElementById('admin-user-status-modal');
     if (!modal) return;
 
@@ -2706,10 +2833,27 @@
     document.getElementById('user-modal-reason').value = '';
     document.getElementById('user-modal-error').classList.add('hidden');
 
+    const docsWrap = document.getElementById('user-modal-identity-docs');
+    const isResident =
+      String(userRole || '').trim().toLowerCase() === 'resident' ||
+      String(userCode || '').trim().toUpperCase().startsWith('RSDNT');
+    if (docsWrap) {
+      docsWrap.classList.toggle('hidden', !isResident);
+    }
+    if (isResident) {
+      loadUserIdentityDocuments(id);
+    } else {
+      userDocLoadToken++;
+      revokeUserDocObjectUrls();
+    }
+
     modal.classList.remove('hidden');
   }
 
   function closeUserStatusModal() {
+    closeUserDocLightbox();
+    userDocLoadToken++;
+    revokeUserDocObjectUrls();
     const modal = document.getElementById('admin-user-status-modal');
     if (modal) modal.classList.add('hidden');
     state.users.selectedUser = null;
@@ -6003,6 +6147,8 @@
     loadUsersList,
     openUserStatusModal,
     closeUserStatusModal,
+    openUserDocLightbox,
+    closeUserDocLightbox,
     submitUserStatusUpdate,
     openLocationReviewModal,
     closeLocationReviewModal,

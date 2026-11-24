@@ -91,6 +91,7 @@ window.switchAuthTab = function (mode) {
       headerSwitchBtn.setAttribute('onclick', "switchAuthTab('login')");
     }
   } else {
+    stopAllRegisterCameras();
     registerForm?.classList.add('hidden');
     loginForm?.classList.remove('hidden');
     if (tabLogin) {
@@ -458,10 +459,219 @@ function setupLoginForm() {
   });
 }
 
+const registerCameraState = {
+  id: { stream: null, dataUrl: '' },
+  selfie: { stream: null, dataUrl: '' },
+};
+
+function getRegisterSlotElements(slot) {
+  const prefix = slot === 'id' ? 'reg-id' : 'reg-selfie';
+  return {
+    placeholder: document.getElementById(`${prefix}-placeholder`),
+    video: document.getElementById(`${prefix}-video`),
+    preview: document.getElementById(`${prefix}-preview`),
+    canvas: document.getElementById(`${prefix}-canvas`),
+    status: document.getElementById(`${prefix}-status`),
+    startBtn: document.getElementById(`${prefix}-start-btn`),
+    captureBtn: document.getElementById(`${prefix}-capture-btn`),
+    retakeBtn: document.getElementById(`${prefix}-retake-btn`),
+    removeBtn: document.getElementById(`${prefix}-remove-btn`),
+  };
+}
+
+function stopCameraStream(slot) {
+  const state = registerCameraState[slot];
+  if (state && state.stream) {
+    state.stream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch (_) {}
+    });
+    state.stream = null;
+  }
+  const els = getRegisterSlotElements(slot);
+  if (els.video) {
+    els.video.srcObject = null;
+  }
+}
+
+function stopAllRegisterCameras() {
+  stopCameraStream('id');
+  stopCameraStream('selfie');
+}
+
+function updateRegisterSlotUI(slot) {
+  const state = registerCameraState[slot];
+  const els = getRegisterSlotElements(slot);
+  if (!els.placeholder || !els.video || !els.preview) return;
+
+  const hasStream = Boolean(state.stream);
+  const hasPhoto = Boolean(state.dataUrl);
+
+  els.placeholder.classList.toggle('hidden', hasStream || hasPhoto);
+  els.video.classList.toggle('hidden', !hasStream || hasPhoto);
+  els.preview.classList.toggle('hidden', !hasPhoto);
+
+  if (hasPhoto) {
+    els.preview.src = state.dataUrl;
+  } else {
+    els.preview.removeAttribute('src');
+  }
+
+  if (els.startBtn) els.startBtn.classList.toggle('hidden', hasStream || hasPhoto);
+  if (els.captureBtn) els.captureBtn.classList.toggle('hidden', !hasStream || hasPhoto);
+  if (els.retakeBtn) els.retakeBtn.classList.toggle('hidden', !hasPhoto);
+  if (els.removeBtn) els.removeBtn.classList.toggle('hidden', !hasPhoto);
+
+  if (els.status) {
+    if (hasPhoto) {
+      els.status.textContent = 'Captured';
+      els.status.className = 'text-[10px] font-semibold text-emerald-700';
+    } else if (hasStream) {
+      els.status.textContent = 'Live Camera';
+      els.status.className = 'text-[10px] font-semibold text-[#164579]';
+    } else {
+      els.status.textContent = 'Required';
+      els.status.className = 'text-[10px] font-semibold text-[#64748B]';
+    }
+  }
+}
+
+async function waitForVideoReadyFrame(videoEl, timeoutMs = 2500) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+  return videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0;
+}
+
+function isCanvasBlankOrBlack(canvas) {
+  try {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return true;
+    const { width, height } = canvas;
+    if (!width || !height) return true;
+    const data = ctx.getImageData(0, 0, width, height).data;
+    let maxLuma = 0;
+    const step = 16;
+    for (let i = 0; i < data.length; i += 4 * step) {
+      const luma = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      if (luma > maxLuma) maxLuma = luma;
+      if (maxLuma >= 2) return false;
+    }
+    return maxLuma < 2;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function startCameraForSlot(slot) {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    showToastNotification('Camera access is not supported in this browser or context (HTTPS required).', 'error');
+    return;
+  }
+
+  // Stop the other camera first so mobile/laptop single-camera devices don't conflict
+  const otherSlot = slot === 'id' ? 'selfie' : 'id';
+  stopCameraStream(otherSlot);
+  updateRegisterSlotUI(otherSlot);
+
+  stopCameraStream(slot);
+  registerCameraState[slot].dataUrl = '';
+
+  const els = getRegisterSlotElements(slot);
+  try {
+    const facingMode = slot === 'selfie' ? 'user' : 'environment';
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      });
+    } catch (_) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
+    registerCameraState[slot].stream = stream;
+    if (els.video) {
+      els.video.srcObject = stream;
+      await els.video.play().catch(() => {});
+    }
+    updateRegisterSlotUI(slot);
+  } catch (err) {
+    stopCameraStream(slot);
+    updateRegisterSlotUI(slot);
+    showToastNotification(err?.message || 'Unable to access camera. Please allow camera permission.', 'error');
+  }
+}
+
+async function captureFromSlot(slot) {
+  const state = registerCameraState[slot];
+  const els = getRegisterSlotElements(slot);
+  if (!state.stream || !els.video || !els.canvas) {
+    showToastNotification('Please open the camera first before capturing.', 'warning');
+    return;
+  }
+
+  const ready = await waitForVideoReadyFrame(els.video);
+  if (!ready) {
+    showToastNotification('Camera feed is still initializing. Please wait a moment and try again.', 'warning');
+    return;
+  }
+
+  const maxWidth = 1024;
+  const srcWidth = els.video.videoWidth || 640;
+  const srcHeight = els.video.videoHeight || 480;
+  const scale = srcWidth > maxWidth ? maxWidth / srcWidth : 1;
+  const width = Math.round(srcWidth * scale);
+  const height = Math.round(srcHeight * scale);
+
+  els.canvas.width = width;
+  els.canvas.height = height;
+  const ctx = els.canvas.getContext('2d');
+  if (!ctx) {
+    showToastNotification('Unable to capture image frame.', 'error');
+    return;
+  }
+  ctx.drawImage(els.video, 0, 0, width, height);
+
+  if (isCanvasBlankOrBlack(els.canvas)) {
+    showToastNotification('Captured frame appears unrendered. Please wait a second and capture again.', 'warning');
+    return;
+  }
+
+  state.dataUrl = els.canvas.toDataURL('image/jpeg', 0.85);
+  stopCameraStream(slot);
+  updateRegisterSlotUI(slot);
+}
+
+function removeSlotPhoto(slot) {
+  stopCameraStream(slot);
+  registerCameraState[slot].dataUrl = '';
+  updateRegisterSlotUI(slot);
+}
+
+function setupRegisterCameraControls() {
+  ['id', 'selfie'].forEach((slot) => {
+    const els = getRegisterSlotElements(slot);
+    if (els.startBtn) els.startBtn.addEventListener('click', () => startCameraForSlot(slot));
+    if (els.captureBtn) els.captureBtn.addEventListener('click', () => captureFromSlot(slot));
+    if (els.retakeBtn) els.retakeBtn.addEventListener('click', () => startCameraForSlot(slot));
+    if (els.removeBtn) els.removeBtn.addEventListener('click', () => removeSlotPhoto(slot));
+    updateRegisterSlotUI(slot);
+  });
+
+  window.addEventListener('beforeunload', stopAllRegisterCameras);
+}
+
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
+  setupRegisterCameraControls();
   let isSubmitting = false;
 
   form.addEventListener('submit', async (e) => {
@@ -476,6 +686,8 @@ function setupRegisterForm() {
     const street = (document.getElementById('reg-street')?.value || '').trim();
     const password = document.getElementById('reg-password')?.value || '';
     const confirmPassword = document.getElementById('reg-confirm-password')?.value || '';
+    const idPhotoDataUrl = registerCameraState.id.dataUrl || '';
+    const selfiePhotoDataUrl = registerCameraState.selfie.dataUrl || '';
 
     if (!firstName || !lastName) {
       showToastNotification('Please enter both your first name and last name.', 'warning');
@@ -493,6 +705,14 @@ function setupRegisterForm() {
       showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
+    if (!idPhotoDataUrl) {
+      showToastNotification('Please capture a live photo of your Barangay Address ID.', 'warning');
+      return;
+    }
+    if (!selfiePhotoDataUrl) {
+      showToastNotification('Please capture a live selfie holding the same ID.', 'warning');
+      return;
+    }
 
     isSubmitting = true;
     setRegisterSubmittingState(true);
@@ -505,11 +725,15 @@ function setupRegisterForm() {
         phone,
         street,
         password,
+        idPhotoDataUrl,
+        selfiePhotoDataUrl,
       });
 
       isSubmitting = false;
       setRegisterSubmittingState(false);
       form.reset();
+      removeSlotPhoto('id');
+      removeSlotPhoto('selfie');
 
       window.switchAuthTab('login');
       clearLoginFormFields();

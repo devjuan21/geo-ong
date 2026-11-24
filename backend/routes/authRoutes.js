@@ -10,9 +10,28 @@ const {
   verifyResetOtp,
   resetPassword,
 } = require('../controllers/authController');
+const {
+  requestRegistrationOtp,
+  verifyRegistrationOtp,
+} = require('../controllers/registrationOtpController');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.post(
+  ['/register/request-otp', '/auth/register/request-otp'],
+  [body('email').isEmail().normalizeEmail().withMessage('Valid email address is required')],
+  requestRegistrationOtp
+);
+
+router.post(
+  ['/register/verify-otp', '/auth/register/verify-otp'],
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
+    body('otp').isString().matches(/^\d{6}$/).withMessage('6-digit verification code is required'),
+  ],
+  verifyRegistrationOtp
+);
 
 router.post(
   ['/register', '/auth/register'],

@@ -818,10 +818,234 @@ function setupRegisterIdentityCameras() {
   window.addEventListener('pagehide', stopAllRegisterCameras);
 }
 
+const regEmailOtpState = {
+  email: '',
+  verified: false,
+  emailVerificationToken: null,
+  cooldownTimer: null,
+  expiryTimer: null,
+};
+
+function clearRegOtpTimers() {
+  if (regEmailOtpState.cooldownTimer) {
+    clearInterval(regEmailOtpState.cooldownTimer);
+    regEmailOtpState.cooldownTimer = null;
+  }
+  if (regEmailOtpState.expiryTimer) {
+    clearInterval(regEmailOtpState.expiryTimer);
+    regEmailOtpState.expiryTimer = null;
+  }
+}
+
+function resetRegisterEmailOtpState() {
+  clearRegOtpTimers();
+  regEmailOtpState.email = '';
+  regEmailOtpState.verified = false;
+  regEmailOtpState.emailVerificationToken = null;
+
+  const badge = document.getElementById('reg-email-otp-badge');
+  const sendBtn = document.getElementById('btn-reg-send-otp');
+  const entryBox = document.getElementById('reg-otp-entry-box');
+  const verifiedBox = document.getElementById('reg-otp-verified-box');
+  const feedbackBox = document.getElementById('reg-otp-feedback-box');
+  const otpInput = document.getElementById('reg-otp-input');
+
+  if (badge) {
+    badge.textContent = 'Required';
+    badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]';
+  }
+  if (sendBtn) {
+    sendBtn.classList.remove('hidden');
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send Verification Code';
+  }
+  if (entryBox) entryBox.classList.add('hidden');
+  if (verifiedBox) verifiedBox.classList.add('hidden');
+  if (feedbackBox) {
+    feedbackBox.textContent = '';
+    feedbackBox.classList.add('hidden');
+  }
+  if (otpInput) otpInput.value = '';
+}
+
+function setupRegisterEmailOtp() {
+  const emailInput = document.getElementById('reg-email');
+  const sendBtn = document.getElementById('btn-reg-send-otp');
+  const resendBtn = document.getElementById('btn-reg-resend-otp');
+  const verifyBtn = document.getElementById('btn-reg-verify-otp');
+  const otpInput = document.getElementById('reg-otp-input');
+  const entryBox = document.getElementById('reg-otp-entry-box');
+  const verifiedBox = document.getElementById('reg-otp-verified-box');
+  const feedbackBox = document.getElementById('reg-otp-feedback-box');
+  const badge = document.getElementById('reg-email-otp-badge');
+  const sentEmailLabel = document.getElementById('reg-otp-sent-email-label');
+  const expiryLabel = document.getElementById('reg-otp-expiry-label');
+
+  if (!emailInput || !sendBtn) return;
+
+  const showFeedback = (type, msg) => {
+    if (!feedbackBox) return;
+    if (!msg) {
+      feedbackBox.textContent = '';
+      feedbackBox.classList.add('hidden');
+      return;
+    }
+    feedbackBox.textContent = msg;
+    feedbackBox.className = type === 'error'
+      ? 'rounded-[6px] border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] font-medium text-[#DC2626]'
+      : 'rounded-[6px] border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] font-medium text-[#164579]';
+  };
+
+  const startTimers = (cooldownSec = 60, expirySec = 300) => {
+    clearRegOtpTimers();
+    let cd = cooldownSec;
+    let exp = expirySec;
+
+    const renderCd = () => {
+      if (!resendBtn) return;
+      if (cd > 0) {
+        resendBtn.disabled = true;
+        resendBtn.textContent = `Resend code (${cd}s)`;
+      } else {
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend code';
+      }
+    };
+    const renderExp = () => {
+      if (!expiryLabel) return;
+      if (exp <= 0) {
+        expiryLabel.textContent = 'Code expired';
+        expiryLabel.className = 'text-[11px] font-semibold text-[#DC2626]';
+      } else {
+        const m = String(Math.floor(exp / 60)).padStart(2, '0');
+        const s = String(exp % 60).padStart(2, '0');
+        expiryLabel.textContent = `Expires in ${m}:${s}`;
+        expiryLabel.className = 'text-[11px] font-medium text-[#64748B]';
+      }
+    };
+
+    renderCd();
+    renderExp();
+    regEmailOtpState.cooldownTimer = setInterval(() => {
+      cd -= 1;
+      renderCd();
+      if (cd <= 0) {
+        clearInterval(regEmailOtpState.cooldownTimer);
+        regEmailOtpState.cooldownTimer = null;
+      }
+    }, 1000);
+    regEmailOtpState.expiryTimer = setInterval(() => {
+      exp -= 1;
+      renderExp();
+      if (exp <= 0) {
+        clearInterval(regEmailOtpState.expiryTimer);
+        regEmailOtpState.expiryTimer = null;
+      }
+    }, 1000);
+  };
+
+  const handleRequestOtp = async (triggerBtn) => {
+    showFeedback(null, '');
+    const email = String(emailInput.value || '').trim().toLowerCase();
+    const firstName = String(document.getElementById('reg-first-name')?.value || '').trim();
+    const lastName = String(document.getElementById('reg-last-name')?.value || '').trim();
+    if (!email || !isValidEmail(email)) {
+      showFeedback('error', 'Please enter a valid email address above first.');
+      emailInput.focus();
+      return;
+    }
+
+    if (triggerBtn) triggerBtn.disabled = true;
+    try {
+      const data = await window.geoSafeStore.requestRegistrationOtp({
+        email,
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`.trim(),
+      });
+      regEmailOtpState.email = email;
+      regEmailOtpState.verified = false;
+      regEmailOtpState.emailVerificationToken = null;
+
+      if (sentEmailLabel) sentEmailLabel.textContent = email;
+      if (entryBox) entryBox.classList.remove('hidden');
+      if (verifiedBox) verifiedBox.classList.add('hidden');
+      if (sendBtn) sendBtn.classList.add('hidden');
+      if (badge) {
+        badge.textContent = 'Code Sent';
+        badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800';
+      }
+      showFeedback('info', data.message || 'If this email is eligible for registration, a 6-digit verification code has been sent.');
+      startTimers(Number(data.resendCooldownSeconds || 60), Number(data.expiresInSeconds || 300));
+      if (otpInput) { otpInput.value = ''; otpInput.focus(); }
+    } catch (err) {
+      showFeedback('error', err.message || 'Unable to send verification code.');
+      if (err.status === 429 && err.retryAfterSec) {
+        if (entryBox) entryBox.classList.remove('hidden');
+        startTimers(Number(err.retryAfterSec), 300);
+      }
+    } finally {
+      if (triggerBtn) triggerBtn.disabled = false;
+    }
+  };
+
+  sendBtn.addEventListener('click', () => handleRequestOtp(sendBtn));
+  if (resendBtn) {
+    resendBtn.addEventListener('click', () => {
+      if (!resendBtn.disabled) handleRequestOtp(resendBtn);
+    });
+  }
+
+  if (verifyBtn) {
+    verifyBtn.addEventListener('click', async () => {
+      showFeedback(null, '');
+      const email = String(emailInput.value || '').trim().toLowerCase();
+      const otp = String(otpInput ? otpInput.value : '').trim();
+      if (!/^\d{6}$/.test(otp)) {
+        showFeedback('error', 'Please enter the 6-digit numeric verification code.');
+        return;
+      }
+
+      verifyBtn.disabled = true;
+      try {
+        const data = await window.geoSafeStore.verifyRegistrationOtp({ email, otp });
+        if (!data.verified || !data.emailVerificationToken) {
+          showFeedback('error', data.error || 'Invalid or expired verification code.');
+          return;
+        }
+        clearRegOtpTimers();
+        regEmailOtpState.email = email;
+        regEmailOtpState.verified = true;
+        regEmailOtpState.emailVerificationToken = data.emailVerificationToken;
+
+        if (entryBox) entryBox.classList.add('hidden');
+        if (sendBtn) sendBtn.classList.add('hidden');
+        if (verifiedBox) verifiedBox.classList.remove('hidden');
+        if (badge) {
+          badge.textContent = 'Verified';
+          badge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800';
+        }
+      } catch (err) {
+        showFeedback('error', err.message || 'Invalid or expired verification code.');
+      } finally {
+        verifyBtn.disabled = false;
+      }
+    });
+  }
+
+  emailInput.addEventListener('input', () => {
+    const current = String(emailInput.value || '').trim().toLowerCase();
+    if (regEmailOtpState.email && current !== regEmailOtpState.email) {
+      resetRegisterEmailOtpState();
+    }
+  });
+}
+
 function setupRegisterForm() {
   const form = document.getElementById('register-form');
   if (!form) return;
 
+  setupRegisterEmailOtp();
   setupRegisterIdentityCameras();
 
   form.addEventListener('submit', async (e) => {
@@ -830,7 +1054,7 @@ function setupRegisterForm() {
 
     const firstName = (document.getElementById('reg-first-name')?.value || '').trim();
     const lastName = (document.getElementById('reg-last-name')?.value || '').trim();
-    const email = (document.getElementById('reg-email')?.value || '').trim();
+    const email = (document.getElementById('reg-email')?.value || '').trim().toLowerCase();
     const phone = (document.getElementById('reg-phone')?.value || '').trim();
     const street = (document.getElementById('reg-street')?.value || '').trim();
     const password = document.getElementById('reg-password')?.value || '';
@@ -852,6 +1076,10 @@ function setupRegisterForm() {
       showToastNotification('Passwords do not match. Please verify your password confirmation.', 'error');
       return;
     }
+    if (!regEmailOtpState.verified || !regEmailOtpState.emailVerificationToken || regEmailOtpState.email !== email) {
+      showToastNotification('Please verify your email address with a 6-digit code before submitting.', 'warning');
+      return;
+    }
     if (!regIdentityPhotoState.idDataUrl) {
       showToastNotification('Please capture a clear photo of your Barangay Address ID.', 'warning');
       return;
@@ -871,12 +1099,14 @@ function setupRegisterForm() {
         phone,
         street,
         password,
+        emailVerificationToken: regEmailOtpState.emailVerificationToken,
         idPhotoDataUrl: regIdentityPhotoState.idDataUrl,
         selfiePhotoDataUrl: regIdentityPhotoState.selfieDataUrl,
       });
 
       setRegisterSubmittingState(false);
       form.reset();
+      resetRegisterEmailOtpState();
       resetRegisterIdentityPhotos();
 
       // Switch to Sign In tab with empty fields requiring manual credential entry

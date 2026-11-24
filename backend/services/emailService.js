@@ -236,9 +236,71 @@ async function sendResidentApplicationRejectedEmail({ to, name, reason, frontend
   return sendResendTransactionalEmail({ to, subject, text, html });
 }
 
+function buildRegistrationOtpEmailContent({ name, otp, expiresMinutes = 5, frontendUrl = '' }) {
+  const displayName = String(name || 'Applicant').trim() || 'Applicant';
+  const safeName = escapeHtml(displayName);
+  const safeOtp = escapeHtml(String(otp || '').trim());
+  const portalUrl = String(frontendUrl || '').trim();
+
+  const subject = 'GeoSafe — Verify Your Email for Resident Registration';
+  const text = [
+    `Hello ${displayName},`,
+    '',
+    'Use the 6-digit verification code below to confirm your email address for your GeoSafe Resident Registration (Barangay Bayanan):',
+    '',
+    `Registration Verification Code: ${otp}`,
+    '',
+    `This code expires in ${expiresMinutes} minutes and can only be used once.`,
+    'Note: Confirming your email allows you to submit your identity documents for Administrator review. Your account will still require Administrator approval before sign-in.',
+    portalUrl ? `Portal: ${portalUrl}/login.html` : '',
+    '',
+    'If you did not start a Resident registration on GeoSafe, you can safely ignore this email.',
+    '',
+    'Barangay Bayanan Emergency Operations Center (GeoSafe)',
+  ].filter(Boolean).join('\n');
+
+  const html = `
+    <div style="font-family: Inter, Arial, sans-serif; background:#F1F5F9; padding:24px; color:#0F172A;">
+      <div style="max-width:520px; margin:0 auto; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:8px; overflow:hidden;">
+        <div style="background:#0B203B; color:#FFFFFF; padding:18px 24px;">
+          <div style="font-size:16px; font-weight:700; letter-spacing:-0.01em;">GeoSafe</div>
+          <div style="font-size:11px; color:#9EB8D6; margin-top:2px;">Barangay Bayanan Resident Registration Verification</div>
+        </div>
+        <div style="padding:24px; font-size:14px; line-height:1.6;">
+          <p style="margin:0 0 12px 0;">Hello <strong>${safeName}</strong>,</p>
+          <p style="margin:0 0 16px 0; color:#334155;">
+            Enter the 6-digit code below to verify your email address and continue your <strong>GeoSafe Resident Registration</strong>:
+          </p>
+          <div style="margin:0 0 20px 0; padding:14px 18px; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">
+            <span style="font-family:monospace; font-size:28px; font-weight:700; letter-spacing:8px; color:#0B203B;">${safeOtp}</span>
+          </div>
+          <p style="margin:0 0 12px 0; font-size:12px; color:#64748B;">
+            This registration verification code expires in <strong>${expiresMinutes} minutes</strong> and allows up to 5 attempts.
+          </p>
+          <p style="margin:0 0 12px 0; font-size:12px; color:#475569; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:10px 12px;">
+            After verifying your email and submitting your Barangay Address ID and selfie, an Administrator must still review and approve your application before you can sign in.
+          </p>
+          ${portalUrl ? `<p style="margin:0 0 14px 0; font-size:12px; color:#164579;">GeoSafe Portal: <a href="${escapeHtml(portalUrl)}/login.html" style="color:#164579;">${escapeHtml(portalUrl)}</a></p>` : ''}
+          <p style="margin:0; font-size:12px; color:#64748B; border-top:1px solid #E2E8F0; padding-top:14px;">
+            If you did not request Resident registration on GeoSafe, you can safely ignore this email.
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return { subject, text, html };
+}
+
+async function sendRegistrationOtpEmail({ to, name, otp, expiresMinutes = 5, frontendUrl = '' }) {
+  const { subject, text, html } = buildRegistrationOtpEmailContent({ name, otp, expiresMinutes, frontendUrl });
+  return sendResendTransactionalEmail({ to, subject, text, html });
+}
+
 module.exports = {
   getResendConfig,
   sendPasswordResetOtpEmail,
+  sendRegistrationOtpEmail,
   sendResidentApplicationSubmittedEmail,
   sendResidentApplicationApprovedEmail,
   sendResidentApplicationRejectedEmail,

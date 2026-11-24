@@ -13,6 +13,7 @@ const {
   savePrivateIdentityPhoto,
   deletePrivateIdentityPhoto,
 } = require('../services/privateStorageService');
+const { consumeRegistrationEmailToken } = require('./registrationOtpController');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -138,6 +139,7 @@ async function register(req, res) {
     street,
     role,
     role_id,
+    emailVerificationToken,
     idPhotoDataUrl,
     selfiePhotoDataUrl,
   } = req.body;
@@ -187,7 +189,10 @@ async function register(req, res) {
   const cleanPhone = (phone_number || phone || '').trim().slice(0, 30) || null;
   const cleanStreet = (street_address || street || '').trim().slice(0, 255) || null;
 
-  // Validate required identity verification photos (Barangay Address ID + Selfie holding the same ID)
+  // Validate required email verification token & identity photos before DB transaction
+  if (!emailVerificationToken || String(emailVerificationToken).trim().length < 32) {
+    return res.status(400).json({ error: 'Please verify your email address with a 6-digit code before submitting registration.' });
+  }
   try {
     parseAndValidateImageDataUrl(idPhotoDataUrl, 'Barangay Address ID');
     parseAndValidateImageDataUrl(selfiePhotoDataUrl, 'Selfie holding your Barangay Address ID');
@@ -222,6 +227,12 @@ async function register(req, res) {
       await conn.rollback();
       return res.status(409).json({ error: 'Email already registered' });
     }
+
+    // Atomically verify & consume the registration email OTP token
+    const { verifiedAt: emailVerifiedAt } = await consumeRegistrationEmailToken(conn, {
+      email,
+      emailVerificationToken,
+    });
 
     const { userCode } = await generateNextUserCode(conn, residentRole.id);
 
@@ -262,8 +273,9 @@ async function register(req, res) {
     const [appResult] = await conn.query(
       `INSERT INTO resident_verification_applications
          (user_id, status, id_photo_path, id_photo_mime, id_photo_size,
-          selfie_photo_path, selfie_photo_mime, selfie_photo_size, submitted_at)
-       VALUES (?, 'pending_verification', ?, ?, ?, ?, ?, ?, NOW())`,
+          selfie_photo_path, selfie_photo_mime, selfie_photo_size,
+          email_verified, email_verified_at, submitted_at)
+       VALUES (?, 'pending_verification', ?, ?, ?, ?, ?, ?, TRUE, ?, NOW())`,
       [
         newUserId,
         savedIdPhoto.storageRef,
@@ -272,6 +284,7 @@ async function register(req, res) {
         savedSelfiePhoto.storageRef,
         savedSelfiePhoto.mimeType,
         savedSelfiePhoto.byteLength,
+        emailVerifiedAt,
       ]
     );
     const applicationId = appResult?.insertId || (Array.isArray(appResult) && appResult[0]?.id) || null;
@@ -291,6 +304,8 @@ async function register(req, res) {
           role: residentRole.name,
           role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
+          email_verified: true,
+          email_verified_at: emailVerifiedAt,
           account_status: 'pending_verification',
           status: 'PENDING_VERIFICATION',
         }),

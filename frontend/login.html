@@ -226,6 +226,49 @@
           </div>
         </div>
 
+        <!-- Step 2: Email Verification (6-Digit OTP) -->
+        <div id="reg-email-otp-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-xs font-bold text-[#0F172A]">Email Verification <span class="text-[#DC2626]">*</span></h3>
+            <span id="reg-email-otp-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
+          </div>
+          <p class="text-[11px] text-[#64748B] leading-snug">
+            Verify your Gmail address with a 6-digit code before submitting your identity documents.
+          </p>
+
+          <div id="reg-otp-feedback-box" class="hidden rounded-[6px] border px-2.5 py-2 text-[11px] font-medium"></div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btn-reg-send-otp"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
+              Send Verification Code
+            </button>
+          </div>
+
+          <div id="reg-otp-entry-box" class="hidden space-y-2 pt-2 border-t border-[#E2E8F0]">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] text-[#475569]">Code sent to <strong id="reg-otp-sent-email-label" class="text-[#0F172A]"></strong></span>
+              <span id="reg-otp-expiry-label" class="text-[11px] font-medium text-[#64748B]">Expires in 05:00</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="text" id="reg-otp-input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit code"
+                class="w-36 h-9 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-center font-mono text-sm tracking-[0.25em] text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+              <button type="button" id="btn-reg-verify-otp"
+                class="h-9 px-3.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
+                Verify Code
+              </button>
+              <button type="button" id="btn-reg-resend-otp" disabled
+                class="text-[11px] font-semibold text-[#164579] hover:underline disabled:text-[#94A3B8] disabled:no-underline">
+                Resend code (60s)
+              </button>
+            </div>
+          </div>
+
+          <div id="reg-otp-verified-box" class="hidden rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-800">
+            Email address verified. Please capture both identity photos below to submit your application.
+          </div>
+        </div>
+
         <!-- Required Identity Verification Photos (Camera Capture Only) -->
         <div id="reg-identity-photos-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-3">
           <div>

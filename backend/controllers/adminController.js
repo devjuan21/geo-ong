@@ -16,7 +16,7 @@ const {
   emitIncidentResolved,
   emitAdminResidentApplicationEvent,
 } = require('../services/socketService');
-const { readPrivateIdentityPhoto } = require('../services/privateStorageService');
+const { readPrivateIdentityPhoto, diagnoseStorageConnectivity } = require('../services/privateStorageService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { defaultColorForName } = require('../config/advisoryCategories');
@@ -5224,7 +5224,17 @@ async function rejectResidentVerification(req, res) {
   }
 }
 
+async function getAdminStorageDiagnostics(_req, res) {
+  try {
+    const result = await diagnoseStorageConnectivity();
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ category: 'DIAGNOSTIC_ERROR', message: err.message });
+  }
+}
+
 module.exports = {
+  getAdminStorageDiagnostics,
   getAdminOverview,
   getAdminStats,
   getVulnerableResidents,

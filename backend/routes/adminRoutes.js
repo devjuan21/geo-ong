@@ -35,6 +35,7 @@ const {
   getAdminFacilities,
   createAdminFacility,
   updateAdminFacility,
+  getAdminStorageDiagnostics,
 } = require('../controllers/adminController');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
@@ -144,6 +145,9 @@ router.get('/password-assistance', getPasswordAssistanceTickets);
 router.post('/password-assistance/:id/review', markTicketInReview);
 router.post('/password-assistance/:id/approve', approvePasswordAssistanceTicket);
 router.post('/password-assistance/:id/reject', rejectPasswordAssistanceTicket);
+
+// Safe Storage Connectivity Diagnostic (Admin-only)
+router.get('/diagnostics/storage', getAdminStorageDiagnostics);
 
 // 5. Alerts & Notifications (Emergency Broadcasts & Categories)
 router.get('/broadcast-categories', getBroadcastCategories);

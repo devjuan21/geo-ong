@@ -186,25 +186,34 @@ async function register(req, res) {
   const cleanPhone = (phone_number || phone || '').trim().slice(0, 30) || null;
   const cleanStreet = (street_address || street || '').trim().slice(0, 255) || null;
 
+  const correlationId = crypto.randomUUID();
+  let stage = 'request_received';
+
   // Validate required identity photos before DB transaction
   try {
     parseAndValidateImageDataUrl(idPhotoDataUrl, 'Barangay Address ID');
     parseAndValidateImageDataUrl(selfiePhotoDataUrl, 'Selfie holding your Barangay Address ID');
+    stage = 'photos_validated';
   } catch (photoErr) {
     return res.status(photoErr.statusCode || 400).json({ error: photoErr.message });
   }
 
   const conn = await pool.getConnection().catch((err) => {
-    console.error('[Auth] DB connection error on register:', err.message);
+    console.error('[Auth] DB connection error on register:', { correlationId, stage, message: err.message });
     return null;
   });
   if (!conn) {
-    return res.status(503).json({ error: 'Registration is temporarily unavailable. Please try again.' });
+    return res.status(503).json({
+      error: 'Registration is temporarily unavailable (DB_CONNECT_FAILED). Please try again.',
+      errorCode: 'DB_CONNECT_FAILED',
+      correlationId,
+    });
   }
 
   let savedIdPhoto = null;
   let savedSelfiePhoto = null;
   try {
+    stage = 'db_tx_started';
     await conn.beginTransaction();
 
     const [roleRows] = await conn.query(
@@ -234,17 +243,25 @@ async function register(req, res) {
     const newUserId = result.insertId;
 
     // Persist private identity photos before committing the application record
+    stage = 'id_upload_started';
     savedIdPhoto = await savePrivateIdentityPhoto({
       dataUrl: idPhotoDataUrl,
       label: 'Barangay Address ID',
       prefix: `user_${newUserId}_id`,
+      correlationId,
     });
+    stage = 'id_upload_ok';
+
+    stage = 'selfie_upload_started';
     savedSelfiePhoto = await savePrivateIdentityPhoto({
       dataUrl: selfiePhotoDataUrl,
       label: 'Selfie holding your Barangay Address ID',
       prefix: `user_${newUserId}_selfie`,
+      correlationId,
     });
+    stage = 'selfie_upload_ok';
 
+    stage = 'profile_insert';
     await conn.query(
       `INSERT INTO user_profiles
          (user_id, first_name, last_name, phone_number, street_address, barangay, city, province, verification_status)
@@ -342,14 +359,17 @@ async function register(req, res) {
       return res.status(409).json({ error: 'Email already registered' });
     }
     console.error('[Auth] register failed:', {
-      code: err.code || null,
+      correlationId,
+      stage,
+      code: err.code || err.causeCode || null,
       constraint: err.constraint || null,
       message: err.message,
     });
-    if (err.isStorageError || err.code === 'STORAGE_UPLOAD_FAILED') {
+    if (err.isStorageError || String(err.code || '').startsWith('STORAGE_')) {
       return res.status(503).json({
-        error: 'Identity photo storage is currently unavailable. Please try again or contact Barangay Bayanan EOC.',
-        errorCode: 'STORAGE_UPLOAD_FAILED',
+        error: `Identity photo storage is currently unavailable (${err.code || 'STORAGE_UPLOAD_FAILED'}). Please verify Supabase Storage configuration.`,
+        errorCode: err.code || 'STORAGE_UPLOAD_FAILED',
+        correlationId,
       });
     }
     return res.status(err.statusCode || 503).json({
@@ -357,6 +377,7 @@ async function register(req, res) {
         ? err.message
         : `Registration is temporarily unavailable (${err.code || 'SERVICE_ERROR'}). Please try again.`,
       errorCode: err.code || 'SERVICE_ERROR',
+      correlationId,
     });
   } finally {
     conn.release();

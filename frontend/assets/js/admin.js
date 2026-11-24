@@ -6089,7 +6089,7 @@
             <td class="px-4 py-3 text-xs font-mono font-bold text-[#0B203B] whitespace-nowrap">${escapeHtml(t.ticketReference || '')}</td>
             <td class="px-4 py-3 text-xs">
               <div class="font-bold text-[#202020]">${escapeHtml(t.submittedName || '')}</div>
-              <div class="text-[11px] text-[#64748B]">${escapeHtml(t.submittedEmail || '')}</div>
+              <div class="text-[11px] text-[#64748B]">${escapeHtml(t.submittedEmail || '')}${t.submittedPhone ? ` • ${escapeHtml(t.submittedPhone)}` : ''}</div>
             </td>
             <td class="px-4 py-3 text-xs uppercase font-semibold text-[#475569] whitespace-nowrap">${escapeHtml(t.accountRole || '')}</td>
             <td class="px-4 py-3 text-xs text-[#334155] max-w-xs">${escapeHtml(shortDesc)}</td>
@@ -6143,6 +6143,7 @@
     setText('pa-detail-submitted', ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : '—');
     setText('pa-detail-name', ticket.submittedName);
     setText('pa-detail-email', ticket.submittedEmail);
+    setText('pa-detail-phone', ticket.submittedPhone || 'Not provided');
     setText('pa-detail-role', ticket.accountRole);
     setText('pa-detail-status', String(ticket.status || '').replace('_', ' '));
     setText('pa-detail-description', ticket.description);
@@ -6153,7 +6154,7 @@
         const m = ticket.matchedAccount;
         matchedInfoEl.innerHTML = `
           <div><strong>${escapeHtml(m.userCode)}</strong> • ${escapeHtml(m.name)} (${escapeHtml(m.role)})</div>
-          <div class="text-[11px] text-[#64748B]">Email: ${escapeHtml(m.email)} • Status: <strong>${escapeHtml(m.accountStatus)}</strong></div>
+          <div class="text-[11px] text-[#64748B]">Email: ${escapeHtml(m.email)}${m.phone ? ` • Registered Mobile: ${escapeHtml(m.phone)}` : ''} • Status: <strong>${escapeHtml(m.accountStatus)}</strong></div>
         `;
       } else {
         matchedInfoEl.innerHTML = '<span class="text-red-700 font-semibold">No matching account found in PostgreSQL for this email address.</span>';

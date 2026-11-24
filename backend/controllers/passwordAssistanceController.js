@@ -64,12 +64,16 @@ async function submitPasswordAssistanceTicket(req, res) {
 
   const fullName = String(req.body?.fullName || req.body?.name || '').trim();
   const email = String(req.body?.email || '').trim().toLowerCase();
+  const mobileNumber = String(req.body?.mobileNumber || req.body?.phone || '').trim().slice(0, 30);
   const accountRole = String(req.body?.accountRole || req.body?.role || '').trim().toLowerCase();
   const description = String(req.body?.description || '').trim();
   const clientIp = String(req.ip || req.connection?.remoteAddress || '0.0.0.0').slice(0, 45);
 
   if (fullName.length < 2 || fullName.length > 120) {
     return res.status(400).json({ error: 'Full name is required (2 to 120 characters).' });
+  }
+  if (!/^[0-9+\-\s()]{7,30}$/.test(mobileNumber)) {
+    return res.status(400).json({ error: 'Please enter a valid mobile number (7 to 30 digits).' });
   }
   if (!['resident', 'responder'].includes(accountRole)) {
     return res.status(400).json({ error: 'Account role must be Resident or Responder.' });
@@ -106,10 +110,10 @@ async function submitPasswordAssistanceTicket(req, res) {
 
     const [insRows] = await conn.query(
       `INSERT INTO password_assistance_tickets
-         (ticket_reference, user_id, submitted_name, submitted_email, account_role, description, status, request_ip)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+         (ticket_reference, user_id, submitted_name, submitted_email, submitted_phone, account_role, description, status, request_ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
        RETURNING id, created_at`,
-      [ticketReference, matchedUserId, fullName, email, accountRole, description, clientIp]
+      [ticketReference, matchedUserId, fullName, email, mobileNumber, accountRole, description, clientIp]
     );
     const ticketId = (insRows && insRows[0] && insRows[0].id) || insRows.insertId || null;
 
@@ -178,15 +182,17 @@ async function getPasswordAssistanceTickets(req, res) {
     const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     const [rows] = await pool.query(
-      `SELECT t.id, t.ticket_reference, t.user_id, t.submitted_name, t.submitted_email,
+      `SELECT t.id, t.ticket_reference, t.user_id, t.submitted_name, t.submitted_email, t.submitted_phone,
               t.account_role, t.description, t.status, t.reviewed_by, t.reviewed_at,
               t.decision_reason, t.password_reset_at, t.created_at, t.updated_at,
               reviewer.name AS reviewed_by_name,
               u.id AS matched_user_id, u.user_code AS matched_user_code, u.name AS matched_user_name,
-              u.email AS matched_user_email, u.role AS matched_user_role, u.account_status AS matched_account_status
+              u.email AS matched_user_email, u.role AS matched_user_role, u.account_status AS matched_account_status,
+              up.phone_number AS matched_phone_number
          FROM password_assistance_tickets t
          LEFT JOIN users reviewer ON reviewer.id = t.reviewed_by
          LEFT JOIN users u ON u.id = COALESCE(t.user_id, (SELECT u2.id FROM users u2 WHERE LOWER(u2.email) = LOWER(t.submitted_email) LIMIT 1))
+         LEFT JOIN user_profiles up ON up.user_id = u.id
          ${whereSql}
          ORDER BY CASE
                     WHEN t.status = 'pending' THEN 0
@@ -217,6 +223,7 @@ async function getPasswordAssistanceTickets(req, res) {
         ticketReference: r.ticket_reference,
         submittedName: r.submitted_name,
         submittedEmail: r.submitted_email,
+        submittedPhone: r.submitted_phone || null,
         accountRole: r.account_role,
         description: r.description,
         status: r.status,
@@ -231,6 +238,7 @@ async function getPasswordAssistanceTickets(req, res) {
               userCode: r.matched_user_code,
               name: r.matched_user_name,
               email: r.matched_user_email,
+              phone: r.matched_phone_number || null,
               role: r.matched_user_role,
               accountStatus: r.matched_account_status,
             }

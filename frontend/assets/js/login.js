@@ -140,6 +140,7 @@ function setupForgotPasswordHandler() {
   const successStep = document.getElementById('pa-step-success');
   const fullNameInput = document.getElementById('pa-full-name');
   const emailInput = document.getElementById('pa-email');
+  const mobileInput = document.getElementById('pa-mobile');
   const roleSelect = document.getElementById('pa-role');
   const descInput = document.getElementById('pa-description');
   const submitBtn = document.getElementById('pa-submit-btn');
@@ -193,6 +194,7 @@ function setupForgotPasswordHandler() {
 
       const fullName = String(fullNameInput ? fullNameInput.value : '').trim();
       const email = String(emailInput ? emailInput.value : '').trim().toLowerCase();
+      const mobileNumber = String(mobileInput ? mobileInput.value : '').trim();
       const accountRole = String(roleSelect ? roleSelect.value : 'resident').trim().toLowerCase();
       const description = String(descInput ? descInput.value : '').trim();
 
@@ -202,6 +204,10 @@ function setupForgotPasswordHandler() {
       }
       if (!isValidEmail(email)) {
         showError('Please enter a valid registered email address.');
+        return;
+      }
+      if (!/^[0-9+\-\s()]{7,30}$/.test(mobileNumber)) {
+        showError('Please enter a valid mobile number (7 to 30 digits).');
         return;
       }
       if (description.length < 10) {
@@ -217,7 +223,7 @@ function setupForgotPasswordHandler() {
         const res = await fetch('/api/auth/password-assistance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ fullName, email, accountRole, description }),
+          body: JSON.stringify({ fullName, email, mobileNumber, accountRole, description }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {

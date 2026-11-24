@@ -72,6 +72,7 @@ router.post(
   [
     body('fullName').optional().trim().isLength({ min: 2, max: 120 }),
     body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
+    body('mobileNumber').trim().matches(/^[0-9+\-\s()]{7,30}$/).withMessage('Valid mobile number is required'),
     body('accountRole').isIn(['resident', 'responder']).withMessage('Account role must be Resident or Responder'),
     body('description').trim().isLength({ min: 10, max: 1000 }).withMessage('Description must be between 10 and 1000 characters'),
   ],

@@ -102,12 +102,18 @@ async function ensurePrivateSupabaseBucket(cfg) {
     });
     if (!createRes.ok) {
       const txt = await createRes.text().catch(() => '');
-      throw new Error(`Unable to ensure private Supabase Storage bucket: ${createRes.status} ${txt}`);
+      const err = new Error(`Unable to ensure private Supabase Storage bucket: ${createRes.status} ${txt}`);
+      err.code = 'STORAGE_UPLOAD_FAILED';
+      err.isStorageError = true;
+      throw err;
     }
     bucketVerified = true;
     return;
   }
-  throw new Error(`Unable to check Supabase Storage bucket: HTTP ${res.status}`);
+  const err = new Error(`Unable to check Supabase Storage bucket: HTTP ${res.status}`);
+  err.code = 'STORAGE_UPLOAD_FAILED';
+  err.isStorageError = true;
+  throw err;
 }
 
 async function savePrivateIdentityPhoto({ dataUrl, label, prefix = 'doc' }) {
@@ -128,12 +134,15 @@ async function savePrivateIdentityPhoto({ dataUrl, label, prefix = 'doc' }) {
           'Content-Type': parsed.mime,
           'x-upsert': 'false',
         },
-        body: parsed.buffer,
+        body: new Uint8Array(parsed.buffer),
       }
     );
     if (!uploadRes.ok) {
       const errText = await uploadRes.text().catch(() => '');
-      throw new Error(`Private storage upload failed: ${uploadRes.status} ${errText}`);
+      const err = new Error(`Private storage upload failed: ${uploadRes.status} ${errText}`);
+      err.code = 'STORAGE_UPLOAD_FAILED';
+      err.isStorageError = true;
+      throw err;
     }
     return {
       storageRef: `supabase:${PRIVATE_BUCKET}/${objectPath}`,

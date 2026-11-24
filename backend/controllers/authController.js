@@ -341,7 +341,17 @@ async function register(req, res) {
     if (err.code === 'ER_DUP_ENTRY' || err.code === '23505') {
       return res.status(409).json({ error: 'Email already registered' });
     }
-    console.error('[Auth] register failed:', err.message);
+    console.error('[Auth] register failed:', {
+      code: err.code || null,
+      constraint: err.constraint || null,
+      message: err.message,
+    });
+    if (err.isStorageError || err.code === 'STORAGE_UPLOAD_FAILED') {
+      return res.status(503).json({
+        error: 'Identity photo storage is currently unavailable. Please try again or contact Barangay Bayanan EOC.',
+        errorCode: 'STORAGE_UPLOAD_FAILED',
+      });
+    }
     return res.status(err.statusCode || 503).json({
       error: err.statusCode === 400 ? err.message : 'Registration is temporarily unavailable. Please try again.',
     });

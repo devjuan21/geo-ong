@@ -560,6 +560,59 @@ function setupRegisterIdentityCameras() {
     }
   };
 
+  const waitForVideoReadyFrame = (video, timeoutMs = 4000) => new Promise((resolve) => {
+    if (!video) return resolve(false);
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      return requestAnimationFrame(() => resolve(true));
+    }
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener('loadeddata', onReady);
+      video.removeEventListener('canplay', onReady);
+      clearTimeout(timer);
+      if (ok) {
+        requestAnimationFrame(() => resolve(true));
+      } else {
+        resolve(false);
+      }
+    };
+    const onReady = () => {
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        done(true);
+      }
+    };
+    const timer = setTimeout(() => {
+      done(video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0);
+    }, timeoutMs);
+    video.addEventListener('loadeddata', onReady);
+    video.addEventListener('canplay', onReady);
+  });
+
+  const isCanvasBlankOrBlack = (ctx, width, height) => {
+    try {
+      const imgData = ctx.getImageData(0, 0, width, height).data;
+      const step = Math.max(4, Math.floor((width * height) / 400) * 4);
+      let maxLuma = 0;
+      let minLuma = 255;
+      let nonZeroAlpha = 0;
+      for (let i = 0; i < imgData.length; i += step) {
+        const a = imgData[i + 3];
+        if (a > 0) nonZeroAlpha++;
+        const luma = 0.2126 * imgData[i] + 0.7152 * imgData[i + 1] + 0.0722 * imgData[i + 2];
+        if (luma > maxLuma) maxLuma = luma;
+        if (luma < minLuma) minLuma = luma;
+      }
+      if (nonZeroAlpha === 0) return true;
+      // Reject completely black frames or completely flat single-color frames
+      if (maxLuma < 8 || (maxLuma - minLuma) < 3) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  };
+
   const startCameraForSlot = async (slot) => {
     clearCamError();
     // Stop other slot camera first so mobile/desktop browsers don't conflict on single-camera devices
@@ -569,6 +622,9 @@ function setupRegisterIdentityCameras() {
       showCamError('Camera API is unavailable in this browser or requires a secure (HTTPS) connection.');
       return;
     }
+
+    const captureBtn = document.getElementById(`btn-${slot}-capture`);
+    const defaultCaptureLabel = slot === 'id' ? 'Capture ID Photo' : 'Capture Selfie';
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -581,15 +637,30 @@ function setupRegisterIdentityCameras() {
       });
 
       regIdentityPhotoState.streams[slot] = stream;
+      // Reveal <video> container BEFORE attaching srcObject & calling play() so browser decodes visible frames
+      updateIdentitySlotUI(slot);
+      if (captureBtn) {
+        captureBtn.disabled = true;
+        captureBtn.textContent = 'Initializing Camera...';
+      }
+
       const video = document.getElementById(`reg-${slot}-video`);
       if (video) {
         video.srcObject = stream;
         await video.play().catch(() => {});
+        await waitForVideoReadyFrame(video, 4000);
       }
-      updateIdentitySlotUI(slot);
+      if (captureBtn) {
+        captureBtn.disabled = false;
+        captureBtn.textContent = defaultCaptureLabel;
+      }
     } catch (err) {
       stopCameraStream(slot);
       updateIdentitySlotUI(slot);
+      if (captureBtn) {
+        captureBtn.disabled = false;
+        captureBtn.textContent = defaultCaptureLabel;
+      }
       const isDenied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
       showCamError(
         isDenied
@@ -602,7 +673,7 @@ function setupRegisterIdentityCameras() {
   const captureFromSlot = (slot) => {
     clearCamError();
     const video = document.getElementById(`reg-${slot}-video`);
-    if (!video || !video.videoWidth || !video.videoHeight) {
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
       showCamError('Camera preview is still loading. Please wait a moment and try again.');
       return;
     }
@@ -622,7 +693,17 @@ function setupRegisterIdentityCameras() {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, width, height);
 
+    if (isCanvasBlankOrBlack(ctx, width, height)) {
+      showCamError('Captured frame was blank or black. Please uncover your camera lens or wait a moment for exposure to adjust, then click Capture again.');
+      return;
+    }
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    if (!dataUrl || !dataUrl.startsWith('data:image/jpeg;base64,') || dataUrl.length < 3000) {
+      showCamError('Unable to generate a valid photo from camera. Please try capturing again.');
+      return;
+    }
+
     if (slot === 'id') {
       regIdentityPhotoState.idDataUrl = dataUrl;
     } else {
@@ -688,6 +769,8 @@ function setupRegisterForm() {
     showWizardError(null);
     if (step !== 3 && typeof stopAllRegisterCameras === 'function') {
       stopAllRegisterCameras();
+    }
+    if (typeof updateIdentitySlotUI === 'function') {
       updateIdentitySlotUI('id');
       updateIdentitySlotUI('selfie');
     }

@@ -1112,22 +1112,22 @@ async function getAdminReportDetail(req, res) {
       referenceNumber: r.reference_number || `RES-${r.id}`,
       outcome: outcomeRow
         ? {
-            primaryOutcome: outcomeRow.primary_outcome,
-            totalRescued: Number(outcomeRow.total_rescued || 0),
-            firstAidCount: Number(outcomeRow.first_aid_count || 0),
-            hospitalTransportCount: Number(outcomeRow.hospital_transport_count || 0),
-            medicalFacilityCount: Number(outcomeRow.medical_facility_count || 0),
-            evacuationCenterCount: Number(outcomeRow.evacuation_center_count || 0),
-            stillAssistingCount: Number(outcomeRow.still_assisting_count || 0),
-            firstAidActions: outcomeRow.first_aid_actions || '',
-            furtherMedicalRecommended: Boolean(outcomeRow.further_medical_recommended),
-            transportRequired: Boolean(outcomeRow.transport_required),
-            otherDescription: outcomeRow.other_description || '',
-            adminCoordinationRequired: Boolean(outcomeRow.admin_coordination_required),
-            operationalNotes: outcomeRow.operational_notes || '',
-            recordedAt: outcomeRow.recorded_at,
-            updatedAt: outcomeRow.updated_at,
-          }
+          primaryOutcome: outcomeRow.primary_outcome,
+          totalRescued: Number(outcomeRow.total_rescued || 0),
+          firstAidCount: Number(outcomeRow.first_aid_count || 0),
+          hospitalTransportCount: Number(outcomeRow.hospital_transport_count || 0),
+          medicalFacilityCount: Number(outcomeRow.medical_facility_count || 0),
+          evacuationCenterCount: Number(outcomeRow.evacuation_center_count || 0),
+          stillAssistingCount: Number(outcomeRow.still_assisting_count || 0),
+          firstAidActions: outcomeRow.first_aid_actions || '',
+          furtherMedicalRecommended: Boolean(outcomeRow.further_medical_recommended),
+          transportRequired: Boolean(outcomeRow.transport_required),
+          otherDescription: outcomeRow.other_description || '',
+          adminCoordinationRequired: Boolean(outcomeRow.admin_coordination_required),
+          operationalNotes: outcomeRow.operational_notes || '',
+          recordedAt: outcomeRow.recorded_at,
+          updatedAt: outcomeRow.updated_at,
+        }
         : null,
       transports: transportRows.map((t) => ({
         id: t.id,
@@ -1745,7 +1745,7 @@ async function reviewAdminReport(req, res) {
               ? Number(currentAssignedResponderId)
               : null,
         });
-      } catch (_) {}
+      } catch (_) { }
     }
     if (targetStatus === 'Completed' && current.status !== 'Completed') {
       emitIncidentResolved({
@@ -2246,7 +2246,7 @@ async function reviewResidentLocationVerification(req, res) {
     const [rows] = await conn.query(
       `SELECT u.id, u.name, u.email, u.role_id,
               up.id AS profile_id, up.verification_status, up.location_verification_status,
-              up.location_verification_method, up.location_review_reason
+              up.location_verification_method, up.location_verified_at, up.location_review_reason
        FROM users u
        LEFT JOIN user_profiles up ON up.user_id = u.id
        WHERE u.id = ? LIMIT 1`,
@@ -2271,8 +2271,31 @@ async function reviewResidentLocationVerification(req, res) {
           ? 'outside_boundary'
           : 'pending_review';
     const newVerifStatus = targetUiStatus === 'verified' ? 'Verified Resident' : 'Unverified Resident';
-    const newMethod = targetUiStatus === 'not_reviewed' ? 'none' : 'manual_admin';
+    const newMethod = 'manual_admin';
     const cleanRemarks = rawRemarks ? rawRemarks.slice(0, 500) : null;
+
+    const alreadySaved = Boolean(
+      target.location_verified_at &&
+      String(target.location_verification_method || '').toLowerCase() === 'manual_admin'
+    );
+    const isUnchanged =
+      alreadySaved &&
+      String(target.location_verification_status || '') === newLocStatus &&
+      String(target.location_review_reason || '') === String(cleanRemarks || '');
+
+    if (isUnchanged) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'Location verification is already saved with these exact details. No changes were made.',
+      });
+    }
+
+    if (alreadySaved && req.body && req.body.status && req.body.isEdit !== true) {
+      await conn.rollback();
+      return res.status(409).json({
+        error: 'Location verification is already saved. Click Edit Verification to submit a revision.',
+      });
+    }
 
     if (target.profile_id) {
       await conn.query(
@@ -2357,6 +2380,7 @@ async function reviewResidentLocationVerification(req, res) {
         locationVerifiedByName: updatedMeta.location_verified_by_name || req.user.name || null,
         locationVerifiedAt: updatedMeta.location_verified_at || new Date().toISOString(),
         locationReviewReason: cleanRemarks || '',
+        isSaved: true,
       },
     });
   } catch (err) {
@@ -3123,8 +3147,8 @@ async function getEmergencyBroadcasts(req, res) {
         expirationDurationMinutes: b.expiration_duration_minutes ? Number(b.expiration_duration_minutes) : null,
         expirationDurationLabel: b.expiration_duration_minutes
           ? (Number(b.expiration_duration_minutes) % 60 === 0
-              ? `${Number(b.expiration_duration_minutes) / 60} ${Number(b.expiration_duration_minutes) / 60 === 1 ? 'hour' : 'hours'}`
-              : `${Number(b.expiration_duration_minutes)} min`)
+            ? `${Number(b.expiration_duration_minutes) / 60} ${Number(b.expiration_duration_minutes) / 60 === 1 ? 'hour' : 'hours'}`
+            : `${Number(b.expiration_duration_minutes)} min`)
           : null,
         expiresAt: b.expires_at,
         expiredAt: b.expired_at || null,
@@ -4753,7 +4777,7 @@ async function createAdminFacility(req, res) {
     await conn.commit();
     return res.status(201).json({ success: true, facility: createdRows[0] });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A facility with this name already exists.' });
     }
@@ -4901,7 +4925,7 @@ async function updateAdminFacility(req, res) {
       facility: updatedRows[0],
     });
   } catch (err) {
-    await conn.rollback().catch(() => {});
+    await conn.rollback().catch(() => { });
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A facility with this name already exists.' });
     }
@@ -4969,6 +4993,10 @@ async function getUserIdentityDocuments(req, res) {
         verifiedBy: targetUser.location_verified_by || null,
         verifiedByName: targetUser.location_verified_by_name || null,
         remarks: targetUser.location_review_reason || '',
+        isSaved: Boolean(
+          targetUser.location_verified_at &&
+          String(targetUser.location_verification_method || '').toLowerCase() === 'manual_admin'
+        ),
       },
     });
   } catch (err) {

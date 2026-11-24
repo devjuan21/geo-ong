@@ -2827,6 +2827,61 @@
     }
   }
 
+  let savedLocationState = {
+    isSaved: false,
+    status: 'not_reviewed',
+    remarks: '',
+    verifiedAt: null,
+    verifiedByName: null,
+  };
+  let isLocationSaveInFlight = false;
+
+  function applyLocationLockUI({ locked = false, editing = false, justSaved = false } = {}) {
+    const selectEl = document.getElementById('user-loc-status-select');
+    const remarksEl = document.getElementById('user-loc-remarks');
+    const saveBtn = document.getElementById('user-loc-save-btn');
+    const editBtn = document.getElementById('user-loc-edit-btn');
+    const cancelBtn = document.getElementById('user-loc-cancel-edit-btn');
+    const successEl = document.getElementById('user-loc-success');
+
+    if (selectEl) selectEl.disabled = locked;
+    if (remarksEl) remarksEl.disabled = locked;
+    if (saveBtn) {
+      saveBtn.disabled = locked;
+      saveBtn.textContent = editing ? 'Save Changes' : 'Save Location Verification';
+    }
+    if (editBtn) editBtn.classList.toggle('hidden', !locked);
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', !editing);
+
+    if (successEl) {
+      if (locked && (justSaved || savedLocationState.isSaved)) {
+        successEl.textContent = 'Location Verification Saved';
+        successEl.classList.remove('hidden');
+      } else {
+        successEl.classList.add('hidden');
+      }
+    }
+  }
+
+  function enterLocationVerificationEditMode() {
+    const errEl = document.getElementById('user-loc-error');
+    if (errEl) errEl.classList.add('hidden');
+    applyLocationLockUI({ locked: false, editing: true, justSaved: false });
+  }
+
+  function cancelLocationVerificationEdit() {
+    const selectEl = document.getElementById('user-loc-status-select');
+    const remarksEl = document.getElementById('user-loc-remarks');
+    const errEl = document.getElementById('user-loc-error');
+    if (errEl) errEl.classList.add('hidden');
+
+    if (selectEl) selectEl.value = savedLocationState.status;
+    if (remarksEl) remarksEl.value = savedLocationState.remarks;
+    applyLocationBadge(savedLocationState.status);
+    handleLocationStatusSelectChange();
+    applyLocationLockUI({ locked: savedLocationState.isSaved, editing: false, justSaved: false });
+  }
+
   function renderResidentLocationVerification(address, loc) {
     const streetEl = document.getElementById('user-loc-street');
     const brgyEl = document.getElementById('user-loc-barangay');
@@ -2835,19 +2890,28 @@
     const remarksEl = document.getElementById('user-loc-remarks');
     const metaEl = document.getElementById('user-loc-reviewed-meta');
     const errEl = document.getElementById('user-loc-error');
-    const successEl = document.getElementById('user-loc-success');
 
     if (errEl) errEl.classList.add('hidden');
-    if (successEl) successEl.classList.add('hidden');
 
     if (streetEl) streetEl.textContent = (address && address.streetAddress) ? address.streetAddress : 'Not provided';
     if (brgyEl) brgyEl.textContent = (address && address.barangay) ? address.barangay : 'Not provided';
     if (cityEl) cityEl.textContent = (address && address.city) ? address.city : 'Not provided';
 
     const uiStatus = (loc && loc.status) ? loc.status : 'not_reviewed';
+    const remarks = (loc && loc.remarks) ? loc.remarks : '';
+    const isSaved = Boolean(loc && loc.verifiedAt);
+
+    savedLocationState = {
+      isSaved,
+      status: uiStatus,
+      remarks,
+      verifiedAt: loc ? loc.verifiedAt : null,
+      verifiedByName: loc ? loc.verifiedByName : null,
+    };
+
     applyLocationBadge(uiStatus);
     if (selectEl) selectEl.value = uiStatus;
-    if (remarksEl) remarksEl.value = (loc && loc.remarks) ? loc.remarks : '';
+    if (remarksEl) remarksEl.value = remarks;
     handleLocationStatusSelectChange();
 
     if (metaEl) {
@@ -2860,13 +2924,14 @@
         metaEl.classList.add('hidden');
       }
     }
+
+    applyLocationLockUI({ locked: isSaved, editing: false, justSaved: false });
   }
 
   async function submitUserLocationVerification() {
-    if (!state.users.selectedUser) return;
+    if (!state.users.selectedUser || isLocationSaveInFlight) return;
     const errEl = document.getElementById('user-loc-error');
     const successEl = document.getElementById('user-loc-success');
-    const saveBtn = document.getElementById('user-loc-save-btn');
     const selectEl = document.getElementById('user-loc-status-select');
     const remarksEl = document.getElementById('user-loc-remarks');
 
@@ -2886,27 +2951,40 @@
       return;
     }
 
-    if (saveBtn) saveBtn.disabled = true;
+    isLocationSaveInFlight = true;
     try {
       const result = await apiRequest(`/users/${state.users.selectedUser.id}/location-verification`, {
         method: 'POST',
-        body: JSON.stringify({ status, remarks }),
+        body: JSON.stringify({ status, remarks, isEdit: savedLocationState.isSaved }),
       });
 
       const resData = result.resident || {};
       const nextStatus = resData.locationVerificationUiStatus || status;
+      const nextRemarks = resData.locationReviewReason !== undefined ? resData.locationReviewReason : remarks;
+      const verifiedAt = resData.locationVerifiedAt || new Date().toISOString();
+      const verifiedByName = resData.locationVerifiedByName || null;
+
+      savedLocationState = {
+        isSaved: true,
+        status: nextStatus,
+        remarks: nextRemarks,
+        verifiedAt,
+        verifiedByName,
+      };
+
       applyLocationBadge(nextStatus);
+      if (selectEl) selectEl.value = nextStatus;
+      if (remarksEl) remarksEl.value = nextRemarks;
+      handleLocationStatusSelectChange();
 
       const metaEl = document.getElementById('user-loc-reviewed-meta');
-      if (metaEl && resData.locationVerifiedAt) {
-        const who = resData.locationVerifiedByName ? ` by ${resData.locationVerifiedByName}` : '';
-        metaEl.textContent = `Last reviewed${who} on ${new Date(resData.locationVerifiedAt).toLocaleString()}`;
+      if (metaEl && verifiedAt) {
+        const who = verifiedByName ? ` by ${verifiedByName}` : '';
+        metaEl.textContent = `Last reviewed${who} on ${new Date(verifiedAt).toLocaleString()}`;
         metaEl.classList.remove('hidden');
       }
-      if (successEl) {
-        successEl.textContent = result.message || 'Location verification saved.';
-        successEl.classList.remove('hidden');
-      }
+
+      applyLocationLockUI({ locked: true, editing: false, justSaved: true });
       loadUsersList();
     } catch (err) {
       if (errEl) {
@@ -2914,7 +2992,7 @@
         errEl.classList.remove('hidden');
       }
     } finally {
-      if (saveBtn) saveBtn.disabled = false;
+      isLocationSaveInFlight = false;
     }
   }
 
@@ -6276,6 +6354,8 @@
     closeUserDocLightbox,
     handleLocationStatusSelectChange,
     submitUserLocationVerification,
+    enterLocationVerificationEditMode,
+    cancelLocationVerificationEdit,
     submitUserStatusUpdate,
     openLocationReviewModal,
     closeLocationReviewModal,

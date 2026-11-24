@@ -331,8 +331,7 @@
         class="flex items-center gap-2.5 min-w-0 focus:outline-none transition-all duration-200"
         title="GeoSafe Admin - Barangay Bayanan">
         <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo"
-          class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200"
-          style="border-radius: 50%;">
+          class="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-slate-200" style="border-radius: 50%;">
         <div class="min-w-0 sidebar-label-wrap">
           <div class="flex items-center gap-1.5">
             <span class="gs-brand-nav font-bold text-sm tracking-tight text-slate-900">GeoSafe</span>
@@ -422,7 +421,8 @@
             </svg>
             <span class="sidebar-label-wrap truncate">Password Reset Requests</span>
           </span>
-          <span id="pa-nav-badge" class="hidden ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">0</span>
+          <span id="pa-nav-badge"
+            class="hidden ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">0</span>
         </button>
 
         <!-- 5. Alerts & Notifications -->
@@ -1080,14 +1080,18 @@
       <!-- SECTION 4B: PASSWORD RESET REQUESTS                              -->
       <!-- ================================================================ -->
       <section id="section-password-assistance" class="space-y-6 hidden min-w-0 max-w-full" hidden>
-        <div id="password-assistance-card" class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
+        <div id="password-assistance-card"
+          class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div class="flex items-center gap-2">
                 <h2 class="text-base font-bold text-[#202020]">Password Reset Requests</h2>
-                <span id="pa-pending-badge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">0 Pending</span>
+                <span id="pa-pending-badge"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">0
+                  Pending</span>
               </div>
-              <p class="text-xs text-[#777777]">Review password assistance requests, verify applicant identity, and issue one-time temporary passwords.</p>
+              <p class="text-xs text-[#777777]">Review password assistance requests, verify applicant identity, and
+                issue one-time temporary passwords.</p>
             </div>
             <div class="flex items-center gap-2">
               <button id="pa-refresh-btn" type="button"
@@ -1098,13 +1102,20 @@
           </div>
 
           <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <div class="inline-flex flex-wrap rounded-md bg-slate-50 p-1 border border-slate-200 text-xs font-bold gap-0.5">
-              <button type="button" data-pa-status="pending" class="pa-status-tab-btn px-3 py-1.5 rounded-md bg-[#202020] text-[#FFF9E8]">Pending</button>
-              <button type="button" data-pa-status="in_review" class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">In Review</button>
-              <button type="button" data-pa-status="approved" class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Approved</button>
-              <button type="button" data-pa-status="rejected" class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Rejected</button>
-              <button type="button" data-pa-status="resolved" class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Resolved</button>
-              <button type="button" data-pa-status="all" class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">All</button>
+            <div
+              class="inline-flex flex-wrap rounded-md bg-slate-50 p-1 border border-slate-200 text-xs font-bold gap-0.5">
+              <button type="button" data-pa-status="pending"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md bg-[#202020] text-[#FFF9E8]">Pending</button>
+              <button type="button" data-pa-status="in_review"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">In Review</button>
+              <button type="button" data-pa-status="approved"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Approved</button>
+              <button type="button" data-pa-status="rejected"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Rejected</button>
+              <button type="button" data-pa-status="resolved"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">Resolved</button>
+              <button type="button" data-pa-status="all"
+                class="pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]">All</button>
             </div>
             <div class="w-full sm:w-64 max-w-xs">
               <input id="pa-admin-search-input" type="text" placeholder="Search ticket ref, name, email..."
@@ -1112,17 +1123,26 @@
             </div>
           </div>
 
-          <div class="max-h-[calc(100vh-320px)] min-h-[320px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle custom-scrollbar">
+          <div
+            class="max-h-[calc(100vh-320px)] min-h-[320px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle custom-scrollbar">
             <table class="min-w-full divide-y divide-[#EEEEEE] text-left border-collapse">
               <thead class="bg-slate-50 sticky top-0 z-10 shadow-xs">
                 <tr>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Ticket Reference</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Applicant</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Role</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Description</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Date Submitted</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">Status</th>
-                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50 text-right">Action</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Ticket Reference</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Applicant</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Role</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Description</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Date Submitted</th>
+                  <th class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50">
+                    Status</th>
+                  <th
+                    class="px-4 py-3 text-[11px] font-bold text-[#777777] uppercase whitespace-nowrap bg-slate-50 text-right">
+                    Action</th>
                 </tr>
               </thead>
               <tbody id="pa-tickets-tbody" class="divide-y divide-[#EEEEEE] bg-white"></tbody>
@@ -1524,8 +1544,7 @@
         </div>
 
         <!-- Separate Card: Monthly Incidents by Category (Stacked Vertical Column Chart) -->
-        <div id="analytics-monthly-stacked-card"
-          class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
+        <div id="analytics-monthly-stacked-card" class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
           <div
             class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
@@ -1545,8 +1564,7 @@
           </div>
 
           <div class="px-4 pt-3 pb-4">
-            <div id="analytics-monthly-stacked-legend"
-              style="gap: 8px 16px;"
+            <div id="analytics-monthly-stacked-legend" style="gap: 8px 16px;"
               class="flex flex-wrap items-center pb-2.5 border-b border-slate-100 text-[11px] text-slate-700">
             </div>
 
@@ -2213,10 +2231,12 @@
                   class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Unclaimed</span>
               </div>
               <div class="text-[11px] text-[#475569]">
-                Assigned Responder: <strong id="review-assigned-responder-name" class="text-[#0f172a]">Awaiting Responder Acceptance</strong>
+                Assigned Responder: <strong id="review-assigned-responder-name" class="text-[#0f172a]">Awaiting
+                  Responder Acceptance</strong>
               </div>
               <p class="text-[11px] text-[#64748b] leading-relaxed">
-                Incoming reports and rescue requests are distributed automatically to active Responders via <strong>Accept &amp; Respond</strong>.
+                Incoming reports and rescue requests are distributed automatically to active Responders via
+                <strong>Accept &amp; Respond</strong>.
               </p>
             </div>
 
@@ -2450,7 +2470,8 @@
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
           <div>
             <h4 class="text-xs font-bold text-[#202020]">Identity Documents</h4>
-            <p class="text-[11px] text-[#777777]">Private Barangay Bayanan identity submission for Administrator review.</p>
+            <p class="text-[11px] text-[#777777]">Private Barangay Bayanan identity submission for Administrator review.
+            </p>
           </div>
           <span id="user-modal-docs-submitted-at" class="text-[10px] font-semibold text-[#64748B]"></span>
         </div>
@@ -2459,17 +2480,19 @@
           <div class="rounded-md border border-slate-200 bg-white p-2.5 space-y-2">
             <div class="flex items-center justify-between gap-2">
               <span class="text-[11px] font-bold text-[#202020]">Barangay Address ID Photo</span>
-              <button type="button" id="user-doc-id-enlarge-btn"
-                onclick="window.GeoSafeAdmin.openUserDocLightbox('id')"
+              <button type="button" id="user-doc-id-enlarge-btn" onclick="window.GeoSafeAdmin.openUserDocLightbox('id')"
                 class="hidden px-2 py-0.5 rounded border border-slate-200 hover:bg-slate-100 text-[10px] font-bold text-[#164579] transition-colors">
                 Enlarge
               </button>
             </div>
-            <div class="relative aspect-[4/3] w-full overflow-hidden rounded border border-slate-200 bg-slate-100 flex items-center justify-center">
+            <div
+              class="relative aspect-[4/3] w-full overflow-hidden rounded border border-slate-200 bg-slate-100 flex items-center justify-center">
               <span id="user-doc-id-loading" class="text-[11px] font-semibold text-[#64748B]">Loading document...</span>
-              <img id="user-doc-id-img" alt="Barangay Address ID Photo" class="hidden w-full h-full object-cover cursor-zoom-in"
+              <img id="user-doc-id-img" alt="Barangay Address ID Photo"
+                class="hidden w-full h-full object-cover cursor-zoom-in"
                 onclick="window.GeoSafeAdmin.openUserDocLightbox('id')">
-              <span id="user-doc-id-unavailable" class="hidden px-3 text-center text-[11px] font-medium text-[#64748B]">Document unavailable</span>
+              <span id="user-doc-id-unavailable"
+                class="hidden px-3 text-center text-[11px] font-medium text-[#64748B]">Document unavailable</span>
             </div>
           </div>
 
@@ -2482,27 +2505,35 @@
                 Enlarge
               </button>
             </div>
-            <div class="relative aspect-[4/3] w-full overflow-hidden rounded border border-slate-200 bg-slate-100 flex items-center justify-center">
-              <span id="user-doc-selfie-loading" class="text-[11px] font-semibold text-[#64748B]">Loading document...</span>
-              <img id="user-doc-selfie-img" alt="Selfie Holding the Same ID" class="hidden w-full h-full object-cover cursor-zoom-in"
+            <div
+              class="relative aspect-[4/3] w-full overflow-hidden rounded border border-slate-200 bg-slate-100 flex items-center justify-center">
+              <span id="user-doc-selfie-loading" class="text-[11px] font-semibold text-[#64748B]">Loading
+                document...</span>
+              <img id="user-doc-selfie-img" alt="Selfie Holding the Same ID"
+                class="hidden w-full h-full object-cover cursor-zoom-in"
                 onclick="window.GeoSafeAdmin.openUserDocLightbox('selfie')">
-              <span id="user-doc-selfie-unavailable" class="hidden px-3 text-center text-[11px] font-medium text-[#64748B]">Document unavailable</span>
+              <span id="user-doc-selfie-unavailable"
+                class="hidden px-3 text-center text-[11px] font-medium text-[#64748B]">Document unavailable</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Resident Barangay Address Verification Section -->
-      <div id="user-modal-location-verification" class="hidden rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-3">
+      <div id="user-modal-location-verification"
+        class="hidden rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-3">
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
           <div>
             <h4 class="text-xs font-bold text-[#202020]">Barangay Address Verification</h4>
-            <p class="text-[11px] text-[#777777]">Compare the submitted Barangay ID photo above with the registered address.</p>
+            <p class="text-[11px] text-[#777777]">Compare the submitted Barangay ID photo above with the registered
+              address.</p>
           </div>
-          <span id="user-loc-status-badge" class="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-slate-200 text-slate-700">Not Reviewed</span>
+          <span id="user-loc-status-badge"
+            class="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-slate-200 text-slate-700">Not Reviewed</span>
         </div>
 
-        <div class="rounded-md border border-slate-200 bg-white p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+        <div
+          class="rounded-md border border-slate-200 bg-white p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
           <div>
             <span class="text-[10px] font-bold text-[#777777] uppercase block">House No. &amp; Street / Purok</span>
             <span id="user-loc-street" class="font-semibold text-[#202020]">—</span>
@@ -2519,36 +2550,49 @@
 
         <div id="user-loc-reviewed-meta" class="hidden text-[10px] font-medium text-[#64748B]"></div>
         <div id="user-loc-error"
-          class="hidden p-2 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-[11px] font-semibold text-[#D93636]"></div>
+          class="hidden p-2 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-[11px] font-semibold text-[#D93636]">
+        </div>
         <div id="user-loc-success"
-          class="hidden p-2 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-800"></div>
+          class="hidden p-2 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-800">
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
-            <label for="user-loc-status-select" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Verification Status</label>
-            <select id="user-loc-status-select"
-              onchange="window.GeoSafeAdmin.handleLocationStatusSelectChange()"
-              class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-bold text-[#202020] focus:outline-none focus:border-[#164579]">
+            <label for="user-loc-status-select"
+              class="text-[10px] font-bold text-[#777777] uppercase block mb-1">Verification Status</label>
+            <select id="user-loc-status-select" onchange="window.GeoSafeAdmin.handleLocationStatusSelectChange()"
+              class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-xs font-bold text-[#202020] focus:outline-none focus:border-[#164579] disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed">
               <option value="not_reviewed">Not Reviewed</option>
               <option value="verified">Verified</option>
               <option value="unable_to_verify">Unable to Verify</option>
             </select>
           </div>
-          <div class="flex items-end">
-            <button type="button" id="user-loc-save-btn"
-              onclick="window.GeoSafeAdmin.submitUserLocationVerification()"
-              class="w-full h-9 px-3 rounded-md bg-[#164579] hover:bg-[#103661] text-white text-xs font-bold transition-colors">
+          <div class="flex items-end gap-2">
+            <button type="button" id="user-loc-save-btn" onclick="window.GeoSafeAdmin.submitUserLocationVerification()"
+              class="flex-1 h-9 px-3 rounded-md bg-[#164579] hover:bg-[#103661] text-white text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               Save Location Verification
+            </button>
+            <button type="button" id="user-loc-edit-btn"
+              onclick="window.GeoSafeAdmin.enterLocationVerificationEditMode()"
+              class="hidden h-9 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-[#202020] transition-colors">
+              Edit Verification
+            </button>
+            <button type="button" id="user-loc-cancel-edit-btn"
+              onclick="window.GeoSafeAdmin.cancelLocationVerificationEdit()"
+              class="hidden h-9 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-[#555555] transition-colors">
+              Cancel
             </button>
           </div>
         </div>
 
         <div>
-          <label for="user-loc-remarks" id="user-loc-remarks-label" class="text-[10px] font-bold text-[#777777] uppercase block mb-1">
+          <label for="user-loc-remarks" id="user-loc-remarks-label"
+            class="text-[10px] font-bold text-[#777777] uppercase block mb-1">
             Administrator Remarks (Optional)
           </label>
-          <textarea id="user-loc-remarks" rows="2" placeholder="Optional remarks or reason if unable to verify Barangay Bayanan residency..."
-            class="w-full p-2 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#164579]"></textarea>
+          <textarea id="user-loc-remarks" rows="2"
+            placeholder="Optional remarks or reason if unable to verify Barangay Bayanan residency..."
+            class="w-full p-2 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#164579] disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"></textarea>
         </div>
       </div>
 
@@ -2593,7 +2637,8 @@
         </button>
       </div>
       <div class="max-h-[75vh] overflow-auto rounded bg-slate-900 flex items-center justify-center p-2">
-        <img id="user-doc-lightbox-img" alt="Enlarged identity document" class="max-h-[70vh] w-auto object-contain rounded">
+        <img id="user-doc-lightbox-img" alt="Enlarged identity document"
+          class="max-h-[70vh] w-auto object-contain rounded">
       </div>
     </div>
   </div>
@@ -3051,15 +3096,23 @@
   </div>
 
   <!-- Modal: Analytics & Reports Export Configuration -->
-  <div id="modal-analytics-export" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-5 bg-slate-900/50 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
-    <div class="bg-white border border-slate-300 rounded-md shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+  <div id="modal-analytics-export"
+    class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-5 bg-slate-900/50 backdrop-blur-[1px]"
+    role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+    <div
+      class="bg-white border border-slate-300 rounded-md shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
       <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
         <div>
-          <h3 id="export-modal-title" class="text-sm font-bold text-[#0f172a]">Configure Reports &amp; Analytics Export</h3>
-          <p class="text-[11px] text-slate-500 mt-0.5">Select report categories, reporting period, filters, and output format.</p>
+          <h3 id="export-modal-title" class="text-sm font-bold text-[#0f172a]">Configure Reports &amp; Analytics Export
+          </h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">Select report categories, reporting period, filters, and output
+            format.</p>
         </div>
-        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()" class="p-1.5 rounded hover:bg-slate-200/70 text-slate-500" aria-label="Close export modal">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()"
+          class="p-1.5 rounded hover:bg-slate-200/70 text-slate-500" aria-label="Close export modal">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
       </div>
 
@@ -3067,47 +3120,65 @@
         <!-- 1. Categories -->
         <div>
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">1. Report Categories <span id="export-selected-count" class="ml-1 text-[#0A58CA] font-semibold">(1 selected)</span></span>
+            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">1. Report Categories <span
+                id="export-selected-count" class="ml-1 text-[#0A58CA] font-semibold">(1 selected)</span></span>
             <div class="flex items-center gap-2">
-              <button type="button" onclick="window.GeoSafeAdmin.selectAllExportCategories()" class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Select All</button>
+              <button type="button" onclick="window.GeoSafeAdmin.selectAllExportCategories()"
+                class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Select All</button>
               <span class="text-slate-300">|</span>
-              <button type="button" onclick="window.GeoSafeAdmin.clearExportCategories()" class="text-[11px] font-semibold text-slate-600 hover:underline">Clear Selection</button>
+              <button type="button" onclick="window.GeoSafeAdmin.clearExportCategories()"
+                class="text-[11px] font-semibold text-slate-600 hover:underline">Clear Selection</button>
             </div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="incidents" checked>
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]"
+                value="incidents" checked>
               <div>
                 <div class="font-semibold text-[#0f172a]">Incident Reports</div>
-                <div class="text-[11px] text-slate-500">ID, category, location, reported time, verification &amp; resolution status, timestamps</div>
+                <div class="text-[11px] text-slate-500">ID, category, location, reported time, verification &amp;
+                  resolution status, timestamps</div>
               </div>
             </label>
-            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="rescues">
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]"
+                value="rescues">
               <div>
                 <div class="font-semibold text-[#0f172a]">Rescue Requests</div>
-                <div class="text-[11px] text-slate-500">ID, rescue type, location, requested time, acceptance, responder, status, completion</div>
+                <div class="text-[11px] text-slate-500">ID, rescue type, location, requested time, acceptance,
+                  responder, status, completion</div>
               </div>
             </label>
-            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="operations">
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]"
+                value="operations">
               <div>
                 <div class="font-semibold text-[#0f172a]">Operations</div>
-                <div class="text-[11px] text-slate-500">Combined incident &amp; rescue records, type, reference ID, location, responder, timestamps</div>
+                <div class="text-[11px] text-slate-500">Combined incident &amp; rescue records, type, reference ID,
+                  location, responder, timestamps</div>
               </div>
             </label>
-            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="dispatches">
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]"
+                value="dispatches">
               <div>
                 <div class="font-semibold text-[#0f172a]">Dispatches</div>
-                <div class="text-[11px] text-slate-500">Dispatch ID, related request, assigned responder, creation/acceptance/completion times</div>
+                <div class="text-[11px] text-slate-500">Dispatch ID, related request, assigned responder,
+                  creation/acceptance/completion times</div>
               </div>
             </label>
-            <label class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer sm:col-span-2">
-              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]" value="analytics">
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer sm:col-span-2">
+              <input type="checkbox" class="export-category-cb mt-0.5 rounded border-slate-300 text-[#0A58CA]"
+                value="analytics">
               <div>
                 <div class="font-semibold text-[#0f172a]">Analytics Summary</div>
-                <div class="text-[11px] text-slate-500">Total incidents, rescues, operations, active dispatches, daily counts, category &amp; status breakdowns</div>
+                <div class="text-[11px] text-slate-500">Total incidents, rescues, operations, active dispatches, daily
+                  counts, category &amp; status breakdowns</div>
               </div>
             </label>
           </div>
@@ -3115,11 +3186,14 @@
 
         <!-- 2. Filters -->
         <div class="pt-2 border-t border-slate-200">
-          <div class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px] mb-2">2. Reporting Period &amp; Filters</div>
+          <div class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px] mb-2">2. Reporting Period &amp;
+            Filters</div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
-              <label for="export-period-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Reporting Period</label>
-              <select id="export-period-select" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <label for="export-period-select" class="block text-[11px] font-semibold text-slate-600 mb-1">Reporting
+                Period</label>
+              <select id="export-period-select"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
                 <option value="today">Today</option>
                 <option value="7d">Last 7 Days</option>
                 <option value="30d">Last 30 Days</option>
@@ -3131,16 +3205,21 @@
               </select>
             </div>
             <div>
-              <label for="export-date-from" class="block text-[11px] font-semibold text-slate-600 mb-1">Start Date</label>
-              <input id="export-date-from" type="date" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <label for="export-date-from" class="block text-[11px] font-semibold text-slate-600 mb-1">Start
+                Date</label>
+              <input id="export-date-from" type="date"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
             <div>
               <label for="export-date-to" class="block text-[11px] font-semibold text-slate-600 mb-1">End Date</label>
-              <input id="export-date-to" type="date" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <input id="export-date-to" type="date"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
             <div>
-              <label for="export-status-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Status (if applicable)</label>
-              <select id="export-status-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <label for="export-status-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Status (if
+                applicable)</label>
+              <select id="export-status-filter"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
                 <option value="">All Statuses</option>
                 <option value="Pending Verification">Pending Verification</option>
                 <option value="Verified">Verified</option>
@@ -3155,8 +3234,10 @@
               </select>
             </div>
             <div>
-              <label for="export-category-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Incident Category</label>
-              <select id="export-category-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <label for="export-category-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Incident
+                Category</label>
+              <select id="export-category-filter"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
                 <option value="">All Categories</option>
                 <option value="Flooding / Rising Water">Flooding / Rising Water</option>
                 <option value="Fallen Tree / Road Obstruction">Fallen Tree / Road Obstruction</option>
@@ -3167,8 +3248,10 @@
               </select>
             </div>
             <div>
-              <label for="export-operation-type-filter" class="block text-[11px] font-semibold text-slate-600 mb-1">Operation Type</label>
-              <select id="export-operation-type-filter" class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
+              <label for="export-operation-type-filter"
+                class="block text-[11px] font-semibold text-slate-600 mb-1">Operation Type</label>
+              <select id="export-operation-type-filter"
+                class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs text-[#0f172a]">
                 <option value="all">All Operations</option>
                 <option value="incident">Incident Only</option>
                 <option value="rescue">Rescue Only</option>
@@ -3181,21 +3264,24 @@
         <div class="pt-2 border-t border-slate-200">
           <div class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px] mb-2">3. File Format</div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <label
+              class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
               <input type="radio" name="export-format" value="xlsx" class="text-[#0A58CA]" checked>
               <div>
                 <div class="font-semibold text-[#0f172a]">Excel (.xlsx)</div>
                 <div class="text-[10.5px] text-slate-500">Multi-sheet workbook</div>
               </div>
             </label>
-            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <label
+              class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
               <input type="radio" name="export-format" value="csv" class="text-[#0A58CA]">
               <div>
                 <div class="font-semibold text-[#0f172a]">CSV (.csv / .zip)</div>
                 <div class="text-[10.5px] text-slate-500">ZIP if multi-category</div>
               </div>
             </label>
-            <label class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <label
+              class="flex items-center gap-2 p-2.5 rounded border border-slate-200 hover:bg-slate-50 cursor-pointer">
               <input type="radio" name="export-format" value="pdf" class="text-[#0A58CA]">
               <div>
                 <div class="font-semibold text-[#0f172a]">PDF (.pdf)</div>
@@ -3208,21 +3294,25 @@
         <!-- 4. Live Export Preview -->
         <div class="pt-2 border-t border-slate-200">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">4. Export Preview (Live Database Counts)</span>
+            <span class="font-bold text-[#0f172a] uppercase tracking-wide text-[11px]">4. Export Preview (Live Database
+              Counts)</span>
             <span id="export-preview-status" class="text-[11px] text-slate-500">Calculating...</span>
           </div>
           <div id="export-preview-box" class="p-3 rounded bg-slate-50 border border-slate-200 space-y-1.5">
             <div class="text-slate-500">Select categories to preview record counts.</div>
           </div>
-          <div id="export-modal-error" class="hidden mt-2 p-2.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs font-medium"></div>
+          <div id="export-modal-error"
+            class="hidden mt-2 p-2.5 rounded bg-red-50 border border-red-200 text-red-700 text-xs font-medium"></div>
         </div>
       </div>
 
       <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
-        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()" class="h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700">
+        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsExportModal()"
+          class="h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700">
           Cancel
         </button>
-        <button type="button" id="btn-generate-export" onclick="window.GeoSafeAdmin.generateAnalyticsExport()" class="h-8 px-4 rounded bg-[#0f172a] hover:bg-[#1e293b] disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white inline-flex items-center gap-1.5">
+        <button type="button" id="btn-generate-export" onclick="window.GeoSafeAdmin.generateAnalyticsExport()"
+          class="h-8 px-4 rounded bg-[#0f172a] hover:bg-[#1e293b] disabled:opacity-50 disabled:cursor-not-allowed text-xs font-semibold text-white inline-flex items-center gap-1.5">
           <span id="btn-generate-export-label">Generate Export</span>
         </button>
       </div>
@@ -3230,31 +3320,46 @@
   </div>
 
   <!-- Password Assistance Ticket Review Modal -->
-  <div id="password-assistance-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0B203B]/65 backdrop-blur-sm">
-    <div class="w-full max-w-2xl max-h-[92vh] bg-white rounded-lg border border-slate-200 shadow-2xl flex flex-col overflow-hidden">
+  <div id="password-assistance-modal"
+    class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0B203B]/65 backdrop-blur-sm">
+    <div
+      class="w-full max-w-2xl max-h-[92vh] bg-white rounded-lg border border-slate-200 shadow-2xl flex flex-col overflow-hidden">
       <div class="bg-[#0B203B] px-5 py-3.5 flex items-center justify-between text-white">
         <div>
           <h3 class="text-sm font-bold leading-tight">Password Assistance Ticket</h3>
-          <p id="pa-modal-subtitle" class="text-[11px] text-[#9EB8D6] leading-tight">Review identity and issue one-time temporary password</p>
+          <p id="pa-modal-subtitle" class="text-[11px] text-[#9EB8D6] leading-tight">Review identity and issue one-time
+            temporary password</p>
         </div>
-        <button type="button" id="pa-modal-close-btn" aria-label="Close modal" class="p-1.5 rounded-md text-[#9EB8D6] hover:text-white hover:bg-white/10">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        <button type="button" id="pa-modal-close-btn" aria-label="Close modal"
+          class="p-1.5 rounded-md text-[#9EB8D6] hover:text-white hover:bg-white/10">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
         </button>
       </div>
 
       <div class="p-5 overflow-y-auto space-y-4 custom-scrollbar text-xs">
-        <div id="pa-modal-error" class="hidden p-3 rounded-md bg-red-50 border border-red-200 font-medium text-red-700"></div>
+        <div id="pa-modal-error" class="hidden p-3 rounded-md bg-red-50 border border-red-200 font-medium text-red-700">
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200">
-          <div><span class="text-[#777777] font-semibold">Ticket Ref:</span> <strong id="pa-detail-ref" class="font-mono text-[#202020]">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Submitted:</span> <strong id="pa-detail-submitted" class="text-[#202020]">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Applicant Name:</span> <strong id="pa-detail-name" class="text-[#202020]">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Email:</span> <strong id="pa-detail-email" class="text-[#202020]">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Mobile Number:</span> <strong id="pa-detail-phone" class="text-[#202020]">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Claimed Role:</span> <strong id="pa-detail-role" class="text-[#202020] uppercase">—</strong></div>
-          <div><span class="text-[#777777] font-semibold">Ticket Status:</span> <strong id="pa-detail-status" class="text-[#202020] uppercase">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Ticket Ref:</span> <strong id="pa-detail-ref"
+              class="font-mono text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Submitted:</span> <strong id="pa-detail-submitted"
+              class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Applicant Name:</span> <strong id="pa-detail-name"
+              class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Email:</span> <strong id="pa-detail-email"
+              class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Mobile Number:</span> <strong id="pa-detail-phone"
+              class="text-[#202020]">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Claimed Role:</span> <strong id="pa-detail-role"
+              class="text-[#202020] uppercase">—</strong></div>
+          <div><span class="text-[#777777] font-semibold">Ticket Status:</span> <strong id="pa-detail-status"
+              class="text-[#202020] uppercase">—</strong></div>
           <div class="sm:col-span-2"><span class="text-[#777777] font-semibold">Description:</span>
-            <p id="pa-detail-description" class="mt-1 text-[#202020] whitespace-pre-wrap bg-white p-2.5 rounded border border-slate-200">—</p>
+            <p id="pa-detail-description"
+              class="mt-1 text-[#202020] whitespace-pre-wrap bg-white p-2.5 rounded border border-slate-200">—</p>
           </div>
         </div>
 
@@ -3267,10 +3372,12 @@
         <div id="pa-temp-password-box" class="hidden p-4 rounded-lg border border-emerald-300 bg-emerald-50 space-y-2">
           <div class="font-bold text-emerald-900">Temporary Password Issued (Shown Once)</div>
           <p class="text-[11px] text-emerald-800">
-            Communicate this temporary password through a verified offline or in-person channel. It is not stored in plaintext and will not be shown again. The user will be forced to change it on next login.
+            Communicate this temporary password through a verified offline or in-person channel. It is not stored in
+            plaintext and will not be shown again. The user will be forced to change it on next login.
           </p>
           <div class="flex items-center gap-2">
-            <code id="pa-temp-password-value" class="px-3 py-2 rounded bg-white border border-emerald-300 font-mono text-sm font-bold text-[#0B203B] select-all"></code>
+            <code id="pa-temp-password-value"
+              class="px-3 py-2 rounded bg-white border border-emerald-300 font-mono text-sm font-bold text-[#0B203B] select-all"></code>
             <button type="button" id="pa-copy-temp-btn"
               class="h-9 px-3 rounded bg-[#0B203B] hover:bg-[#164579] text-white font-bold text-xs">
               Copy
@@ -3326,7 +3433,7 @@
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
-  <script src="./assets/js/admin.js?v=20261124e"></script>
+  <script src="./assets/js/admin.js?v=20261124f"></script>
 </body>
 
 </html>

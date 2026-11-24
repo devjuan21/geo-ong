@@ -768,6 +768,19 @@ function emitAdminResidentApplicationEvent(eventName, payload = {}) {
   io.to('role:Administrator').to('role:admin').emit(eventName, safePayload);
 }
 
+/**
+ * Emits a password assistance ticket notification exclusively to connected Administrators.
+ * Never includes temporary passwords or sensitive account details.
+ */
+function emitAdminPasswordAssistanceEvent(eventName, payload = {}) {
+  if (!io || !eventName) return;
+  io.to('role:Administrator').to('role:admin').emit(eventName, {
+    ticketId: payload.ticketId || null,
+    ticketReference: payload.ticketReference || null,
+    status: payload.status || null,
+  });
+}
+
 module.exports = {
   initSocket,
   getIO,
@@ -786,6 +799,7 @@ module.exports = {
   emitIncidentResolvedCommunityNotification,
   emitAdminAnnouncement,
   emitAdminResidentApplicationEvent,
+  emitAdminPasswordAssistanceEvent,
   emitConversationMessage,
   emitConversationMessagesRead,
   emitConversationAccessUpdated,

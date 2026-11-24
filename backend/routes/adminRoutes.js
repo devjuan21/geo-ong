@@ -42,6 +42,12 @@ const {
   previewAdminExport,
   generateAdminExport,
 } = require('../controllers/adminExportController');
+const {
+  getPasswordAssistanceTickets,
+  markTicketInReview,
+  approvePasswordAssistanceTicket,
+  rejectPasswordAssistanceTicket,
+} = require('../controllers/passwordAssistanceController');
 
 const router = express.Router();
 
@@ -132,6 +138,12 @@ router.get('/resident-verifications', getResidentVerificationApplications);
 router.get('/resident-verifications/:id/photo/:type', getResidentVerificationPhoto);
 router.post('/resident-verifications/:id/approve', approveResidentVerification);
 router.post('/resident-verifications/:id/reject', rejectResidentVerification);
+
+// Password Assistance Tickets (Admin-only)
+router.get('/password-assistance', getPasswordAssistanceTickets);
+router.post('/password-assistance/:id/review', markTicketInReview);
+router.post('/password-assistance/:id/approve', approvePasswordAssistanceTicket);
+router.post('/password-assistance/:id/reject', rejectPasswordAssistanceTicket);
 
 // 5. Alerts & Notifications (Emergency Broadcasts & Categories)
 router.get('/broadcast-categories', getBroadcastCategories);

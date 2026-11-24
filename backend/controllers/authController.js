@@ -7,13 +7,11 @@ const { ROLE_IDS, isValidRoleId, roleLabel } = require('../config/roles');
 const { extractToken, markJtiRevoked } = require('../middleware/auth');
 const { generateNextUserCode } = require('../services/userIdService');
 const { disconnectUserSockets, emitAdminResidentApplicationEvent } = require('../services/socketService');
-const { sendPasswordResetOtpEmail, sendResidentApplicationSubmittedEmail } = require('../services/emailService');
 const {
   parseAndValidateImageDataUrl,
   savePrivateIdentityPhoto,
   deletePrivateIdentityPhoto,
 } = require('../services/privateStorageService');
-const { consumeRegistrationEmailToken } = require('./registrationOtpController');
 
 function getJwtSecret() {
   if (!process.env.JWT_SECRET) {
@@ -139,7 +137,6 @@ async function register(req, res) {
     street,
     role,
     role_id,
-    emailVerificationToken,
     idPhotoDataUrl,
     selfiePhotoDataUrl,
   } = req.body;
@@ -189,10 +186,7 @@ async function register(req, res) {
   const cleanPhone = (phone_number || phone || '').trim().slice(0, 30) || null;
   const cleanStreet = (street_address || street || '').trim().slice(0, 255) || null;
 
-  // Validate required email verification token & identity photos before DB transaction
-  if (!emailVerificationToken || String(emailVerificationToken).trim().length < 32) {
-    return res.status(400).json({ error: 'Please verify your email address with a 6-digit code before submitting registration.' });
-  }
+  // Validate required identity photos before DB transaction
   try {
     parseAndValidateImageDataUrl(idPhotoDataUrl, 'Barangay Address ID');
     parseAndValidateImageDataUrl(selfiePhotoDataUrl, 'Selfie holding your Barangay Address ID');
@@ -227,12 +221,6 @@ async function register(req, res) {
       await conn.rollback();
       return res.status(409).json({ error: 'Email already registered' });
     }
-
-    // Atomically verify & consume the registration email OTP token
-    const { verifiedAt: emailVerifiedAt } = await consumeRegistrationEmailToken(conn, {
-      email,
-      emailVerificationToken,
-    });
 
     const { userCode } = await generateNextUserCode(conn, residentRole.id);
 
@@ -273,9 +261,8 @@ async function register(req, res) {
     const [appResult] = await conn.query(
       `INSERT INTO resident_verification_applications
          (user_id, status, id_photo_path, id_photo_mime, id_photo_size,
-          selfie_photo_path, selfie_photo_mime, selfie_photo_size,
-          email_verified, email_verified_at, submitted_at)
-       VALUES (?, 'pending_verification', ?, ?, ?, ?, ?, ?, TRUE, ?, NOW())`,
+          selfie_photo_path, selfie_photo_mime, selfie_photo_size, submitted_at)
+       VALUES (?, 'pending_verification', ?, ?, ?, ?, ?, ?, NOW())`,
       [
         newUserId,
         savedIdPhoto.storageRef,
@@ -284,7 +271,6 @@ async function register(req, res) {
         savedSelfiePhoto.storageRef,
         savedSelfiePhoto.mimeType,
         savedSelfiePhoto.byteLength,
-        emailVerifiedAt,
       ]
     );
     const applicationId = appResult?.insertId || (Array.isArray(appResult) && appResult[0]?.id) || null;
@@ -304,8 +290,6 @@ async function register(req, res) {
           role: residentRole.name,
           role_id: residentRole.id,
           barangay: 'Barangay Bayanan',
-          email_verified: true,
-          email_verified_at: emailVerifiedAt,
           account_status: 'pending_verification',
           status: 'PENDING_VERIFICATION',
         }),
@@ -322,16 +306,6 @@ async function register(req, res) {
       userId: newUserId,
       status: 'pending_verification',
       submittedAt,
-    });
-
-    // Send confirmation email non-fatally
-    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
-    sendResidentApplicationSubmittedEmail({
-      to: email,
-      name: fullName,
-      frontendUrl,
-    }).catch((emailErr) => {
-      console.error('[Auth] Resident application confirmation email failed:', emailErr?.message || emailErr);
     });
 
     const row = {
@@ -721,474 +695,12 @@ async function changePassword(req, res) {
   }
 }
 
-const passwordResetRateStore = new Map();
-const passwordResetCooldownStore = new Map();
-const RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
-const RESET_RATE_MAX_REQUESTS = 5;
-const OTP_EXPIRY_MINUTES = 5;
-const OTP_RESEND_COOLDOWN_SECONDS = 60;
-const OTP_MAX_ATTEMPTS = 5;
-const RESET_AUTH_EXPIRY_MINUTES = 10;
-
-function checkPasswordResetRateLimit(key, maxRequests = RESET_RATE_MAX_REQUESTS, windowMs = RESET_RATE_WINDOW_MS) {
-  const now = Date.now();
-  const bucket = passwordResetRateStore.get(key);
-  if (!bucket || now - bucket.windowStart > windowMs) {
-    passwordResetRateStore.set(key, { windowStart: now, count: 1 });
-    return { allowed: true, remaining: maxRequests - 1 };
-  }
-  if (bucket.count >= maxRequests) {
-    const retryAfterSec = Math.max(1, Math.ceil((bucket.windowStart + windowMs - now) / 1000));
-    return { allowed: false, retryAfterSec };
-  }
-  bucket.count += 1;
-  return { allowed: true, remaining: Math.max(0, maxRequests - bucket.count) };
-}
-
-function getOtpHashSecret() {
-  const secret = String(process.env.OTP_HASH_SECRET || '').trim();
-  if (!secret) {
-    const err = new Error('OTP_HASH_SECRET is not configured');
-    err.code = 'OTP_SECRET_MISSING';
-    throw err;
-  }
-  return secret;
-}
-
-function hmacOtpValue(value) {
-  return crypto.createHmac('sha256', getOtpHashSecret()).update(String(value || '')).digest('hex');
-}
-
-function timingSafeHexEqual(a, b) {
-  const bufA = Buffer.from(String(a || ''), 'utf8');
-  const bufB = Buffer.from(String(b || ''), 'utf8');
-  if (bufA.length === 0 || bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
-function resolveFrontendOrigin(req) {
-  const configured = String(process.env.FRONTEND_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '');
-  if (configured) return configured;
-  const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
-  const host = req.get('x-forwarded-host') || req.get('host');
-  if (!host) return '';
-  return `${String(proto).split(',')[0].trim()}://${String(host).split(',')[0].trim()}`;
-}
-
-async function forgotPassword(req, res) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array()[0].msg });
-  }
-
-  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
-  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
-
-  const nowMs = Date.now();
-  const lastSentMs = passwordResetCooldownStore.get(email) || 0;
-  const cooldownElapsedSec = Math.floor((nowMs - lastSentMs) / 1000);
-  if (lastSentMs > 0 && cooldownElapsedSec < OTP_RESEND_COOLDOWN_SECONDS) {
-    const waitSec = OTP_RESEND_COOLDOWN_SECONDS - cooldownElapsedSec;
-    res.setHeader('Retry-After', String(waitSec));
-    return res.status(429).json({
-      error: `Please wait ${waitSec} seconds before requesting another verification code.`,
-      retryAfterSec: waitSec,
-    });
-  }
-
-  const ipLimit = checkPasswordResetRateLimit(`ip:${clientIp}`);
-  const emailLimit = checkPasswordResetRateLimit(`email:${email}`);
-  if (!ipLimit.allowed || !emailLimit.allowed) {
-    const retrySec = Math.max(ipLimit.retryAfterSec || 0, emailLimit.retryAfterSec || 0, 60);
-    res.setHeader('Retry-After', String(retrySec));
-    return res.status(429).json({
-      error: 'Too many password reset requests. Please wait a few minutes before trying again.',
-      retryAfterSec: retrySec,
-    });
-  }
-
-  const genericResponse = {
-    message: 'If an account exists for this email address, a 6-digit verification code has been sent.',
-    resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
-    expiresInSeconds: OTP_EXPIRY_MINUTES * 60,
-  };
-
-  try {
-    getOtpHashSecret();
-
-    const [rows] = await pool.query(
-      `SELECT u.id, u.name, u.email, u.status, u.account_status, r.name AS role_name
-       FROM users u
-       JOIN roles r ON r.id = u.role_id
-       WHERE LOWER(u.email) = LOWER(?)
-       LIMIT 1`,
-      [email]
-    );
-
-    const user = rows[0];
-    passwordResetCooldownStore.set(email, nowMs);
-
-    if (!user || user.status !== 'active' || (user.account_status && user.account_status !== 'active')) {
-      return res.json(genericResponse);
-    }
-
-    const conn = await pool.getConnection();
-    let otpId = null;
-    const rawOtp = String(crypto.randomInt(100000, 1000000));
-    const otpHash = hmacOtpValue(rawOtp);
-
-    try {
-      await conn.beginTransaction();
-
-      const [activeRows] = await conn.query(
-        `SELECT id, resend_available_at
-         FROM password_reset_otps
-         WHERE user_id = ? AND consumed_at IS NULL AND resend_available_at > NOW()
-         ORDER BY created_at DESC
-         LIMIT 1
-         FOR UPDATE`,
-        [user.id]
-      );
-      if (activeRows.length > 0 && activeRows[0].resend_available_at) {
-        const waitSec = Math.max(1, Math.ceil((new Date(activeRows[0].resend_available_at).getTime() - Date.now()) / 1000));
-        await conn.rollback();
-        res.setHeader('Retry-After', String(waitSec));
-        return res.status(429).json({
-          error: `Please wait ${waitSec} seconds before requesting another verification code.`,
-          retryAfterSec: waitSec,
-        });
-      }
-
-      await conn.query(
-        `UPDATE password_reset_otps
-         SET consumed_at = NOW()
-         WHERE user_id = ? AND consumed_at IS NULL`,
-        [user.id]
-      );
-
-      const [insRows] = await conn.query(
-        `INSERT INTO password_reset_otps
-           (user_id, email, otp_hash, expires_at, attempts, max_attempts, last_sent_at, resend_available_at, request_ip)
-         VALUES (?, ?, ?, NOW() + INTERVAL '5 minutes', 0, ?, NOW(), NOW() + INTERVAL '60 seconds', ?)
-         RETURNING id`,
-        [user.id, user.email, otpHash, OTP_MAX_ATTEMPTS, String(clientIp).slice(0, 45)]
-      );
-      otpId = (insRows && insRows[0] && insRows[0].id) || insRows.insertId || null;
-
-      await conn.commit();
-    } catch (txErr) {
-      await conn.rollback().catch(() => {});
-      throw txErr;
-    } finally {
-      conn.release();
-    }
-
-    const frontendUrl = resolveFrontendOrigin(req);
-
-    try {
-      await sendPasswordResetOtpEmail({
-        to: user.email,
-        name: user.name,
-        otp: rawOtp,
-        expiresMinutes: OTP_EXPIRY_MINUTES,
-        frontendUrl,
-      });
-    } catch (emailErr) {
-      if (otpId) {
-        await pool.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [otpId]).catch(() => {});
-      }
-      passwordResetCooldownStore.delete(email);
-      console.error('[Auth] Password reset OTP email failed:', emailErr.message);
-      await logSecurityEvent(pool, {
-        userId: user.id,
-        email: user.email,
-        eventType: 'password_reset_email_failed',
-        attemptedRole: user.role_name,
-        req,
-        details: String(emailErr.code || emailErr.message || 'Resend delivery failed').slice(0, 200),
-      });
-      return res.status(503).json({
-        error: 'Unable to send verification email right now. Please try again later or contact the Barangay Bayanan EOC administrator.',
-      });
-    }
-
-    await logSecurityEvent(pool, {
-      userId: user.id,
-      email: user.email,
-      eventType: 'password_reset_requested',
-      attemptedRole: user.role_name,
-      req,
-      details: '6-digit OTP emailed (5m expiry)',
-    });
-
-    return res.json(genericResponse);
-  } catch (err) {
-    console.error('[Auth] forgotPassword failed:', err.message);
-    return res.status(500).json({ error: 'Unable to process password reset request right now.' });
-  }
-}
-
-async function verifyResetOtp(req, res) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array()[0].msg });
-  }
-
-  const email = String((req.body && req.body.email) || '').trim().toLowerCase();
-  const rawOtp = String((req.body && req.body.otp) || '').trim();
-  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
-
-  const ipLimit = checkPasswordResetRateLimit(`verify-ip:${clientIp}`, 15, RESET_RATE_WINDOW_MS);
-  if (!ipLimit.allowed) {
-    res.setHeader('Retry-After', String(ipLimit.retryAfterSec || 60));
-    return res.status(429).json({
-      error: 'Too many verification attempts. Please wait a few minutes and try again.',
-    });
-  }
-
-  if (!/^\d{6}$/.test(rawOtp)) {
-    return res.status(400).json({ error: 'Please enter a valid 6-digit verification code.' });
-  }
-
-  const conn = await pool.getConnection();
-  try {
-    getOtpHashSecret();
-    await conn.beginTransaction();
-
-    const [rows] = await conn.query(
-      `SELECT o.id, o.user_id, o.otp_hash, o.expires_at, o.attempts, o.max_attempts, o.verified_at, o.consumed_at,
-              u.email, u.status, u.account_status, r.name AS role_name
-       FROM password_reset_otps o
-       JOIN users u ON u.id = o.user_id
-       JOIN roles r ON r.id = u.role_id
-       WHERE LOWER(COALESCE(o.email, u.email)) = LOWER(?)
-         AND o.consumed_at IS NULL
-         AND o.verified_at IS NULL
-       ORDER BY o.created_at DESC, o.id DESC
-       LIMIT 1
-       FOR UPDATE OF o`,
-      [email]
-    );
-
-    const record = rows[0];
-    if (!record || record.status !== 'active' || (record.account_status && record.account_status !== 'active')) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Verification code is invalid or has expired. Please request a new code.' });
-    }
-
-    if (new Date(record.expires_at).getTime() <= Date.now()) {
-      await conn.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [record.id]);
-      await conn.commit();
-      return res.status(400).json({ error: 'Verification code has expired. Please request a new code.' });
-    }
-
-    const maxAttempts = Number(record.max_attempts || OTP_MAX_ATTEMPTS);
-    if (Number(record.attempts || 0) >= maxAttempts) {
-      await conn.query('UPDATE password_reset_otps SET consumed_at = NOW() WHERE id = ?', [record.id]);
-      await conn.commit();
-      return res.status(429).json({
-        error: 'Maximum verification attempts exceeded. Please request a new verification code.',
-      });
-    }
-
-    const expectedHash = hmacOtpValue(rawOtp);
-    if (!timingSafeHexEqual(expectedHash, record.otp_hash)) {
-      const nextAttempts = Number(record.attempts || 0) + 1;
-      const lockedOut = nextAttempts >= maxAttempts;
-      await conn.query(
-        `UPDATE password_reset_otps
-         SET attempts = ?,
-             consumed_at = CASE WHEN ? THEN NOW() ELSE consumed_at END
-         WHERE id = ?`,
-        [nextAttempts, lockedOut, record.id]
-      );
-      await conn.commit();
-
-      await logSecurityEvent(pool, {
-        userId: record.user_id,
-        email: record.email,
-        eventType: 'password_reset_failed',
-        attemptedRole: record.role_name,
-        req,
-        details: `Incorrect OTP attempt ${nextAttempts}/${maxAttempts}`,
-      });
-
-      if (lockedOut) {
-        return res.status(429).json({
-          error: 'Maximum verification attempts (5) exceeded. Please request a new verification code.',
-        });
-      }
-      const remaining = maxAttempts - nextAttempts;
-      return res.status(400).json({
-        error: `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
-      });
-    }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetAuthHash = hmacOtpValue(resetToken);
-
-    await conn.query(
-      `UPDATE password_reset_otps
-       SET verified_at = NOW(),
-           reset_auth_hash = ?,
-           reset_auth_expires_at = NOW() + INTERVAL '10 minutes'
-       WHERE id = ?`,
-      [resetAuthHash, record.id]
-    );
-    await conn.commit();
-
-    return res.json({
-      verified: true,
-      resetToken,
-      expiresInSeconds: RESET_AUTH_EXPIRY_MINUTES * 60,
-      message: 'Verification code accepted. Please set your new password.',
-    });
-  } catch (err) {
-    await conn.rollback().catch(() => {});
-    console.error('[Auth] verifyResetOtp failed:', err.message);
-    return res.status(500).json({ error: 'Unable to verify code right now. Please try again.' });
-  } finally {
-    conn.release();
-  }
-}
-
-async function resetPassword(req, res) {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array()[0].msg });
-  }
-
-  const clientIp = (req && (req.ip || (req.connection && req.connection.remoteAddress))) || '0.0.0.0';
-  const ipLimit = checkPasswordResetRateLimit(`reset-ip:${clientIp}`, 10, RESET_RATE_WINDOW_MS);
-  if (!ipLimit.allowed) {
-    res.setHeader('Retry-After', String(ipLimit.retryAfterSec || 60));
-    return res.status(429).json({
-      error: 'Too many password reset attempts. Please wait a few minutes and try again.',
-    });
-  }
-
-  const { resetToken, token, newPassword, confirmPassword } = req.body || {};
-  const rawAuthToken = String(resetToken || token || '').trim();
-  if (!rawAuthToken || rawAuthToken.length < 32) {
-    return res.status(400).json({ error: 'Invalid or expired password reset authorization.' });
-  }
-  if (!newPassword || String(newPassword).length < 8) {
-    return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
-  }
-  if (confirmPassword !== undefined && newPassword !== confirmPassword) {
-    return res.status(400).json({ error: 'New password and confirmation do not match.' });
-  }
-
-  const conn = await pool.getConnection();
-  try {
-    const authHash = hmacOtpValue(rawAuthToken);
-    await conn.beginTransaction();
-
-    const [rows] = await conn.query(
-      `SELECT o.id AS otp_id, u.id AS user_id, u.email, u.role_id, r.name AS role_name
-       FROM password_reset_otps o
-       JOIN users u ON u.id = o.user_id
-       JOIN roles r ON r.id = u.role_id
-       WHERE o.reset_auth_hash = ?
-         AND o.verified_at IS NOT NULL
-         AND o.consumed_at IS NULL
-         AND o.reset_auth_expires_at > NOW()
-         AND u.status = 'active'
-         AND u.account_status = 'active'
-       LIMIT 1
-       FOR UPDATE OF o, u`,
-      [authHash]
-    );
-
-    const record = rows[0];
-    if (!record) {
-      await conn.rollback();
-      await logSecurityEvent(pool, {
-        userId: null,
-        email: null,
-        eventType: 'password_reset_failed',
-        req,
-        details: 'Invalid, expired, or already-used OTP reset authorization',
-      });
-      return res.status(400).json({
-        error: 'Your password reset authorization is invalid, expired, or has already been used.',
-      });
-    }
-
-    const newHash = await bcrypt.hash(String(newPassword), 10);
-    await conn.query(
-      `UPDATE users
-       SET password_hash = ?,
-           reset_token_hash = NULL,
-           reset_token_expires = NULL,
-           must_change_password = FALSE,
-           password_changed_at = NOW(),
-           updated_at = NOW()
-       WHERE id = ?`,
-      [newHash, record.user_id]
-    );
-
-    await conn.query(
-      `UPDATE password_reset_otps
-       SET consumed_at = NOW()
-       WHERE id = ?`,
-      [record.otp_id]
-    );
-
-    await conn.commit();
-
-    await disconnectUserSockets(record.user_id).catch(() => {});
-
-    await logSecurityEvent(pool, {
-      userId: record.user_id,
-      email: record.email,
-      eventType: 'password_reset_completed',
-      attemptedRole: record.role_name,
-      req,
-      details: 'Password reset completed via verified email OTP',
-    });
-
-    try {
-      const ua = req && req.headers && req.headers['user-agent'] ? String(req.headers['user-agent']).slice(0, 255) : null;
-      await pool.query(
-        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, ip_address, user_agent)
-         VALUES (?, 'PASSWORD_RESET_COMPLETED', 'users', ?, ?, ?, ?)`,
-        [
-          record.user_id,
-          String(record.user_id),
-          JSON.stringify({ sessions_invalidated: true, method: 'email_otp' }),
-          String(clientIp).slice(0, 45),
-          ua,
-        ]
-      );
-    } catch (auditErr) {
-      console.warn('[Auth] Could not write audit_logs for password reset:', auditErr.message);
-    }
-
-    return res.json({
-      message: 'Your password has been reset successfully. You may now sign in with your new password.',
-    });
-  } catch (err) {
-    await conn.rollback().catch(() => {});
-    console.error('[Auth] resetPassword failed:', err.message);
-    return res.status(500).json({ error: 'Unable to reset password right now. Please try again.' });
-  } finally {
-    conn.release();
-  }
-}
-
 module.exports = {
   register,
   login,
   getSession,
   logout,
   changePassword,
-  forgotPassword,
-  verifyResetOtp,
-  resetPassword,
-  checkPasswordResetRateLimit,
-  passwordResetRateStore,
-  passwordResetCooldownStore,
   portalForRoleId,
   roleDisplayName,
 };

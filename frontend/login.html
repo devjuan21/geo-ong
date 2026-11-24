@@ -251,46 +251,6 @@
             </div>
           </div>
 
-          <!-- Email Verification (6-Digit OTP) -->
-          <div id="reg-email-otp-card" class="rounded-[6px] border border-[#CBD5E1] bg-[#F8FAFC] p-3 space-y-2">
-            <div class="flex items-center justify-between gap-2">
-              <h3 class="text-xs font-bold text-[#0F172A]">Email Verification <span class="text-[#DC2626]">*</span></h3>
-              <span id="reg-email-otp-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#F1F5F9] text-[#475569]">Required</span>
-            </div>
-
-            <div id="reg-otp-feedback-box" class="hidden rounded-[6px] border px-2.5 py-2 text-[11px] font-medium"></div>
-
-            <div class="flex flex-wrap items-center gap-2">
-              <button type="button" id="btn-reg-send-otp"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] bg-[#0B203B] hover:bg-[#164579] text-white font-semibold text-xs transition-colors">
-                Send Verification Code
-              </button>
-            </div>
-
-            <div id="reg-otp-entry-box" class="hidden space-y-2 pt-2 border-t border-[#E2E8F0]">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-[11px] text-[#475569]">Sent to <strong id="reg-otp-sent-email-label" class="text-[#0F172A]"></strong></span>
-                <span id="reg-otp-expiry-label" class="text-[11px] font-medium text-[#64748B]">Expires in 05:00</span>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <input type="text" id="reg-otp-input" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit code"
-                  class="w-36 h-9 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-center font-mono text-sm tracking-[0.25em] text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-                <button type="button" id="btn-reg-verify-otp"
-                  class="h-9 px-3.5 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-xs transition-colors">
-                  Verify Code
-                </button>
-                <button type="button" id="btn-reg-resend-otp" disabled
-                  class="text-[11px] font-semibold text-[#164579] hover:underline disabled:text-[#94A3B8] disabled:no-underline">
-                  Resend code (60s)
-                </button>
-              </div>
-            </div>
-
-            <div id="reg-otp-verified-box" class="hidden rounded-[6px] border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[11px] font-semibold text-emerald-800">
-              Email address verified. Click Next to capture your identity photos.
-            </div>
-          </div>
-
           <div class="grid grid-cols-2 gap-2.5">
             <button type="button" id="btn-reg-step2-back"
               class="h-10 px-4 rounded-[6px] border border-[#CBD5E1] bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-sm transition-colors">
@@ -409,106 +369,74 @@
     </div>
   </main>
 
-  <!-- Forgot Password OTP Recovery Modal (No Page Refresh) -->
+  <!-- Password Assistance Request Modal (No Page Refresh) -->
   <div id="forgot-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0B203B]/65 backdrop-blur-sm">
-    <div class="w-full max-w-[420px] bg-white rounded-[8px] border border-[#CBD5E1] shadow-xl overflow-hidden">
+    <div class="w-full max-w-[440px] bg-white rounded-[8px] border border-[#CBD5E1] shadow-xl overflow-hidden">
       <div class="bg-[#0B203B] px-5 py-4 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <img src="./assets/icons/geosafe-logo.jpg" alt="GeoSafe Logo" class="w-7 h-7 rounded-full object-cover border border-white/25" style="border-radius: 50%;">
           <div>
-            <h3 class="text-sm font-bold text-white leading-tight">Account Recovery</h3>
-            <p class="text-[11px] text-[#9EB8D6] leading-tight">Email OTP Verification</p>
+            <h3 class="text-sm font-bold text-white leading-tight">Password Assistance Request</h3>
+            <p class="text-[11px] text-[#9EB8D6] leading-tight">Administrator Review &amp; Identity Verification</p>
           </div>
         </div>
-        <button type="button" id="fp-close-btn" aria-label="Close recovery modal" class="p-1.5 rounded-[6px] text-[#9EB8D6] hover:text-white hover:bg-white/10 transition-colors">
+        <button type="button" id="fp-close-btn" aria-label="Close password assistance modal" class="p-1.5 rounded-[6px] text-[#9EB8D6] hover:text-white hover:bg-white/10 transition-colors">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
 
       <div class="p-5 sm:p-6 space-y-4">
-        <div id="fp-error-box" class="hidden p-3 rounded-[6px] bg-red-50 border border-red-200 text-xs font-medium text-[#DC2626]"></div>
-        <div id="fp-info-box" class="hidden p-3 rounded-[6px] bg-blue-50 border border-blue-200 text-xs font-medium text-[#164579]"></div>
+        <div id="pa-error-box" class="hidden p-3 rounded-[6px] bg-red-50 border border-red-200 text-xs font-medium text-[#DC2626]"></div>
 
-        <!-- Step 1: Enter Registered Email -->
-        <form id="fp-step-email" class="space-y-3.5" novalidate>
+        <form id="pa-ticket-form" class="space-y-3" novalidate>
           <p class="text-xs text-[#475569] leading-relaxed">
-            Enter your registered email address to receive a 6-digit verification code.
+            Submit a support ticket for password assistance. An Administrator will verify your identity before issuing a temporary password.
           </p>
+
           <div>
-            <label for="fp-email-input" class="block text-xs font-semibold text-[#1E293B] mb-1.5">Email Address</label>
-            <input type="email" id="fp-email-input" required autocomplete="email" placeholder="name@bayanan.gov.ph"
-              class="w-full h-11 px-3.5 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+            <label for="pa-full-name" class="block text-xs font-semibold text-[#1E293B] mb-1">Full Name <span class="text-[#DC2626]">*</span></label>
+            <input type="text" id="pa-full-name" required maxlength="120" placeholder="Juan Dela Cruz"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
           </div>
-          <button type="submit" id="fp-send-otp-btn"
+
+          <div>
+            <label for="pa-email" class="block text-xs font-semibold text-[#1E293B] mb-1">Registered Email Address <span class="text-[#DC2626]">*</span></label>
+            <input type="email" id="pa-email" required autocomplete="email" placeholder="name@example.com"
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+          </div>
+
+          <div>
+            <label for="pa-role" class="block text-xs font-semibold text-[#1E293B] mb-1">Account Role <span class="text-[#DC2626]">*</span></label>
+            <select id="pa-role" required
+              class="w-full h-10 px-3 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
+              <option value="resident">Resident</option>
+              <option value="responder">Responder</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="pa-description" class="block text-xs font-semibold text-[#1E293B] mb-1">Description of Issue <span class="text-[#DC2626]">*</span></label>
+            <textarea id="pa-description" rows="3" required minlength="10" maxlength="1000"
+              placeholder="Explain why you need password assistance (do not include your old password)..."
+              class="w-full p-3 rounded-[6px] border border-[#CBD5E1] bg-white text-xs sm:text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20"></textarea>
+          </div>
+
+          <button type="submit" id="pa-submit-btn"
             class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2">
-            <span>Send Verification Code</span>
+            <span id="pa-submit-btn-text">Submit Assistance Request</span>
           </button>
         </form>
 
-        <!-- Step 2: Verify 6-Digit OTP -->
-        <form id="fp-step-otp" class="hidden space-y-3.5" novalidate>
-          <p class="text-xs text-[#475569] leading-relaxed">
-            Enter the 6-digit code sent to <strong id="fp-otp-email-label" class="text-[#0F172A]"></strong>.
-          </p>
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label for="fp-otp-input" class="text-xs font-semibold text-[#1E293B]">6-Digit Verification Code</label>
-              <span id="fp-expiry-label" class="text-[11px] font-medium text-[#64748B]">Expires in 05:00</span>
-            </div>
-            <input type="text" id="fp-otp-input" inputmode="numeric" maxlength="6" pattern="\d{6}" autocomplete="one-time-code" placeholder="000000"
-              class="w-full h-11 px-3.5 rounded-[6px] border border-[#CBD5E1] bg-white text-center font-mono text-lg font-bold tracking-[0.4em] text-[#0F172A] placeholder-[#CBD5E1] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-          </div>
-          <button type="submit" id="fp-verify-otp-btn"
-            class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2">
-            <span>Verify Code</span>
-          </button>
-          <div class="flex items-center justify-between text-xs pt-1">
-            <button type="button" id="fp-change-email-btn" class="font-medium text-[#64748B] hover:text-[#0F172A]">Change email</button>
-            <button type="button" id="fp-resend-otp-btn" disabled class="font-semibold text-[#164579] disabled:text-[#94A3B8] disabled:cursor-not-allowed hover:underline">
-              Resend code (60s)
-            </button>
-          </div>
-        </form>
-
-        <!-- Step 3: Set New Password -->
-        <form id="fp-step-reset" class="hidden space-y-3.5" novalidate>
-          <div>
-            <label for="fp-new-password" class="block text-xs font-semibold text-[#1E293B] mb-1.5">New Password</label>
-            <div class="relative">
-              <input type="password" id="fp-new-password" required minlength="8" autocomplete="new-password" placeholder="Min 8 characters"
-                class="w-full h-11 pl-3.5 pr-11 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-              <button type="button" data-fp-toggle="fp-new-password" aria-label="Show password"
-                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#64748B] hover:text-[#0F172A] cursor-pointer">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-              </button>
-            </div>
-          </div>
-          <div>
-            <label for="fp-confirm-password" class="block text-xs font-semibold text-[#1E293B] mb-1.5">Confirm New Password</label>
-            <div class="relative">
-              <input type="password" id="fp-confirm-password" required minlength="8" autocomplete="new-password" placeholder="Re-enter new password"
-                class="w-full h-11 pl-3.5 pr-11 rounded-[6px] border border-[#CBD5E1] bg-white text-sm text-[#0F172A] focus:outline-none focus:border-[#164579] focus:ring-2 focus:ring-[#164579]/20">
-              <button type="button" data-fp-toggle="fp-confirm-password" aria-label="Show password"
-                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#64748B] hover:text-[#0F172A] cursor-pointer">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-              </button>
-            </div>
-          </div>
-          <p class="text-[11px] text-[#64748B]">Password must be at least 8 characters and match confirmation.</p>
-          <button type="submit" id="fp-reset-submit-btn"
-            class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2">
-            <span>Update Password</span>
-          </button>
-        </form>
-
-        <!-- Step 4: Success -->
-        <div id="fp-step-success" class="hidden space-y-4">
-          <div class="p-3.5 rounded-[6px] bg-teal-50 border border-teal-200 text-xs text-[#0F172A] leading-relaxed">
-            <strong class="block mb-1">Password Reset Complete</strong>
-            Your password has been updated. Please sign in using your new password.
+        <div id="pa-step-success" class="hidden space-y-3.5">
+          <div class="p-3.5 rounded-[6px] bg-emerald-50 border border-emerald-200 text-xs text-[#0F172A] space-y-2 leading-relaxed">
+            <strong class="block text-emerald-900">Password Assistance Ticket Submitted</strong>
+            <div>Ticket Reference: <strong id="pa-ticket-ref" class="font-mono text-[#0B203B]">—</strong></div>
+            <p class="text-[#334155]">
+              Your request is <strong>Pending Administrator Review</strong>. Please keep your ticket reference and coordinate with Barangay Bayanan EOC for identity verification before a temporary password can be issued.
+            </p>
           </div>
           <button type="button" id="fp-done-btn"
-            class="w-full h-11 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors">
+            class="w-full h-10 px-4 rounded-[6px] bg-[#164579] hover:bg-[#103661] text-white font-semibold text-sm transition-colors">
             Return to Sign In
           </button>
         </div>

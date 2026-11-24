@@ -6,32 +6,13 @@ const {
   getSession,
   logout,
   changePassword,
-  forgotPassword,
-  verifyResetOtp,
-  resetPassword,
 } = require('../controllers/authController');
 const {
-  requestRegistrationOtp,
-  verifyRegistrationOtp,
-} = require('../controllers/registrationOtpController');
+  submitPasswordAssistanceTicket,
+} = require('../controllers/passwordAssistanceController');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
-
-router.post(
-  ['/register/request-otp', '/auth/register/request-otp'],
-  [body('email').isEmail().normalizeEmail().withMessage('Valid email address is required')],
-  requestRegistrationOtp
-);
-
-router.post(
-  ['/register/verify-otp', '/auth/register/verify-otp'],
-  [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
-    body('otp').isString().matches(/^\d{6}$/).withMessage('6-digit verification code is required'),
-  ],
-  verifyRegistrationOtp
-);
 
 router.post(
   ['/register', '/auth/register'],
@@ -87,34 +68,14 @@ router.post(
 );
 
 router.post(
-  ['/auth/forgot-password', '/forgot-password'],
-  [body('email').isEmail().normalizeEmail().withMessage('Valid email address is required')],
-  forgotPassword
-);
-
-router.post(
-  ['/auth/verify-otp', '/verify-otp'],
+  ['/auth/password-assistance', '/password-assistance'],
   [
+    body('fullName').optional().trim().isLength({ min: 2, max: 120 }),
     body('email').isEmail().normalizeEmail().withMessage('Valid email address is required'),
-    body('otp').isString().matches(/^\d{6}$/).withMessage('6-digit verification code is required'),
+    body('accountRole').isIn(['resident', 'responder']).withMessage('Account role must be Resident or Responder'),
+    body('description').trim().isLength({ min: 10, max: 1000 }).withMessage('Description must be between 10 and 1000 characters'),
   ],
-  verifyResetOtp
-);
-
-router.post(
-  ['/auth/reset-password', '/reset-password'],
-  [
-    body('resetToken').optional().isString().isLength({ min: 32 }),
-    body('token').optional().isString().isLength({ min: 32 }),
-    body('newPassword')
-      .isLength({ min: 8 })
-      .withMessage('New password must be at least 8 characters long'),
-    body('confirmPassword')
-      .optional()
-      .custom((value, { req }) => value === req.body.newPassword)
-      .withMessage('New password and confirmation do not match'),
-  ],
-  resetPassword
+  submitPasswordAssistanceTicket
 );
 
 router.post(['/logout', '/auth/logout'], logout);

@@ -622,6 +622,8 @@ class GeoSafeStore {
       'admin:conversation-activity',
       'resident-application-submitted',
       'resident-application-reviewed',
+      'password-assistance-submitted',
+      'password-assistance-updated',
       'messages:incoming-notification',
       'responder:location-updated',
       'responder:location-offline'
@@ -839,7 +841,9 @@ class GeoSafeStore {
         'responder:location-updated',
         'responder:location-offline',
         'resident-application-submitted',
-        'resident-application-reviewed'
+        'resident-application-reviewed',
+        'password-assistance-submitted',
+        'password-assistance-updated'
       ];
 
       if (!socket._geosafeRealtimeBound) {
@@ -1050,57 +1054,6 @@ class GeoSafeStore {
     return check.user;
   }
 
-  async requestRegistrationOtp(payload = {}) {
-    if (!this.isOnline()) {
-      throw new Error('Network offline. Email verification requires an active internet connection.');
-    }
-    const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
-    const endpoint = apiBase.endsWith('/api') ? `${apiBase}/register/request-otp` : '/api/register/request-otp';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        email: (payload.email || '').trim(),
-        name: (payload.name || '').trim(),
-        first_name: (payload.firstName || '').trim(),
-        last_name: (payload.lastName || '').trim(),
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const err = new Error(data.error || `Unable to send verification code (HTTP ${response.status}).`);
-      err.status = response.status;
-      err.retryAfterSec = data.retryAfterSec;
-      throw err;
-    }
-    return data;
-  }
-
-  async verifyRegistrationOtp(payload = {}) {
-    if (!this.isOnline()) {
-      throw new Error('Network offline. Email verification requires an active internet connection.');
-    }
-    const apiBase = (this.config && this.config.API_BASE_URL) ? this.config.API_BASE_URL : '/api';
-    const endpoint = apiBase.endsWith('/api') ? `${apiBase}/register/verify-otp` : '/api/register/verify-otp';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        email: (payload.email || '').trim(),
-        otp: (payload.otp || '').trim(),
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const err = new Error(data.error || `Invalid or expired verification code (HTTP ${response.status}).`);
-      err.status = response.status;
-      throw err;
-    }
-    return data;
-  }
-
   async registerResident(payload = {}) {
     if (!this.isOnline()) {
       throw new Error('Network offline. Resident registration requires an active internet connection.');
@@ -1122,9 +1075,6 @@ class GeoSafeStore {
     }
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
-    }
-    if (!payload.emailVerificationToken) {
-      throw new Error('Please verify your email address with a 6-digit code before submitting.');
     }
     if (!payload.idPhotoDataUrl || !payload.selfiePhotoDataUrl) {
       throw new Error('Both Barangay Address ID photo and Selfie holding the ID are required.');
@@ -1148,7 +1098,6 @@ class GeoSafeStore {
         password,
         phone_number: phone,
         street_address: street,
-        emailVerificationToken: payload.emailVerificationToken,
         idPhotoDataUrl: payload.idPhotoDataUrl,
         selfiePhotoDataUrl: payload.selfiePhotoDataUrl
       })

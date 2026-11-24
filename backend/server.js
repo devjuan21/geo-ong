@@ -106,7 +106,7 @@ app.use(async (req, res, next) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  // Public authentication & password recovery pages
+  // Public login / registration page
   if (pathname === '/login.html') {
     const session = await verifyRequestSession(req);
     if (session.ok) {
@@ -115,10 +115,6 @@ app.use(async (req, res, next) => {
       }
       return res.redirect(302, portalForRoleId(session.user.role_id));
     }
-    return next();
-  }
-
-  if (pathname === '/forgot-password.html' || pathname === '/reset-password.html') {
     return next();
   }
 

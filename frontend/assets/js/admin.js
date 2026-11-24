@@ -428,6 +428,7 @@
       loadRespondersList();
     } else if (target === 'users') {
       loadResidentVerificationQueue();
+      loadPasswordAssistanceTickets();
       loadUsersList();
     } else if (target === 'alerts') {
       loadBroadcastCategories();
@@ -4957,6 +4958,54 @@
     const rvRejectBtn = document.getElementById('rv-reject-btn');
     if (rvRejectBtn) rvRejectBtn.addEventListener('click', rejectSelectedResidentApplication);
 
+    // Password Assistance Tickets Queue Bindings
+    const paRefreshBtn = document.getElementById('pa-refresh-btn');
+    if (paRefreshBtn) paRefreshBtn.addEventListener('click', () => loadPasswordAssistanceTickets());
+    document.querySelectorAll('.pa-status-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nextStatus = btn.getAttribute('data-pa-status') || 'pending';
+        paQueueState.statusFilter = nextStatus;
+        document.querySelectorAll('.pa-status-tab-btn').forEach((b) => {
+          const active = (b.getAttribute('data-pa-status') || '') === nextStatus;
+          b.className = active
+            ? 'pa-status-tab-btn px-3 py-1.5 rounded-md bg-[#202020] text-[#FFF9E8]'
+            : 'pa-status-tab-btn px-3 py-1.5 rounded-md text-[#555555] hover:text-[#202020]';
+        });
+        loadPasswordAssistanceTickets();
+      });
+    });
+    const paSearchInput = document.getElementById('pa-admin-search-input');
+    if (paSearchInput) {
+      let paTimer = null;
+      paSearchInput.addEventListener('input', (e) => {
+        clearTimeout(paTimer);
+        paTimer = setTimeout(() => {
+          paQueueState.search = e.target.value.trim();
+          loadPasswordAssistanceTickets();
+        }, 300);
+      });
+    }
+    const paModalCloseBtn = document.getElementById('pa-modal-close-btn');
+    if (paModalCloseBtn) paModalCloseBtn.addEventListener('click', closePasswordAssistanceModal);
+    const paReviewBtn = document.getElementById('pa-modal-review-btn');
+    if (paReviewBtn) paReviewBtn.addEventListener('click', markSelectedTicketInReview);
+    const paApproveBtn = document.getElementById('pa-modal-approve-btn');
+    if (paApproveBtn) paApproveBtn.addEventListener('click', approveSelectedPasswordTicket);
+    const paRejectBtn = document.getElementById('pa-modal-reject-btn');
+    if (paRejectBtn) paRejectBtn.addEventListener('click', rejectSelectedPasswordTicket);
+    const paCopyBtn = document.getElementById('pa-copy-temp-btn');
+    if (paCopyBtn) {
+      paCopyBtn.addEventListener('click', async () => {
+        const val = document.getElementById('pa-temp-password-value')?.textContent || '';
+        if (!val) return;
+        try {
+          await navigator.clipboard.writeText(val);
+          paCopyBtn.textContent = 'Copied!';
+          setTimeout(() => { paCopyBtn.textContent = 'Copy'; }, 2000);
+        } catch (_) {}
+      });
+    }
+
     // Analytics Custom Date Toggle & Instant Filter Refresh
     const analyticsPeriodSelect = document.getElementById('analytics-period-select');
     if (analyticsPeriodSelect) {
@@ -5257,6 +5306,13 @@
             }
             if (evtName === 'resident-application-submitted' && typeof showBannerMessage === 'function') {
               showBannerMessage('New Resident verification application submitted.', 'info');
+            }
+            return;
+          }
+          if (evtName === 'password-assistance-submitted' || evtName === 'password-assistance-updated') {
+            loadPasswordAssistanceTickets({ silent: true });
+            if (evtName === 'password-assistance-submitted' && typeof showBannerMessage === 'function') {
+              showBannerMessage('New Password Assistance ticket submitted.', 'info');
             }
             return;
           }
@@ -5953,7 +6009,273 @@
     }
   }
 
+  // ============================================================================
+  // PASSWORD ASSISTANCE TICKETS QUEUE & MODAL
+  // ============================================================================
+  const paQueueState = {
+    statusFilter: 'pending',
+    search: '',
+    items: [],
+    activeTicket: null,
+    isSubmitting: false,
+  };
+
+  async function loadPasswordAssistanceTickets(opts = {}) {
+    const tbody = document.getElementById('pa-tickets-tbody');
+    const loadingEl = document.getElementById('pa-tickets-loading');
+    const emptyEl = document.getElementById('pa-tickets-empty');
+    const badgeEl = document.getElementById('pa-pending-badge');
+    if (!tbody) return;
+
+    if (!opts.silent && loadingEl) loadingEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    try {
+      const params = new URLSearchParams({
+        status: paQueueState.statusFilter || 'pending',
+        search: paQueueState.search || '',
+      });
+      const data = await apiRequest(`/password-assistance?${params.toString()}`);
+      const tickets = data.tickets || [];
+      const counts = data.counts || { pending: 0 };
+      paQueueState.items = tickets;
+
+      if (badgeEl) {
+        const pendingCount = Number(counts.pending || 0);
+        badgeEl.textContent = `${pendingCount} Pending`;
+        badgeEl.className = pendingCount > 0
+          ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200'
+          : 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200';
+      }
+
+      if (loadingEl) loadingEl.classList.add('hidden');
+
+      if (!tickets.length) {
+        tbody.innerHTML = '';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        return;
+      }
+
+      tbody.innerHTML = tickets.map((t) => {
+        const submittedText = t.createdAt
+          ? new Date(t.createdAt).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '—';
+        const statusStyles = {
+          pending: 'bg-amber-100 text-amber-800',
+          in_review: 'bg-blue-100 text-blue-800',
+          approved: 'bg-teal-100 text-teal-800',
+          rejected: 'bg-red-100 text-red-700',
+          resolved: 'bg-emerald-100 text-emerald-800',
+        };
+        const statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${statusStyles[t.status] || 'bg-slate-100 text-slate-700'} uppercase">${escapeHtml(String(t.status || '').replace('_', ' '))}</span>`;
+        const shortDesc = String(t.description || '').length > 65
+          ? `${String(t.description).slice(0, 65)}...`
+          : String(t.description || '');
+
+        return `
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="px-4 py-3 text-xs font-mono font-bold text-[#0B203B] whitespace-nowrap">${escapeHtml(t.ticketReference || '')}</td>
+            <td class="px-4 py-3 text-xs">
+              <div class="font-bold text-[#202020]">${escapeHtml(t.submittedName || '')}</div>
+              <div class="text-[11px] text-[#64748B]">${escapeHtml(t.submittedEmail || '')}</div>
+            </td>
+            <td class="px-4 py-3 text-xs uppercase font-semibold text-[#475569] whitespace-nowrap">${escapeHtml(t.accountRole || '')}</td>
+            <td class="px-4 py-3 text-xs text-[#334155] max-w-xs">${escapeHtml(shortDesc)}</td>
+            <td class="px-4 py-3 text-xs text-[#475569] whitespace-nowrap">${escapeHtml(submittedText)}</td>
+            <td class="px-4 py-3 text-xs whitespace-nowrap">${statusBadge}</td>
+            <td class="px-4 py-3 text-xs text-right whitespace-nowrap">
+              <button type="button" onclick="window.GeoSafeAdmin.openPasswordAssistanceModal(${Number(t.id)})"
+                class="h-8 px-3 rounded-md bg-[#0B203B] hover:bg-[#164579] text-white text-[11px] font-bold transition-colors">
+                Review Ticket
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      if (loadingEl) loadingEl.classList.add('hidden');
+      console.error('[Admin] loadPasswordAssistanceTickets failed:', err.message);
+    }
+  }
+
+  function openPasswordAssistanceModal(ticketId) {
+    const ticket = paQueueState.items.find((t) => Number(t.id) === Number(ticketId));
+    if (!ticket) return;
+    paQueueState.activeTicket = ticket;
+
+    const modal = document.getElementById('password-assistance-modal');
+    const errBox = document.getElementById('pa-modal-error');
+    const tempBox = document.getElementById('pa-temp-password-box');
+    const tempVal = document.getElementById('pa-temp-password-value');
+    const chk = document.getElementById('pa-identity-confirmed-chk');
+    const reasonEl = document.getElementById('pa-modal-rejection-reason');
+    const actionBox = document.getElementById('pa-action-controls-box');
+    const reviewBtn = document.getElementById('pa-modal-review-btn');
+    const existingBox = document.getElementById('pa-existing-decision-box');
+    const existingTitle = document.getElementById('pa-existing-decision-title');
+    const existingMeta = document.getElementById('pa-existing-decision-meta');
+    const existingReason = document.getElementById('pa-existing-decision-reason');
+
+    if (errBox) { errBox.textContent = ''; errBox.classList.add('hidden'); }
+    if (tempBox) tempBox.classList.add('hidden');
+    if (tempVal) tempVal.textContent = '';
+    if (chk) chk.checked = false;
+    if (reasonEl) reasonEl.value = '';
+
+    const setText = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val || '—';
+    };
+    setText('pa-modal-subtitle', `${ticket.ticketReference} • ${String(ticket.status || '').toUpperCase()}`);
+    setText('pa-detail-ref', ticket.ticketReference);
+    setText('pa-detail-submitted', ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : '—');
+    setText('pa-detail-name', ticket.submittedName);
+    setText('pa-detail-email', ticket.submittedEmail);
+    setText('pa-detail-role', ticket.accountRole);
+    setText('pa-detail-status', String(ticket.status || '').replace('_', ' '));
+    setText('pa-detail-description', ticket.description);
+
+    const matchedInfoEl = document.getElementById('pa-matched-account-info');
+    if (matchedInfoEl) {
+      if (ticket.matchedAccount) {
+        const m = ticket.matchedAccount;
+        matchedInfoEl.innerHTML = `
+          <div><strong>${escapeHtml(m.userCode)}</strong> • ${escapeHtml(m.name)} (${escapeHtml(m.role)})</div>
+          <div class="text-[11px] text-[#64748B]">Email: ${escapeHtml(m.email)} • Status: <strong>${escapeHtml(m.accountStatus)}</strong></div>
+        `;
+      } else {
+        matchedInfoEl.innerHTML = '<span class="text-red-700 font-semibold">No matching account found in PostgreSQL for this email address.</span>';
+      }
+    }
+
+    const canAct = ['pending', 'in_review', 'approved'].includes(ticket.status);
+    if (actionBox) actionBox.classList.toggle('hidden', !canAct);
+    if (reviewBtn) reviewBtn.classList.toggle('hidden', ticket.status !== 'pending');
+
+    if (!canAct && existingBox) {
+      existingBox.classList.remove('hidden');
+      existingBox.className = ticket.status === 'resolved'
+        ? 'p-3.5 rounded-lg border border-emerald-200 bg-emerald-50 space-y-1'
+        : 'p-3.5 rounded-lg border border-red-200 bg-red-50 space-y-1';
+      if (existingTitle) {
+        existingTitle.textContent = ticket.status === 'resolved' ? 'Resolved — Temporary Password Issued' : 'Request Rejected';
+      }
+      if (existingMeta) {
+        const revTime = ticket.reviewedAt ? new Date(ticket.reviewedAt).toLocaleString() : '—';
+        existingMeta.textContent = `Reviewed by ${ticket.reviewedByName || 'Administrator'} on ${revTime}`;
+      }
+      if (existingReason) {
+        existingReason.textContent = ticket.decisionReason ? `Note: ${ticket.decisionReason}` : '';
+      }
+    } else if (existingBox) {
+      existingBox.classList.add('hidden');
+    }
+
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closePasswordAssistanceModal() {
+    const modal = document.getElementById('password-assistance-modal');
+    if (modal) modal.classList.add('hidden');
+    const tempVal = document.getElementById('pa-temp-password-value');
+    if (tempVal) tempVal.textContent = '';
+    paQueueState.activeTicket = null;
+  }
+
+  function setPaSubmitting(isBusy) {
+    paQueueState.isSubmitting = isBusy;
+    ['pa-modal-review-btn', 'pa-modal-approve-btn', 'pa-modal-reject-btn'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = isBusy;
+    });
+  }
+
+  async function markSelectedTicketInReview() {
+    if (!paQueueState.activeTicket || paQueueState.isSubmitting) return;
+    const errBox = document.getElementById('pa-modal-error');
+    if (errBox) errBox.classList.add('hidden');
+    setPaSubmitting(true);
+    try {
+      await apiRequest(`/password-assistance/${encodeURIComponent(paQueueState.activeTicket.id)}/review`, { method: 'POST' });
+      showBannerMessage(`Ticket ${paQueueState.activeTicket.ticketReference} marked In Review.`, 'info');
+      await loadPasswordAssistanceTickets();
+      openPasswordAssistanceModal(paQueueState.activeTicket.id);
+    } catch (err) {
+      if (errBox) { errBox.textContent = err.message || 'Unable to update ticket.'; errBox.classList.remove('hidden'); }
+    } finally {
+      setPaSubmitting(false);
+    }
+  }
+
+  async function approveSelectedPasswordTicket() {
+    if (!paQueueState.activeTicket || paQueueState.isSubmitting) return;
+    const errBox = document.getElementById('pa-modal-error');
+    const chk = document.getElementById('pa-identity-confirmed-chk');
+    if (errBox) errBox.classList.add('hidden');
+
+    if (!chk || !chk.checked) {
+      if (errBox) {
+        errBox.textContent = 'Please check the confirmation box verifying the applicant identity first.';
+        errBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    setPaSubmitting(true);
+    try {
+      const data = await apiRequest(`/password-assistance/${encodeURIComponent(paQueueState.activeTicket.id)}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ identityVerified: true }),
+      });
+      const tempBox = document.getElementById('pa-temp-password-box');
+      const tempVal = document.getElementById('pa-temp-password-value');
+      const actionBox = document.getElementById('pa-action-controls-box');
+      if (tempVal) tempVal.textContent = data.temporaryPassword || '';
+      if (tempBox) tempBox.classList.remove('hidden');
+      if (actionBox) actionBox.classList.add('hidden');
+      showBannerMessage(`Temporary password issued for ${data.ticketReference}.`, 'success');
+      await loadPasswordAssistanceTickets();
+    } catch (err) {
+      if (errBox) { errBox.textContent = err.message || 'Unable to approve ticket.'; errBox.classList.remove('hidden'); }
+    } finally {
+      setPaSubmitting(false);
+    }
+  }
+
+  async function rejectSelectedPasswordTicket() {
+    if (!paQueueState.activeTicket || paQueueState.isSubmitting) return;
+    const errBox = document.getElementById('pa-modal-error');
+    const reason = (document.getElementById('pa-modal-rejection-reason')?.value || '').trim();
+    if (errBox) errBox.classList.add('hidden');
+
+    if (reason.length < 5) {
+      if (errBox) {
+        errBox.textContent = 'Please enter a rejection reason (at least 5 characters).';
+        errBox.classList.remove('hidden');
+      }
+      return;
+    }
+
+    setPaSubmitting(true);
+    try {
+      await apiRequest(`/password-assistance/${encodeURIComponent(paQueueState.activeTicket.id)}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
+      closePasswordAssistanceModal();
+      showBannerMessage('Password assistance ticket rejected.', 'info');
+      await loadPasswordAssistanceTickets();
+    } catch (err) {
+      if (errBox) { errBox.textContent = err.message || 'Unable to reject ticket.'; errBox.classList.remove('hidden'); }
+    } finally {
+      setPaSubmitting(false);
+    }
+  }
+
   window.GeoSafeAdmin = {
+    loadPasswordAssistanceTickets,
+    openPasswordAssistanceModal,
+    closePasswordAssistanceModal,
     loadResidentVerificationQueue,
     openResidentVerificationModal,
     closeResidentVerificationModal,

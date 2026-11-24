@@ -16,10 +16,6 @@ const {
   emitIncidentResolved,
   emitAdminResidentApplicationEvent,
 } = require('../services/socketService');
-const {
-  sendResidentApplicationApprovedEmail,
-  sendResidentApplicationRejectedEmail,
-} = require('../services/emailService');
 const { readPrivateIdentityPhoto } = require('../services/privateStorageService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
@@ -5097,15 +5093,6 @@ async function approveResidentVerification(req, res) {
       reviewedAt,
     });
 
-    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
-    sendResidentApplicationApprovedEmail({
-      to: app.email,
-      name: app.name,
-      frontendUrl,
-    }).catch((emailErr) => {
-      console.error('[Admin] Approval email failed:', emailErr?.message || emailErr);
-    });
-
     return res.json({
       message: 'Resident verification application approved. The account is now active.',
       applicationId,
@@ -5218,16 +5205,6 @@ async function rejectResidentVerification(req, res) {
       userId: app.user_id,
       status: 'rejected',
       reviewedAt,
-    });
-
-    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
-    sendResidentApplicationRejectedEmail({
-      to: app.email,
-      name: app.name,
-      reason: cleanReason,
-      frontendUrl,
-    }).catch((emailErr) => {
-      console.error('[Admin] Rejection email failed:', emailErr?.message || emailErr);
     });
 
     return res.json({

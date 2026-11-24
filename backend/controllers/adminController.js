@@ -4145,7 +4145,7 @@ async function exportAdminAnalyticsCsv(req, res) {
 async function getAdminSystemSettings(req, res) {
   try {
     const [settingsRows] = await pool.query(
-      'SELECT id, setting_key, category, setting_value, description, is_protected, updated_at FROM system_settings ORDER BY category, setting_key'
+      "SELECT id, setting_key, category, setting_value, description, is_protected, updated_at FROM system_settings WHERE setting_key <> 'gps_accuracy_threshold_meters' ORDER BY category, setting_key"
     );
 
     const startPing = Date.now();
@@ -4197,6 +4197,9 @@ async function updateAdminSystemSetting(req, res) {
 
   if (!key) {
     return res.status(400).json({ error: 'Setting key is required.' });
+  }
+  if (key === 'gps_accuracy_threshold_meters') {
+    return res.status(410).json({ error: 'Setting "gps_accuracy_threshold_meters" is obsolete and no longer used.' });
   }
   if (key === 'eoc_latitude') {
     const num = Number(value);

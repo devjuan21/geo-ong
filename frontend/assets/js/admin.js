@@ -4945,10 +4945,14 @@
   // ============================================================================
   async function loadSystemSettings() {
     const listEl = document.getElementById('system-settings-list');
+    const emptyEl = document.getElementById('system-settings-empty');
     const loadEl = document.getElementById('system-settings-loading');
+    const dbStatusEl = document.getElementById('health-db-status');
     if (!listEl) return;
 
     listEl.innerHTML = '';
+    listEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
     if (loadEl) loadEl.classList.remove('hidden');
 
     try {
@@ -4957,11 +4961,14 @@
 
       if (data.health) {
         const h = data.health;
-        document.getElementById('health-db-status').textContent = h.databaseStatus;
+        if (dbStatusEl) {
+          dbStatusEl.textContent = h.databaseStatus || 'Operational';
+          dbStatusEl.className = 'font-bold text-emerald-600';
+        }
         document.getElementById('health-db-latency').textContent = `${h.databaseLatencyMs} ms`;
         document.getElementById('health-server-uptime').textContent = `${Math.floor(h.serverUptimeSeconds / 60)} minutes`;
-        document.getElementById('health-environment').textContent = h.environment;
-        document.getElementById('health-node-version').textContent = h.nodeVersion;
+        document.getElementById('health-environment').textContent = h.environment || '—';
+        document.getElementById('health-node-version').textContent = h.nodeVersion || '—';
       }
 
       if (data.securityStats) {
@@ -4969,27 +4976,35 @@
         document.getElementById('security-stat-success').textContent = data.securityStats.successLogins24h;
       }
 
-      // Editable settings from system_settings
-      (data.settings || []).forEach((st) => {
-        const box = document.createElement('div');
-        box.className = 'p-3.5 rounded-lg border border-slate-200 space-y-2';
-        box.innerHTML = `
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-[#202020]">${escapeHtml(st.setting_key)}</span>
-            <span class="text-[10px] uppercase font-bold text-[#777777]">${escapeHtml(st.category)}</span>
-          </div>
-          <p class="text-[11px] text-[#777777]">${escapeHtml(st.description || 'System setting')}</p>
-          <div class="flex items-center gap-2">
-            <input id="setting-input-${st.id}" type="text" value="${escapeHtml(st.setting_value || '')}" class="flex-1 px-3 py-1.5 rounded-md border border-slate-200 text-xs text-[#202020] focus:outline-none focus:border-[#F5B900]">
-            <button type="button" onclick="window.GeoSafeAdmin.saveSetting('${st.setting_key}', document.getElementById('setting-input-${st.id}').value)" class="px-3 py-1.5 rounded-md bg-[#202020] hover:bg-[#333333] text-[#FFF9E8] text-xs font-bold transition-colors">
-              Save
-            </button>
-          </div>
-        `;
-        listEl.appendChild(box);
-      });
+      // Editable settings from PostgreSQL system_settings
+      const settingsList = data.settings || [];
+      if (settingsList.length === 0) {
+        listEl.classList.add('hidden');
+        if (emptyEl) emptyEl.classList.remove('hidden');
+      } else {
+        settingsList.forEach((st) => {
+          const box = document.createElement('div');
+          box.className = 'p-3.5 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2.5';
+          box.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-xs font-bold text-[#202020] block truncate">${escapeHtml(st.setting_key)}</span>
+                <p class="text-[11px] text-[#64748B] mt-0.5 leading-relaxed">${escapeHtml(st.description || 'System setting')}</p>
+              </div>
+              <span class="shrink-0 px-2 py-0.5 rounded bg-slate-200/70 text-[10px] uppercase font-bold text-[#555555]">${escapeHtml(st.category)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="setting-input-${st.id}" type="text" value="${escapeHtml(st.setting_value || '')}" class="flex-1 h-9 px-3 rounded-md border border-slate-200 bg-white text-xs text-[#202020] focus:outline-none focus:border-[#164579]">
+              <button type="button" onclick="window.GeoSafeAdmin.saveSetting('${st.setting_key}', document.getElementById('setting-input-${st.id}').value)" class="h-9 px-4 rounded-md bg-[#202020] hover:bg-[#333333] text-[#FFF9E8] text-xs font-bold transition-colors shrink-0">
+                Save
+              </button>
+            </div>
+          `;
+          listEl.appendChild(box);
+        });
+      }
 
-      // Recent Security Events
+      // Recent Security Events (newest first)
       const secTbody = document.getElementById('security-events-tbody');
       const secEmpty = document.getElementById('security-events-empty');
       if (secTbody) {
@@ -4998,19 +5013,24 @@
         if (secEmpty) secEmpty.classList.toggle('hidden', events.length > 0);
         events.forEach((ev) => {
           const tr = document.createElement('tr');
-          tr.className = 'hover:bg-slate-50';
+          tr.className = 'hover:bg-slate-50 transition-colors';
+          const detailsText = ev.details || '-';
           tr.innerHTML = `
-            <td class="px-3 py-2 font-bold text-[#202020]">${escapeHtml(ev.event_type)}</td>
-            <td class="px-3 py-2 text-[#555555]">${escapeHtml(ev.attempted_email || '-')}</td>
-            <td class="px-3 py-2 font-mono text-[#555555]">${escapeHtml(ev.ip_address || '-')}</td>
-            <td class="px-3 py-2 text-[#777777]">${escapeHtml(ev.details || '-')}</td>
-            <td class="px-3 py-2 text-[#777777] whitespace-nowrap">${formatDateTime(ev.created_at)}</td>
+            <td class="px-4 py-3 font-bold text-[#202020] whitespace-nowrap">${escapeHtml(ev.event_type)}</td>
+            <td class="px-4 py-3 text-[#555555] break-all">${escapeHtml(ev.attempted_email || '-')}</td>
+            <td class="px-4 py-3 font-mono text-[#555555] whitespace-nowrap">${escapeHtml(ev.ip_address || '-')}</td>
+            <td class="px-4 py-3 text-[#64748B] max-w-[260px] truncate" title="${escapeHtml(detailsText)}">${escapeHtml(detailsText)}</td>
+            <td class="px-4 py-3 text-[#64748B] whitespace-nowrap">${formatDateTime(ev.created_at)}</td>
           `;
           secTbody.appendChild(tr);
         });
       }
     } catch (err) {
       console.error('[Admin] loadSystemSettings failed:', err.message);
+      if (dbStatusEl) {
+        dbStatusEl.textContent = 'Unavailable';
+        dbStatusEl.className = 'font-bold text-[#D93636]';
+      }
     } finally {
       if (loadEl) loadEl.classList.add('hidden');
     }

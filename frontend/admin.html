@@ -1589,91 +1589,99 @@
       <!-- ================================================================ -->
       <!-- SECTION 7: SYSTEM SETTINGS & MAINTENANCE                         -->
       <!-- ================================================================ -->
-      <section id="section-settings" class="space-y-6 hidden min-w-0 max-w-full" hidden>
+      <section id="section-settings" class="space-y-5 hidden min-w-0 max-w-full" hidden>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <!-- Top Dashboard Row: 12-Column Grid (6 / 3 / 3 on >=1200px, 2-col on tablet, 1-col on mobile) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-12 gap-5 items-stretch">
 
-          <!-- General Configuration Form (system_settings) -->
-          <div class="lg:col-span-2 bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
-            <div>
-              <h2 class="text-base font-bold text-[#202020]">System Configuration</h2>
-              <p class="text-xs text-[#777777]">Configurable operational parameters stored in MySQL system_settings
-                table.</p>
+          <!-- System Configuration (6 columns) -->
+          <div class="md:col-span-2 min-[1200px]:col-span-6 flex flex-col bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle">
+            <div class="border-b border-slate-200 pb-3 mb-4">
+              <h2 class="text-sm font-bold text-[#202020] uppercase tracking-wider">System Configuration</h2>
+              <p class="text-xs text-[#777777] mt-1">Configurable operational parameters stored in PostgreSQL system_settings table.</p>
             </div>
 
-            <div id="settings-save-feedback" class="hidden p-2.5 rounded-md text-xs font-semibold"></div>
+            <div id="settings-save-feedback" class="hidden mb-3 p-2.5 rounded-md text-xs font-semibold"></div>
 
-            <div id="system-settings-list" class="space-y-3"></div>
+            <div id="system-settings-list" class="space-y-3 flex-1"></div>
 
-            <div id="system-settings-loading" class="p-6 text-center text-xs text-[#777777]">Loading system settings...
+            <div id="system-settings-empty" class="hidden flex-1 flex items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-5 text-center text-xs text-[#64748B]">
+              No active configurable parameters in PostgreSQL <code class="mx-1 font-mono text-[#202020]">system_settings</code>. Core operational thresholds are managed via environment configuration.
+            </div>
+
+            <div id="system-settings-loading" class="p-6 text-center text-xs text-[#777777]">Loading system settings...</div>
+          </div>
+
+          <!-- Database & Server Health (3 columns) -->
+          <div class="md:col-span-1 min-[1200px]:col-span-3 flex flex-col bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle">
+            <div class="border-b border-slate-200 pb-3 mb-3">
+              <h3 class="text-sm font-bold text-[#202020] uppercase tracking-wider">Database &amp; Server Health</h3>
+              <p class="text-xs text-[#777777] mt-1">Live backend &amp; PostgreSQL diagnostics.</p>
+            </div>
+            <div class="divide-y divide-slate-200 text-xs flex-1 flex flex-col justify-center">
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">PostgreSQL Server</span>
+                <span id="health-db-status" class="font-bold text-[#64748B]">Checking...</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Database Latency</span>
+                <span id="health-db-latency" class="font-mono font-semibold text-[#202020]">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Server Uptime</span>
+                <span id="health-server-uptime" class="font-bold text-[#202020]">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Environment</span>
+                <span id="health-environment" class="font-bold text-[#202020]">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Node Version</span>
+                <span id="health-node-version" class="font-mono font-semibold text-[#202020]">—</span>
+              </div>
             </div>
           </div>
 
-          <!-- System & Database Health -->
-          <div class="space-y-6">
-            <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-3">
-              <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Database &amp; Server Health</h3>
-              <div class="space-y-2 text-xs">
-                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
-                  <span class="text-[#777777]">PostgreSQL Server</span>
-                  <span id="health-db-status" class="font-bold text-emerald-600">Operational</span>
-                </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
-                  <span class="text-[#777777]">Database Latency</span>
-                  <span id="health-db-latency" class="font-mono text-[#202020]">-</span>
-                </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
-                  <span class="text-[#777777]">Server Uptime</span>
-                  <span id="health-server-uptime" class="font-bold text-[#202020]">-</span>
-                </div>
-                <div class="flex items-center justify-between py-1.5 border-b border-slate-200">
-                  <span class="text-[#777777]">Environment</span>
-                  <span id="health-environment" class="font-bold text-[#202020]">-</span>
-                </div>
-                <div class="flex items-center justify-between py-1.5">
-                  <span class="text-[#777777]">Node Version</span>
-                  <span id="health-node-version" class="font-mono text-[#202020]">-</span>
-                </div>
-              </div>
+          <!-- Security Activity (24H) (3 columns) -->
+          <div class="md:col-span-1 min-[1200px]:col-span-3 flex flex-col bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle">
+            <div class="border-b border-slate-200 pb-3 mb-4">
+              <h3 class="text-sm font-bold text-[#202020] uppercase tracking-wider">Security Activity (24H)</h3>
+              <p class="text-xs text-[#777777] mt-1">PostgreSQL authentication summary.</p>
             </div>
-
-            <!-- Security Stats -->
-            <div class="bg-white rounded-lg p-5 border border-slate-200 shadow-subtle space-y-3">
-              <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Security Activity (24h)</h3>
-              <div class="grid grid-cols-2 gap-3 text-center">
-                <div class="bg-[#FFF1F1] border border-[#FFC2C2] rounded-md p-3">
-                  <span class="text-[10px] font-bold text-[#D93636] uppercase block">Failed Logins</span>
-                  <span id="security-stat-failed" class="text-xl font-bold text-[#D93636] block mt-1">0</span>
-                </div>
-                <div class="bg-emerald-50 border border-emerald-200 rounded-md p-3">
-                  <span class="text-[10px] font-bold text-emerald-700 uppercase block">Successful Logins</span>
-                  <span id="security-stat-success" class="text-xl font-bold text-emerald-700 block mt-1">0</span>
-                </div>
+            <div class="grid grid-cols-2 gap-3 flex-1 items-stretch">
+              <div class="bg-[#FFF1F1] border border-[#FFC2C2] rounded-lg p-3.5 flex flex-col items-center justify-center text-center">
+                <span class="text-[10px] font-bold text-[#D93636] uppercase tracking-wide">Failed Logins</span>
+                <span id="security-stat-failed" class="text-2xl font-bold text-[#D93636] mt-1.5 tabular-nums">0</span>
+              </div>
+              <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 flex flex-col items-center justify-center text-center">
+                <span class="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Successful Logins</span>
+                <span id="security-stat-success" class="text-2xl font-bold text-emerald-700 mt-1.5 tabular-nums">0</span>
               </div>
             </div>
           </div>
 
         </div>
 
-        <!-- Recent Security Events / Error Logs -->
-        <div class="bg-white rounded-lg p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-3">
-          <h3 class="text-xs font-bold text-[#202020] uppercase tracking-wider">Recent Security &amp; Authentication
-            Events</h3>
-          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-subtle">
-            <table class="min-w-full divide-y divide-[#EEEEEE] text-left text-xs">
+        <!-- Recent Security & Authentication Events (Full Width) -->
+        <div class="bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle space-y-4">
+          <div class="border-b border-slate-200 pb-3">
+            <h3 class="text-sm font-bold text-[#202020] uppercase tracking-wider">Recent Security &amp; Authentication Events</h3>
+            <p class="text-xs text-[#777777] mt-1">Most recent authentication and security records from PostgreSQL (newest first).</p>
+          </div>
+          <div class="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+            <table class="min-w-[720px] w-full divide-y divide-[#EEEEEE] text-left text-xs">
               <thead class="bg-slate-50">
                 <tr>
-                  <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Event Type</th>
-                  <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Attempted Email</th>
-                  <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">IP Address</th>
-                  <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Details</th>
-                  <th class="px-4 py-3 text-[10px] font-bold text-[#777777] uppercase">Timestamp</th>
+                  <th class="w-[15%] px-4 py-3 text-[10px] font-bold text-[#777777] uppercase tracking-wider">Event Type</th>
+                  <th class="w-[21%] px-4 py-3 text-[10px] font-bold text-[#777777] uppercase tracking-wider">Attempted Email</th>
+                  <th class="w-[14%] px-4 py-3 text-[10px] font-bold text-[#777777] uppercase tracking-wider">IP Address</th>
+                  <th class="w-[32%] px-4 py-3 text-[10px] font-bold text-[#777777] uppercase tracking-wider">Details</th>
+                  <th class="w-[18%] px-4 py-3 text-[10px] font-bold text-[#777777] uppercase tracking-wider">Timestamp</th>
                 </tr>
               </thead>
               <tbody id="security-events-tbody" class="divide-y divide-[#EEEEEE] bg-white"></tbody>
             </table>
-            <div id="security-events-empty" class="hidden p-4 text-center text-xs text-[#777777]">No recent security
-              events recorded.</div>
+            <div id="security-events-empty" class="hidden p-5 text-center text-xs text-[#777777]">No recent security events recorded.</div>
           </div>
         </div>
 
@@ -3433,7 +3441,7 @@
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
-  <script src="./assets/js/admin.js?v=20261124f"></script>
+  <script src="./assets/js/admin.js?v=20261124g"></script>
 </body>
 
 </html>

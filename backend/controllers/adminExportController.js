@@ -20,11 +20,13 @@ const VALID_CATEGORIES = new Set([
 const VALID_FORMATS = new Set(['xlsx', 'csv', 'pdf']);
 const VALID_PERIODS = new Set([
   'today',
+  'yesterday',
   '7d',
   '30d',
   'this_month',
   'last_month',
   'this_year',
+  'last_year',
   'all',
   'custom',
 ]);
@@ -74,11 +76,13 @@ function formatLocation(address, landmark, lat, lng) {
 function describeDateRange(period, from, to) {
   const labels = {
     today: 'Today',
+    yesterday: 'Yesterday',
     '7d': 'Last 7 Days',
     '30d': 'Last 30 Days',
     this_month: 'This Month',
     last_month: 'Last Month',
     this_year: 'This Year',
+    last_year: 'Last Year',
     all: 'All Available Records',
   };
   if (period === 'custom' && isValidYmd(from) && isValidYmd(to)) {

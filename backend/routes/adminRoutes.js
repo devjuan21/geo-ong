@@ -27,6 +27,7 @@ const {
   createBroadcastCategory,
   getAdminAnalytics,
   getMonthlyIncidentsByCategory,
+  getAdminAnalyticsDrilldown,
   exportAdminAnalyticsCsv,
   getAdminSystemSettings,
   updateAdminSystemSetting,
@@ -169,6 +170,7 @@ router.patch('/broadcasts/:id/cancel', cancelEmergencyBroadcast);
 // 6. Reports & Analytics
 router.get('/analytics', getAdminAnalytics);
 router.get('/analytics/monthly-categories', getMonthlyIncidentsByCategory);
+router.get('/analytics/drilldown', getAdminAnalyticsDrilldown);
 router.post('/analytics/export/preview', previewAdminExport);
 router.post('/analytics/export', generateAdminExport);
 router.get('/analytics/export', generateAdminExport);

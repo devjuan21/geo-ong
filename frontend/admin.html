@@ -1350,110 +1350,198 @@
       <!-- ================================================================ -->
       <!-- SECTION 6: REPORTS & ANALYTICS                                   -->
       <!-- ================================================================ -->
-      <section id="section-analytics" class="space-y-3 hidden min-w-0 max-w-full" hidden>
+      <section id="section-analytics" class="space-y-4 hidden min-w-0 max-w-full" hidden>
 
-        <!-- Unified EOC Incident Count Workspace: Header Toolbar + Primary Daily Chart -->
-        <div class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
-
-          <!-- Compact Single-Row EOC Toolbar -->
-          <div
-            class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <!-- Left: Title + Date Range Selector -->
+        <!-- Global Analytics Toolbar & Filters -->
+        <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle overflow-hidden">
+          <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div class="flex flex-wrap items-center gap-2">
-              <h2 class="text-[15px] font-bold text-[#0f172a] tracking-tight">Incident Count</h2>
+              <h2 class="text-sm font-bold text-[#0f172a] uppercase tracking-wider">Emergency Operations Analytics</h2>
               <span class="hidden sm:inline-block h-4 w-px bg-slate-300 mx-0.5"></span>
-              <div>
-                <label for="analytics-period-select" class="sr-only">Date Filter</label>
-                <select id="analytics-period-select"
-                  class="h-7 pl-2 pr-6 rounded-[3px] border border-slate-300 bg-white text-xs font-semibold text-[#0f172a] hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-[#0A58CA] focus:border-[#0A58CA]">
-                  <option value="today">Today</option>
-                  <option value="7d">Last 7 Days</option>
-                  <option value="30d">Last 30 Days</option>
-                  <option value="this_month" selected>This Month</option>
-                  <option value="last_month">Last Month</option>
-                  <option value="this_year">This Year</option>
-                  <option value="all">All Available Records</option>
-                  <option value="custom">Custom Date Range</option>
-                </select>
-              </div>
+              <select id="analytics-period-select"
+                class="h-8 pl-2.5 pr-7 rounded-md border border-slate-300 bg-white text-xs font-semibold text-[#0f172a] focus:outline-none focus:border-[#164579]">
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="this_month" selected>This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="this_year">This Year</option>
+                <option value="last_year">Last Year</option>
+                <option value="all">All Available Records</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+              <span id="analytics-applied-range-badge"
+                class="inline-flex items-center px-2.5 py-1 rounded bg-white border border-slate-200 text-[11px] font-semibold text-slate-600 tabular-nums">
+                Asia/Manila
+              </span>
             </div>
 
             <!-- Right: Schedule, Print, Email, Export Actions -->
             <div class="flex flex-wrap items-center gap-1.5">
               <button type="button" onclick="window.GeoSafeAdmin.scheduleAnalyticsReport()"
-                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
-                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                </svg>
+                class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#1e293b] transition-colors">
                 <span>Schedule</span>
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.printAnalyticsReport()"
-                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
-                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z">
-                  </path>
-                </svg>
+                class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#1e293b] transition-colors">
                 <span>Print</span>
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.emailAnalyticsSummary()"
-                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-slate-300 bg-white hover:bg-slate-100 text-xs font-medium text-[#1e293b] transition-colors">
-                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
-                  </path>
-                </svg>
+                class="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#1e293b] transition-colors">
                 <span>Email</span>
               </button>
               <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsExportModal()"
-                class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-[#0f172a] bg-[#0f172a] hover:bg-[#1e293b] text-xs font-medium text-white transition-colors">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75"
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                  </path>
-                </svg>
+                class="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-[#0f172a] hover:bg-[#1e293b] text-xs font-semibold text-white transition-colors">
                 <span>Export</span>
               </button>
             </div>
           </div>
 
-          <!-- Custom Date Range Bar (shown when Custom Date Range is selected) -->
+          <!-- Custom Date Range Bar -->
           <div id="analytics-custom-date-container"
             class="hidden px-4 py-2 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center gap-2.5">
             <div class="flex items-center gap-1.5">
               <label for="analytics-date-from" class="text-[11px] font-semibold text-slate-600 uppercase">From</label>
               <input id="analytics-date-from" type="date"
-                class="h-7 px-2 rounded-[3px] border border-slate-300 bg-white text-xs text-[#0f172a]">
+                class="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
             <div class="flex items-center gap-1.5">
               <label for="analytics-date-to" class="text-[11px] font-semibold text-slate-600 uppercase">To</label>
               <input id="analytics-date-to" type="date"
-                class="h-7 px-2 rounded-[3px] border border-slate-300 bg-white text-xs text-[#0f172a]">
+                class="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
             </div>
             <button type="button" onclick="window.GeoSafeAdmin.loadAnalyticsData()"
-              class="h-7 px-3 rounded-[3px] bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-semibold transition-colors">
+              class="h-8 px-3 rounded-md bg-[#164579] hover:bg-[#103661] text-white text-xs font-semibold transition-colors">
               Apply
             </button>
           </div>
 
-          <!-- Primary Chart Surface: Incidents by Day (Fixed Height: 400px mobile / 550px desktop) -->
-          <div id="analytics-daily-chart-card"
-            class="px-4 pt-3.5 pb-4 flex flex-col h-[400px] min-h-[400px] max-h-[400px] lg:h-[550px] lg:min-h-[550px] lg:max-h-[550px]">
-            <div
-              class="flex-none flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 pb-2.5 border-b border-slate-200">
-              <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                <h3 class="text-sm font-bold text-[#0f172a]">Incidents by Day</h3>
-                <p class="text-xs text-slate-500">Number of incident reports per day for the selected period</p>
+          <!-- Secondary Multi-Dimension Filters -->
+          <div class="px-4 py-2.5 bg-white grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 items-end">
+            <div>
+              <label for="analytics-filter-category" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Incident Category</label>
+              <select id="analytics-filter-category" class="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="all">All Categories</option>
+              </select>
+            </div>
+            <div>
+              <label for="analytics-filter-rescue-type" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Rescue Type</label>
+              <select id="analytics-filter-rescue-type" class="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="all">All Rescue Types</option>
+              </select>
+            </div>
+            <div>
+              <label for="analytics-filter-status" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Operation Status</label>
+              <select id="analytics-filter-status" class="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="verified">Verified</option>
+                <option value="dispatched">Dispatched</option>
+                <option value="accepted">Accepted</option>
+                <option value="en_route">En Route</option>
+                <option value="on_scene">On Scene</option>
+                <option value="resolved">Resolved</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label for="analytics-filter-location" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Street / Purok</label>
+              <input id="analytics-filter-location" type="text" placeholder="Filter area..."
+                class="w-full h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+            </div>
+            <div>
+              <label for="analytics-filter-responder" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Responder</label>
+              <select id="analytics-filter-responder" class="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+                <option value="">All Responders</option>
+              </select>
+            </div>
+            <div class="flex items-end gap-1.5">
+              <div class="flex-1 min-w-0">
+                <label for="analytics-filter-org" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Organization</label>
+                <select id="analytics-filter-org" class="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-[#0f172a]">
+                  <option value="all">All Orgs</option>
+                </select>
               </div>
-              <span id="analytics-daily-range-label" class="text-xs font-medium text-slate-600 tabular-nums"></span>
+              <button type="button" onclick="window.GeoSafeAdmin.resetAnalyticsFilters()"
+                class="h-8 px-2.5 rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 shrink-0">
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Operational Summary (8 Clickable KPI Cards) -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Total Incidents', recordType: 'incident' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Incidents</span>
+            <span id="analytics-total-reports" class="text-lg font-bold text-[#0f172a] tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Total Rescue Requests', recordType: 'rescue' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Rescues</span>
+            <span id="analytics-total-rescues" class="text-lg font-bold text-[#b91c1c] tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'All Operations', recordType: 'all' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Operations</span>
+            <span id="analytics-total-events" class="text-lg font-bold text-[#0f172a] tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Active Dispatches', recordType: 'all', extraFilter: 'active_dispatch' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Active Dispatches</span>
+            <span id="analytics-active-assignments" class="text-lg font-bold text-[#0A58CA] tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Completed Operations', recordType: 'all', extraFilter: 'completed' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Completed</span>
+            <span id="analytics-completed-operations" class="text-lg font-bold text-emerald-700 tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Pending Reports', recordType: 'incident', status: 'pending' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Pending Reports</span>
+            <span id="analytics-pending-reports" class="text-lg font-bold text-amber-600 tabular-nums mt-1 block">0</span>
+          </button>
+          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Unclaimed Rescue Requests', recordType: 'rescue', extraFilter: 'unclaimed' })"
+            class="bg-white border border-slate-200 hover:border-[#164579] rounded-[8px] p-3 text-left shadow-subtle transition-colors">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Unclaimed Rescues</span>
+            <span id="analytics-unclaimed-requests" class="text-lg font-bold text-[#D93636] tabular-nums mt-1 block">0</span>
+          </button>
+          <div class="bg-white border border-slate-200 rounded-[8px] p-3 text-left shadow-subtle">
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Avg Response Time</span>
+            <span id="analytics-avg-response-kpi" class="text-lg font-bold text-[#0f172a] tabular-nums mt-1 block">—</span>
+          </div>
+        </div>
+
+        <!-- 3. Primary Incident Trend Chart (Daily / Weekly / Monthly + Previous Period Comparison) -->
+        <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle overflow-hidden">
+          <div id="analytics-daily-chart-card"
+            class="px-4 pt-3.5 pb-4 flex flex-col h-[340px] min-h-[340px] max-h-[340px] lg:h-[380px] lg:min-h-[380px] lg:max-h-[380px]">
+            <div class="flex-none flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+              <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                <h3 class="text-sm font-bold text-[#0f172a]">Incidents Trend</h3>
+                <span id="analytics-prev-period-badge" class="text-[11px] font-semibold text-slate-600"></span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="analytics-daily-range-label" class="text-xs font-medium text-slate-600 tabular-nums"></span>
+                <div class="inline-flex rounded-md border border-slate-300 overflow-hidden text-[11px] font-semibold">
+                  <button type="button" data-trend-grain="daily" onclick="window.GeoSafeAdmin.setIncidentTrendGrain('daily')"
+                    class="px-2.5 py-1 bg-[#0f172a] text-white">Daily</button>
+                  <button type="button" data-trend-grain="weekly" onclick="window.GeoSafeAdmin.setIncidentTrendGrain('weekly')"
+                    class="px-2.5 py-1 bg-white text-slate-700 hover:bg-slate-50">Weekly</button>
+                  <button type="button" data-trend-grain="monthly" onclick="window.GeoSafeAdmin.setIncidentTrendGrain('monthly')"
+                    class="px-2.5 py-1 bg-white text-slate-700 hover:bg-slate-50">Monthly</button>
+                </div>
+              </div>
             </div>
 
             <div class="relative flex-1 min-h-0 pt-3 overflow-x-auto overflow-y-hidden">
               <div id="analytics-daily-bar-chart" class="w-full h-full min-w-[560px]"></div>
               <div id="analytics-daily-empty"
                 class="hidden w-full h-full flex items-center justify-center text-center text-xs text-slate-500">
-                No incident reports recorded for the selected date range.
+                No incident reports recorded for the selected filters.
               </div>
               <div id="analytics-daily-tooltip"
                 class="hidden pointer-events-none fixed z-50 px-2.5 py-1 rounded-[3px] bg-[#0f172a] text-white text-xs font-medium shadow-md whitespace-nowrap">
@@ -1462,125 +1550,230 @@
           </div>
         </div>
 
-        <!-- Compact 4-Column Operational Metrics Strip -->
-        <div
-          class="bg-white border border-slate-300 rounded-[3px] grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
-          <div class="px-4 py-3">
-            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Incidents</span>
-            <span id="analytics-total-reports"
-              class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
-          </div>
-          <div class="px-4 py-3">
-            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Rescues</span>
-            <span id="analytics-total-rescues"
-              class="text-xl font-bold text-[#b91c1c] tabular-nums mt-0.5 block">0</span>
-          </div>
-          <div class="px-4 py-3">
-            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Operations</span>
-            <span id="analytics-total-events"
-              class="text-xl font-bold text-[#0f172a] tabular-nums mt-0.5 block">0</span>
-          </div>
-          <div class="px-4 py-3">
-            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Dispatches</span>
-            <span id="analytics-active-assignments"
-              class="text-xl font-bold text-[#0A58CA] tabular-nums mt-0.5 block">0</span>
-          </div>
-        </div>
-
-        <!-- Secondary Breakdowns: Category Doughnut + Operational Tables -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <!-- Disaster Reports Distribution Doughnut Chart -->
-          <div id="analytics-category-doughnut-card"
-            class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+        <!-- Secondary Incident Breakdowns (2-Column Balanced Grid) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div id="analytics-category-doughnut-card" class="bg-white border border-slate-200 rounded-[8px] shadow-subtle flex flex-col min-w-0">
             <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-2">
-              <div>
-                <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Reports by Disaster Category</h3>
-              </div>
+              <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Reports by Disaster Category</h3>
               <span id="analytics-category-total-badge"
-                class="inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
+                class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
                 0 Total Reports
               </span>
             </div>
             <div id="analytics-category-doughnut" class="p-4 flex-1 flex items-center justify-center w-full"></div>
           </div>
 
-          <!-- Incident Category Breakdown -->
-          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+          <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle flex flex-col min-w-0">
             <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
               <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Incident Category Breakdown</h3>
             </div>
             <div class="p-4 flex-1">
-              <div id="analytics-categories-list" class="text-xs"></div>
-              <div id="analytics-categories-empty" class="hidden py-6 text-center text-xs text-slate-500">No categorized
-                incidents recorded.</div>
+              <div id="analytics-categories-list" class="text-xs space-y-2"></div>
+              <div id="analytics-categories-empty" class="hidden py-6 text-center text-xs text-slate-500">No categorized incidents recorded.</div>
             </div>
           </div>
 
-          <!-- Incident Status Distribution -->
-          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
-            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
+          <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle flex flex-col min-w-0">
+            <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
               <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Incident Status Distribution</h3>
+              <span class="text-[10px] font-semibold text-slate-500">Active vs Resolved</span>
             </div>
             <div class="p-4 flex-1">
-              <div id="analytics-statuses-list" class="text-xs"></div>
-              <div id="analytics-statuses-empty" class="hidden py-6 text-center text-xs text-slate-500">No status
-                records
-                recorded.</div>
+              <div id="analytics-statuses-list" class="text-xs space-y-1.5"></div>
+              <div id="analytics-statuses-empty" class="hidden py-6 text-center text-xs text-slate-500">No status records recorded.</div>
             </div>
           </div>
 
-          <!-- Top Incident Locations -->
-          <div class="bg-white border border-slate-300 rounded-[3px] flex flex-col min-w-0">
+          <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle flex flex-col min-w-0">
             <div class="px-4 py-2.5 border-b border-slate-200 bg-slate-50/70">
               <h3 class="text-xs font-bold text-[#0f172a] uppercase tracking-wider">Top Incident Locations</h3>
             </div>
             <div class="p-4 flex-1">
-              <div id="analytics-locations-list" class="text-xs"></div>
-              <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location
-                data
-                recorded.</div>
+              <div id="analytics-locations-list" class="text-xs space-y-1.5"></div>
+              <div id="analytics-locations-empty" class="hidden py-6 text-center text-xs text-slate-500">No location data recorded.</div>
             </div>
           </div>
         </div>
 
-        <!-- Separate Card: Monthly Incidents by Category (Stacked Vertical Column Chart) -->
-        <div id="analytics-monthly-stacked-card" class="bg-white border border-slate-300 rounded-[3px] overflow-hidden">
-          <div
-            class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <!-- Monthly Incidents by Category (Stacked Column Chart + Previous Year Comparison) -->
+        <div id="analytics-monthly-stacked-card" class="bg-white border border-slate-200 rounded-[8px] shadow-subtle overflow-hidden">
+          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
               <h3 class="text-sm font-bold text-[#0f172a]">Monthly Incidents by Category</h3>
-              <p class="text-xs text-slate-500">Stacked incident report counts by category (January–December)</p>
+              <span id="analytics-monthly-prev-year-badge" class="text-xs text-slate-500"></span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <label for="analytics-monthly-year-select" class="sr-only">Year</label>
               <select id="analytics-monthly-year-select"
-                class="h-7 pl-2 pr-6 rounded-[3px] border border-slate-300 bg-white text-xs font-semibold text-[#0f172a] hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-[#0A58CA] focus:border-[#0A58CA]">
-              </select>
+                class="h-7 pl-2 pr-6 rounded border border-slate-300 bg-white text-xs font-semibold text-[#0f172a]"></select>
               <span id="analytics-monthly-total-badge"
-                class="inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
+                class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-white text-[#0f172a] border border-slate-300 tabular-nums">
                 0 Total Reports
               </span>
             </div>
           </div>
-
           <div class="px-4 pt-3 pb-4">
             <div id="analytics-monthly-stacked-legend" style="gap: 8px 16px;"
-              class="flex flex-wrap items-center pb-2.5 border-b border-slate-100 text-[11px] text-slate-700">
-            </div>
-
-            <div class="relative pt-3 overflow-x-auto overflow-y-hidden h-[320px] sm:h-[360px]">
+              class="flex flex-wrap items-center pb-2.5 border-b border-slate-100 text-[11px] text-slate-700"></div>
+            <div class="relative pt-3 overflow-x-auto overflow-y-hidden h-[300px]">
               <div id="analytics-monthly-stacked-chart" class="w-full h-full min-w-[640px]"></div>
               <div id="analytics-monthly-stacked-empty"
                 class="hidden w-full h-full flex items-center justify-center text-center text-xs text-slate-500">
                 No incident reports recorded for the selected year.
               </div>
               <div id="analytics-monthly-stacked-error"
-                class="hidden w-full h-full flex items-center justify-center text-center text-xs text-red-700">
-              </div>
+                class="hidden w-full h-full flex items-center justify-center text-center text-xs text-red-700"></div>
               <div id="analytics-monthly-stacked-tooltip"
-                class="hidden pointer-events-none fixed z-50 px-2.5 py-1.5 rounded-[3px] bg-[#0f172a] text-white text-xs font-medium shadow-md whitespace-nowrap">
+                class="hidden pointer-events-none fixed z-50 px-2.5 py-1.5 rounded bg-[#0f172a] text-white text-xs font-medium shadow-md whitespace-nowrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Rescue Request Analytics (Private Rescue Operations Summary) -->
+        <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+            <div>
+              <h3 class="text-sm font-bold text-[#0f172a]">Rescue Request Analytics</h3>
+              <p class="text-xs text-slate-500">Private emergency rescue operations (Resident identity details remain protected).</p>
+            </div>
+            <span id="analytics-rescue-people-badge" class="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded">People Rescued: —</span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div class="p-3 rounded-md bg-emerald-50 border border-emerald-200">
+              <span class="text-[10px] font-bold text-emerald-700 uppercase block">Completed</span>
+              <span id="rescue-stat-completed" class="text-xl font-bold text-emerald-800 tabular-nums">0</span>
+            </div>
+            <div class="p-3 rounded-md bg-slate-50 border border-slate-200">
+              <span class="text-[10px] font-bold text-slate-600 uppercase block">Cancelled</span>
+              <span id="rescue-stat-cancelled" class="text-xl font-bold text-slate-700 tabular-nums">0</span>
+            </div>
+            <div class="p-3 rounded-md bg-amber-50 border border-amber-200">
+              <span class="text-[10px] font-bold text-amber-700 uppercase block">Pending / Unclaimed</span>
+              <span id="rescue-stat-unclaimed" class="text-xl font-bold text-amber-800 tabular-nums">0</span>
+            </div>
+            <div class="p-3 rounded-md bg-blue-50 border border-blue-200">
+              <span class="text-[10px] font-bold text-[#164579] uppercase block">Accepted / On-Scene</span>
+              <span id="rescue-stat-active" class="text-xl font-bold text-[#164579] tabular-nums">0</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="border border-slate-200 rounded-md p-3">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-xs font-bold text-[#0f172a] uppercase">Rescue Requests Trend</h4>
+                <div class="inline-flex rounded border border-slate-300 overflow-hidden text-[10px] font-semibold">
+                  <button type="button" data-rescue-grain="daily" onclick="window.GeoSafeAdmin.setRescueTrendGrain('daily')" class="px-2 py-0.5 bg-[#0f172a] text-white">Daily</button>
+                  <button type="button" data-rescue-grain="monthly" onclick="window.GeoSafeAdmin.setRescueTrendGrain('monthly')" class="px-2 py-0.5 bg-white text-slate-700">Monthly</button>
+                </div>
+              </div>
+              <div id="analytics-rescue-trend-chart" class="h-[190px] w-full overflow-x-auto"></div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="border border-slate-200 rounded-md p-3">
+                <h4 class="text-xs font-bold text-[#0f172a] uppercase mb-2">By Status &amp; Type</h4>
+                <div id="analytics-rescue-status-list" class="space-y-1.5 text-xs"></div>
+              </div>
+              <div class="border border-slate-200 rounded-md p-3">
+                <h4 class="text-xs font-bold text-[#0f172a] uppercase mb-2">Top Rescue Locations</h4>
+                <div id="analytics-rescue-locations-list" class="space-y-1.5 text-xs"></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 5. Emergency Response Performance & 6. Responder Performance -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div class="lg:col-span-5 bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-3">
+            <div class="border-b border-slate-200 pb-2">
+              <h3 class="text-sm font-bold text-[#0f172a]">Emergency Response Performance</h3>
+              <p class="text-[11px] text-slate-500">Computed from valid persisted timestamps (excludes missing/invalid records).</p>
+            </div>
+            <div id="analytics-response-perf-grid" class="divide-y divide-slate-200 text-xs"></div>
+          </div>
+
+          <div class="lg:col-span-7 bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-3">
+            <div class="border-b border-slate-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-bold text-[#0f172a]">Responder &amp; Organization Performance</h3>
+                <p class="text-[11px] text-slate-500">Factual workload counts and sample-annotated response averages.</p>
+              </div>
+            </div>
+            <div class="overflow-x-auto border border-slate-200 rounded-md">
+              <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Responder</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Organization</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Accepted</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Completed</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Active</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Avg Accept</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Avg Arrival</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-responder-perf-tbody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+            <div id="analytics-org-perf-summary" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs"></div>
+          </div>
+        </div>
+
+        <!-- 7. Geographic Analytics (Map + Top Affected Areas) -->
+        <div class="bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-3">
+          <div class="border-b border-slate-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-[#0f172a]">Geographic Analytics (Barangay Bayanan)</h3>
+              <p class="text-[11px] text-slate-500">Genuine stored incident and rescue coordinates within official Barangay Bayanan boundaries.</p>
+            </div>
+            <div class="inline-flex rounded-md border border-slate-300 overflow-hidden text-[11px] font-semibold">
+              <button type="button" data-geo-layer="all" onclick="window.GeoSafeAdmin.setAnalyticsGeoLayer('all')" class="px-2.5 py-1 bg-[#0f172a] text-white">All Pins</button>
+              <button type="button" data-geo-layer="incident" onclick="window.GeoSafeAdmin.setAnalyticsGeoLayer('incident')" class="px-2.5 py-1 bg-white text-slate-700">Incidents</button>
+              <button type="button" data-geo-layer="rescue" onclick="window.GeoSafeAdmin.setAnalyticsGeoLayer('rescue')" class="px-2.5 py-1 bg-white text-slate-700">Rescues</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-7">
+              <div id="analytics-geo-map" class="w-full h-[300px] rounded-md border border-slate-200 bg-slate-100 z-0"></div>
+            </div>
+            <div class="lg:col-span-5 overflow-x-auto border border-slate-200 rounded-md">
+              <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Street / Purok</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Inc</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase text-right">Rsc</th>
+                    <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Top Category</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-geo-areas-tbody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. Emergency Communication Analytics & 9. Activity Heatmap -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div class="lg:col-span-5 bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-3">
+            <div class="border-b border-slate-200 pb-2">
+              <h3 class="text-sm font-bold text-[#0f172a]">Emergency Communication Analytics</h3>
+              <p class="text-[11px] text-slate-500">Broadcasts published and tracked notification read receipts.</p>
+            </div>
+            <div id="analytics-comm-summary" class="space-y-3 text-xs"></div>
+          </div>
+
+          <div class="lg:col-span-7 bg-white border border-slate-200 rounded-[8px] shadow-subtle p-4 space-y-3">
+            <div class="border-b border-slate-200 pb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-bold text-[#0f172a]">Activity Heatmap (Asia/Manila)</h3>
+                <p class="text-[11px] text-slate-500">Click any cell to view operations submitted during that day &amp; hour.</p>
+              </div>
+              <div class="inline-flex rounded-md border border-slate-300 overflow-hidden text-[11px] font-semibold">
+                <button type="button" data-heatmap-mode="incident" onclick="window.GeoSafeAdmin.setAnalyticsHeatmapMode('incident')" class="px-2.5 py-1 bg-[#0f172a] text-white">Incidents</button>
+                <button type="button" data-heatmap-mode="rescue" onclick="window.GeoSafeAdmin.setAnalyticsHeatmapMode('rescue')" class="px-2.5 py-1 bg-white text-slate-700">Rescues</button>
+              </div>
+            </div>
+            <div id="analytics-activity-heatmap" class="overflow-x-auto"></div>
           </div>
         </div>
 
@@ -3458,7 +3651,51 @@
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
+  <!-- ANALYTICS DRILL-DOWN MODAL -->
+  <div id="analytics-drilldown-modal"
+    class="hidden fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+    onclick="if (event.target === this) window.GeoSafeAdmin.closeAnalyticsDrilldown()">
+    <div class="bg-white rounded-lg border border-slate-200 shadow-lg max-w-4xl w-full max-h-[88vh] flex flex-col overflow-hidden">
+      <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+        <div>
+          <h3 id="analytics-drilldown-title" class="text-sm font-bold text-[#0f172a]">Filtered Operations</h3>
+          <p id="analytics-drilldown-subtitle" class="text-[11px] text-slate-500">Authorized records matching your selected analytics filter.</p>
+        </div>
+        <button type="button" onclick="window.GeoSafeAdmin.closeAnalyticsDrilldown()"
+          class="px-3 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-[#0f172a]">
+          Close
+        </button>
+      </div>
+      <div class="flex-1 overflow-auto p-4">
+        <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Reference</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Type</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Category</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Status</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Location</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Responder</th>
+              <th class="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">Submitted</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-drilldown-tbody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+        <span id="analytics-drilldown-page-info" class="text-slate-600 font-medium">Page 1 of 1</span>
+        <div class="flex items-center gap-2">
+          <button type="button" id="analytics-drilldown-prev" onclick="window.GeoSafeAdmin.changeDrilldownPage(-1)"
+            class="px-3 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 font-semibold text-slate-700 disabled:opacity-50">Prev</button>
+          <button type="button" id="analytics-drilldown-next" onclick="window.GeoSafeAdmin.changeDrilldownPage(1)"
+            class="px-3 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 font-semibold text-slate-700 disabled:opacity-50">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="./assets/js/admin.js?v=20261124h"></script>
+  <script src="./assets/js/admin-analytics.js?v=20261124a"></script>
 </body>
 
 </html>

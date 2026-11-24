@@ -16,6 +16,12 @@ const {
   emitIncidentResolved,
 } = require('../services/socketService');
 const { readPrivateIdentityPhoto, diagnoseStorageConnectivity } = require('../services/privateStorageService');
+const {
+  buildDateFilterClause: buildAnalyticsDateFilterClause,
+  getComprehensiveAnalytics,
+  getMonthlyIncidentsByCategoryWithComparison,
+  getAnalyticsDrilldown,
+} = require('../services/adminAnalyticsService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { defaultColorForName } = require('../config/advisoryCategories');
@@ -3675,74 +3681,7 @@ function addDaysYmd(ymd, deltaDays) {
 }
 
 function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
-  const manilaToday = getManilaDateParts(new Date());
-  if (period === 'today') {
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${manilaToday.ymd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
-      startYmd: manilaToday.ymd,
-      endYmd: manilaToday.ymd,
-    };
-  }
-  if (period === '7d') {
-    const startYmd = addDaysYmd(manilaToday.ymd, -6);
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
-      startYmd,
-      endYmd: manilaToday.ymd,
-    };
-  }
-  if (period === '30d') {
-    const startYmd = addDaysYmd(manilaToday.ymd, -29);
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
-      startYmd,
-      endYmd: manilaToday.ymd,
-    };
-  }
-  if (period === 'this_month') {
-    const startYmd = `${manilaToday.year}-${String(manilaToday.month).padStart(2, '0')}-01`;
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
-      startYmd,
-      endYmd: manilaToday.ymd,
-    };
-  }
-  if (period === 'last_month') {
-    const prevMonthDate = new Date(Date.UTC(manilaToday.year, manilaToday.month - 2, 1));
-    const lastDayPrevMonth = new Date(Date.UTC(manilaToday.year, manilaToday.month - 1, 0));
-    const startYmd = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, '0')}-01`;
-    const endYmd = `${lastDayPrevMonth.getUTCFullYear()}-${String(lastDayPrevMonth.getUTCMonth() + 1).padStart(2, '0')}-${String(lastDayPrevMonth.getUTCDate()).padStart(2, '0')}`;
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${startYmd}T00:00:00+08:00`, `${endYmd}T23:59:59.999+08:00`],
-      startYmd,
-      endYmd,
-    };
-  }
-  if (period === 'this_year') {
-    const startYmd = `${manilaToday.year}-01-01`;
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${startYmd}T00:00:00+08:00`, `${manilaToday.ymd}T23:59:59.999+08:00`],
-      startYmd,
-      endYmd: manilaToday.ymd,
-    };
-  }
-  if (period === 'custom' && from && to) {
-    const safeFrom = String(from).slice(0, 10);
-    const safeTo = String(to).slice(0, 10);
-    return {
-      clause: `${dateColumn} >= ? AND ${dateColumn} <= ?`,
-      params: [`${safeFrom}T00:00:00+08:00`, `${safeTo}T23:59:59.999+08:00`],
-      startYmd: safeFrom <= safeTo ? safeFrom : safeTo,
-      endYmd: safeFrom <= safeTo ? safeTo : safeFrom,
-    };
-  }
-  return { clause: '1=1', params: [], startYmd: null, endYmd: null };
+  return buildAnalyticsDateFilterClause(period, from, to, dateColumn);
 }
 
 /**
@@ -3811,126 +3750,8 @@ async function getReportCategoryDistribution(dateFilter = { clause: '1=1', param
 
 async function getAdminAnalytics(req, res) {
   try {
-    const period = String(req.query.period || 'all').toLowerCase();
-    const { from, to } = req.query;
-
-    const repDateFilter = buildDateFilterClause(period, from, to, 'r.created_at');
-    const resqDateFilter = buildDateFilterClause(period, from, to, 'created_at');
-
-    const categoryDistribution = await getReportCategoryDistribution(repDateFilter);
-    const totalReports = categoryDistribution.totalReports;
-    const categories = categoryDistribution.categories;
-
-    const [[resqCountRow]] = await pool.query(
-      `SELECT COUNT(*) AS count FROM rescue_requests WHERE ${resqDateFilter.clause}`,
-      resqDateFilter.params
-    );
-    const totalRescues = Number((resqCountRow && resqCountRow.count) || 0);
-
-    const [statuses] = await pool.query(
-      `SELECT r.status, COUNT(DISTINCT r.id)::int AS count
-       FROM reports r
-       WHERE ${repDateFilter.clause}
-       GROUP BY r.status`,
-      repDateFilter.params
-    );
-
-    const [dailyRows] = await pool.query(
-      `SELECT TO_CHAR(r.created_at AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS date_key,
-              COUNT(DISTINCT r.id)::int AS count
-       FROM reports r
-       WHERE ${repDateFilter.clause}
-       GROUP BY date_key
-       ORDER BY date_key ASC`,
-      repDateFilter.params
-    );
-
-    const dailyCountMap = new Map(dailyRows.map((row) => [String(row.date_key), Number(row.count || 0)]));
-    let dailyTrends = [];
-    if (dailyRows.length > 0) {
-      const rangeStart = repDateFilter.startYmd || String(dailyRows[0].date_key);
-      const rangeEnd = repDateFilter.endYmd || getManilaDateParts(new Date()).ymd;
-      let cursor = rangeStart;
-      let guard = 0;
-      while (cursor <= rangeEnd && guard < 366) {
-        dailyTrends.push({
-          date: cursor,
-          count: dailyCountMap.get(cursor) || 0,
-        });
-        cursor = addDaysYmd(cursor, 1);
-        guard++;
-      }
-    }
-
-    const monthExpr = pool.isPostgres
-      ? "TO_CHAR(created_at, 'YYYY-MM')"
-      : "DATE_FORMAT(created_at, '%Y-%m')";
-    const since12Months = new Date();
-    since12Months.setMonth(since12Months.getMonth() - 12);
-    const [monthlyTrends] = await pool.query(
-      `SELECT ${monthExpr} AS month_label, COUNT(*) AS count
-       FROM reports
-       WHERE created_at >= ?
-       GROUP BY month_label
-       ORDER BY month_label ASC`,
-      [since12Months]
-    );
-
-    const [locations] = await pool.query(
-      `SELECT COALESCE(NULLIF(r.address, ''), 'Barangay Bayanan') AS location_name, COUNT(DISTINCT r.id)::int AS count
-       FROM reports r
-       WHERE ${repDateFilter.clause}
-       GROUP BY location_name
-       ORDER BY count DESC
-       LIMIT 8`,
-      repDateFilter.params
-    );
-
-    const [[incAssignRow]] = await pool.query(
-      `SELECT 
-         COUNT(DISTINCT report_id) AS total_assignments,
-         COUNT(DISTINCT CASE WHEN assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene') THEN report_id END) AS active_assignments,
-         COUNT(DISTINCT CASE WHEN assignment_status = 'Completed' THEN report_id END) AS completed_assignments
-       FROM incident_assignments`
-    );
-
-    const [[resAssignRow]] = await pool.query(
-      `SELECT 
-         COUNT(DISTINCT rescue_id) AS total_assignments,
-         COUNT(DISTINCT CASE WHEN assignment_status IN ('Assigned', 'Accepted', 'En Route', 'On Scene') THEN rescue_id END) AS active_assignments,
-         COUNT(DISTINCT CASE WHEN assignment_status = 'Completed' THEN rescue_id END) AS completed_assignments
-       FROM rescue_assignments`
-    );
-
-    const totalAssignments =
-      Number((incAssignRow && incAssignRow.total_assignments) || 0) +
-      Number((resAssignRow && resAssignRow.total_assignments) || 0);
-    const activeAssignments =
-      Number((incAssignRow && incAssignRow.active_assignments) || 0) +
-      Number((resAssignRow && resAssignRow.active_assignments) || 0);
-    const completedAssignments =
-      Number((incAssignRow && incAssignRow.completed_assignments) || 0) +
-      Number((resAssignRow && resAssignRow.completed_assignments) || 0);
-
-    return res.json({
-      period,
-      summary: {
-        totalReports,
-        totalRescues,
-        totalEvents: totalReports + totalRescues,
-        totalAssignments,
-        activeAssignments,
-        completedAssignments,
-      },
-      categories,
-      categoryDistribution,
-      severities: [],
-      statuses,
-      rescuePriorities: [],
-      dailyTrends,
-      monthlyTrends,
-      locations,
-    });
+    const payload = await getComprehensiveAnalytics(req.query || {});
+    return res.json(payload);
   } catch (err) {
     console.error('[Admin API] getAdminAnalytics failed:', err.message);
     return res.status(503).json({ error: 'Unable to aggregate analytics from database.' });
@@ -3939,99 +3760,21 @@ async function getAdminAnalytics(req, res) {
 
 async function getMonthlyIncidentsByCategory(req, res) {
   try {
-    const manilaNow = getManilaDateParts(new Date());
-    const requestedYear = Number(req.query.year);
-    const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
-      ? requestedYear
-      : manilaNow.year;
-
-    const [yearRows] = await pool.query(
-      `SELECT DISTINCT EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Manila')::int AS yr
-       FROM reports
-       ORDER BY yr DESC`
-    );
-    const availableYearsSet = new Set(yearRows.map((r) => Number(r.yr)).filter(Number.isFinite));
-    availableYearsSet.add(manilaNow.year);
-    availableYearsSet.add(year);
-    const availableYears = Array.from(availableYearsSet).sort((a, b) => b - a);
-
-    const [catRows] = await pool.query(
-      'SELECT id, name FROM incident_categories ORDER BY id ASC'
-    );
-    const categoryOrder = [];
-    const seenCats = new Set();
-    catRows.forEach((c) => {
-      const normalized = normalizeCanonicalDisasterCategory(c.name) || String(c.name || '').trim();
-      if (normalized && !seenCats.has(normalized)) {
-        seenCats.add(normalized);
-        categoryOrder.push(normalized);
-      }
-    });
-
-    const [monthlyRows] = await pool.query(
-      `SELECT
-         EXTRACT(MONTH FROM r.created_at AT TIME ZONE 'Asia/Manila')::int AS month_num,
-         COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized') AS raw_category,
-         COUNT(DISTINCT r.id)::int AS count
-       FROM reports r
-       LEFT JOIN incident_categories ic ON ic.id = r.category_id
-       WHERE EXTRACT(YEAR FROM r.created_at AT TIME ZONE 'Asia/Manila')::int = ?
-       GROUP BY month_num, COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Uncategorized')
-       ORDER BY month_num ASC`,
-      [year]
-    );
-
-    const monthMaps = Array.from({ length: 12 }, () => new Map());
-    monthlyRows.forEach((row) => {
-      const mIdx = Number(row.month_num) - 1;
-      const count = Number(row.count || 0);
-      if (mIdx < 0 || mIdx >= 12 || count <= 0) return;
-      const cat = normalizeCanonicalDisasterCategory(row.raw_category) || String(row.raw_category || 'Uncategorized').trim();
-      if (!seenCats.has(cat)) {
-        seenCats.add(cat);
-        categoryOrder.push(cat);
-      }
-      monthMaps[mIdx].set(cat, (monthMaps[mIdx].get(cat) || 0) + count);
-    });
-
-    const MONTH_NAMES = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    const MONTH_SHORT = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-
-    let totalYearReports = 0;
-    const months = MONTH_NAMES.map((fullName, idx) => {
-      const map = monthMaps[idx];
-      let total = 0;
-      const segments = categoryOrder.map((cat) => {
-        const count = map.get(cat) || 0;
-        total += count;
-        return { category: cat, count };
-      });
-      totalYearReports += total;
-      return {
-        monthIndex: idx + 1,
-        monthLabel: MONTH_SHORT[idx],
-        monthFullName: fullName,
-        total,
-        segments,
-      };
-    });
-
-    return res.json({
-      year,
-      availableYears,
-      categories: categoryOrder,
-      months,
-      totalYearReports,
-    });
+    const payload = await getMonthlyIncidentsByCategoryWithComparison(req.query || {});
+    return res.json(payload);
   } catch (err) {
     console.error('[Admin API] getMonthlyIncidentsByCategory failed:', err.message);
     return res.status(503).json({ error: 'Unable to aggregate monthly incident categories from database.' });
+  }
+}
+
+async function getAdminAnalyticsDrilldown(req, res) {
+  try {
+    const payload = await getAnalyticsDrilldown(req.query || {});
+    return res.json(payload);
+  } catch (err) {
+    console.error('[Admin API] getAdminAnalyticsDrilldown failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load filtered analytics records.' });
   }
 }
 
@@ -5131,6 +4874,7 @@ module.exports = {
   createBroadcastCategory,
   getAdminAnalytics,
   getMonthlyIncidentsByCategory,
+  getAdminAnalyticsDrilldown,
   exportAdminAnalyticsCsv,
   buildDateFilterClause,
   getReportCategoryDistribution,

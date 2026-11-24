@@ -365,7 +365,7 @@ async function getComprehensiveAnalytics(query = {}) {
     `SELECT COUNT(DISTINCT r.id)::int AS total_incidents,
             COUNT(DISTINCT CASE WHEN r.source_rescue_id IS NOT NULL THEN r.id END)::int AS linked_rescue_incidents,
             COUNT(DISTINCT CASE WHEN LOWER(r.status) = 'pending' THEN r.id END)::int AS pending_reports,
-            COUNT(DISTINCT CASE WHEN LOWER(r.status) IN ('resolved', 'completed', 'closed') THEN r.id END)::int AS completed_incidents
+            COUNT(DISTINCT CASE WHEN r.source_rescue_id IS NULL AND LOWER(r.status) IN ('resolved', 'completed', 'closed') THEN r.id END)::int AS completed_incidents
      FROM reports r
      LEFT JOIN incident_categories ic ON ic.id = r.category_id
      WHERE ${incSql.clause}`,

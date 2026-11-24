@@ -55,7 +55,7 @@
     return data;
   }
 
-  function getCurrentFilterParams() {
+  function getFilterQueryParams() {
     const period = document.getElementById('analytics-period-select')?.value || 'this_month';
     const from = document.getElementById('analytics-date-from')?.value || '';
     const to = document.getElementById('analytics-date-to')?.value || '';
@@ -389,22 +389,24 @@
     }
 
     if (orgWrap) {
-      orgWrap.innerHTML = orgs
-        .map(
-          (o) => `
-          <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Organization: ${esc(o.organization)}', recordType: 'all', organization: '${esc(o.organization)}' })"
-            class="p-2.5 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-colors">
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-bold text-[#0f172a] truncate">${esc(o.organization)}</span>
-              <span class="text-[10px] font-semibold text-slate-500">${o.responderCount} responders</span>
-            </div>
-            <div class="text-[11px] text-slate-600 mt-1">
-              Completed: <strong>${fmtNum(o.completedCount)}</strong> • Active: <strong>${fmtNum(o.activeAssignments)}</strong> • Avg Response: <strong>${esc(fmtMin(o.avgResponseMinutes, o.responseSampleSize))}</strong>
-            </div>
-          </button>
-        `
-        )
-        .join('');
+      orgWrap.innerHTML = orgs.length
+        ? orgs
+            .map(
+              (o) => `
+              <button type="button" onclick="window.GeoSafeAdmin.openAnalyticsDrilldown({ title: 'Organization: ${esc(o.organization)}', recordType: 'all', organization: '${esc(o.organization)}' })"
+                class="p-2.5 rounded border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-colors">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-bold text-[#0f172a] truncate">${esc(o.organization)}</span>
+                  <span class="text-[10px] font-semibold text-slate-500">${o.responderCount} responders</span>
+                </div>
+                <div class="text-[11px] text-slate-600 mt-1">
+                  Completed: <strong>${fmtNum(o.completedCount)}</strong> • Active: <strong>${fmtNum(o.activeAssignments)}</strong> • Avg Response: <strong>${esc(fmtMin(o.avgResponseMinutes, o.responseSampleSize))}</strong>
+                </div>
+              </button>
+            `
+            )
+            .join('')
+        : '';
     }
   }
 
@@ -438,16 +440,26 @@
     if (!mapEl || typeof L === 'undefined') return;
 
     if (!state.geoMap) {
-      state.geoMap = L.map(mapEl, { zoomControl: true }).setView([14.413, 121.036], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(state.geoMap);
+      if (window.GeoSafeMapping && typeof window.GeoSafeMapping.createMap === 'function') {
+        state.geoMap = window.GeoSafeMapping.createMap('analytics-geo-map', {
+          center: [14.413, 121.036],
+          zoom: 15,
+          zoomControl: true,
+          scrollWheelZoom: false,
+          fitBoundary: true,
+        });
+      } else {
+        state.geoMap = L.map(mapEl, { zoomControl: true, scrollWheelZoom: false }).setView([14.413, 121.036], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        }).addTo(state.geoMap);
+      }
       state.geoMarkersLayer = L.layerGroup().addTo(state.geoMap);
     }
 
-    setTimeout(() => state.geoMap?.invalidateSize(), 120);
-    state.geoMarkersLayer.clearLayers();
+    setTimeout(() => state.geoMap?.invalidateSize(), 150);
+    if (state.geoMarkersLayer) state.geoMarkersLayer.clearLayers();
 
     const bounds = [];
     if (state.geoLayer === 'all' || state.geoLayer === 'incident') {
@@ -456,7 +468,7 @@
           radius: 6,
           color: '#164579',
           fillColor: '#2563EB',
-          fillOpacity: 0.75,
+          fillOpacity: 0.78,
           weight: 1.5,
         }).bindPopup(`<strong>${esc(p.referenceNumber || 'Incident')}</strong><br>${esc(p.category)} • ${esc(p.status)}<br>${esc(p.address)}`);
         state.geoMarkersLayer.addLayer(marker);
@@ -469,15 +481,19 @@
           radius: 6,
           color: '#991b1b',
           fillColor: '#DC2626',
-          fillOpacity: 0.8,
+          fillOpacity: 0.82,
           weight: 1.5,
         }).bindPopup(`<strong>${esc(p.referenceNumber || 'Rescue')}</strong><br>${esc(p.emergencyType)} • ${esc(p.status)}<br>${esc(p.address)}`);
         state.geoMarkersLayer.addLayer(marker);
         bounds.push([p.latitude, p.longitude]);
       });
     }
-    if (bounds.length > 0) {
-      state.geoMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
+    if (bounds.length > 0 && state.geoMap) {
+      setTimeout(() => {
+        try {
+          state.geoMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 16 });
+        } catch (_) {}
+      }, 180);
     }
   }
 
@@ -571,58 +587,71 @@
     `;
   }
 
-  async function refreshAllAnalytics() {
-    const params = getCurrentFilterParams();
-    try {
-      const data = await fetchJson(`/analytics?${params.toString()}`);
-      state.data = data;
+  function renderFromData(data) {
+    if (!data) return;
+    state.data = data;
 
-      if (data.filterOptions) {
-        populateFilterSelect('analytics-filter-category', data.filterOptions.categories, 'All Categories');
-        populateFilterSelect('analytics-filter-rescue-type', data.filterOptions.rescueTypes, 'All Rescue Types');
-        populateFilterSelect('analytics-filter-responder', data.filterOptions.responders, 'All Responders', null, (r) => ({
-          value: String(r.id),
-          label: r.badgeNumber ? `${r.name} (${r.badgeNumber})` : r.name,
-        }));
-        populateFilterSelect('analytics-filter-org', data.filterOptions.organizations, 'All Orgs');
-      }
-
-      renderAppliedRange(data);
-      renderOperationalSummary(data);
-      renderHorizontalBreakdown(data);
-      renderRescueAnalytics(data);
-      renderResponsePerformance(data);
-      renderResponderPerformance(data);
-      renderGeographicAnalytics(data);
-      renderCommunicationAnalytics(data);
-      renderActivityHeatmap(data);
-
-      // Update Monthly previous-year comparison badge when monthly data loads
-      const monthlyYear = document.getElementById('analytics-monthly-year-select')?.value || '';
-      fetchJson(`/analytics/monthly-categories${monthlyYear ? `?year=${encodeURIComponent(monthlyYear)}` : ''}`)
-        .then((mData) => {
-          const badge = document.getElementById('analytics-monthly-prev-year-badge');
-          if (badge) {
-            badge.textContent = mData.previousYearTotal > 0
-              ? `Stacked Jan–Dec (${mData.previousYear}: ${fmtNum(mData.previousYearTotal)} reports)`
-              : 'Stacked incident report counts by category (January–December)';
-          }
-        })
-        .catch(() => {});
-
-      // Render primary incident trend chart according to selected grain
-      if (state.incidentTrendGrain === 'weekly') {
-        renderSimpleBarSvg('analytics-daily-bar-chart', data.weeklyTrends || [], 'weekStart', 'No weekly incidents recorded.', '#0A58CA');
-        document.getElementById('analytics-daily-empty')?.classList.add('hidden');
-        document.getElementById('analytics-daily-bar-chart')?.classList.remove('hidden');
-      } else if (state.incidentTrendGrain === 'monthly') {
-        renderSimpleBarSvg('analytics-daily-bar-chart', data.monthlyTrends || [], 'month_label', 'No monthly incidents recorded.', '#0A58CA');
-        document.getElementById('analytics-daily-empty')?.classList.add('hidden');
-        document.getElementById('analytics-daily-bar-chart')?.classList.remove('hidden');
-      }
-    } catch (err) {
-      console.error('[GeoSafeAnalytics] refresh failed:', err.message);
+    if (data.filterOptions) {
+      populateFilterSelect('analytics-filter-category', data.filterOptions.categories, 'All Categories');
+      populateFilterSelect('analytics-filter-rescue-type', data.filterOptions.rescueTypes, 'All Rescue Types');
+      populateFilterSelect('analytics-filter-responder', data.filterOptions.responders, 'All Responders', null, (r) => ({
+        value: String(r.id),
+        label: r.badgeNumber ? `${r.name} (${r.badgeNumber})` : r.name,
+      }));
+      populateFilterSelect('analytics-filter-org', data.filterOptions.organizations, 'All Orgs');
     }
+
+    renderAppliedRange(data);
+    renderOperationalSummary(data);
+    renderHorizontalBreakdown(data);
+    renderRescueAnalytics(data);
+    renderResponsePerformance(data);
+    renderResponderPerformance(data);
+    renderGeographicAnalytics(data);
+    renderCommunicationAnalytics(data);
+    renderActivityHeatmap(data);
+
+    const monthlyYear = document.getElementById('analytics-monthly-year-select')?.value || '';
+    fetchJson(`/analytics/monthly-categories${monthlyYear ? `?year=${encodeURIComponent(monthlyYear)}` : ''}`)
+      .then((mData) => {
+        const badge = document.getElementById('analytics-monthly-prev-year-badge');
+        if (badge) {
+          badge.textContent = mData.previousYearTotal > 0
+            ? `Stacked Jan–Dec (${mData.previousYear}: ${fmtNum(mData.previousYearTotal)} reports)`
+            : 'Stacked incident report counts by category (January–December)';
+        }
+      })
+      .catch(() => {});
+
+    if (state.incidentTrendGrain === 'weekly') {
+      renderSimpleBarSvg('analytics-daily-bar-chart', data.weeklyTrends || [], 'weekStart', 'No weekly incidents recorded.', '#0A58CA');
+      document.getElementById('analytics-daily-empty')?.classList.add('hidden');
+      document.getElementById('analytics-daily-bar-chart')?.classList.remove('hidden');
+    } else if (state.incidentTrendGrain === 'monthly') {
+      renderSimpleBarSvg('analytics-daily-bar-chart', data.monthlyTrends || [], 'month_label', 'No monthly incidents recorded.', '#0A58CA');
+      document.getElementById('analytics-daily-empty')?.classList.add('hidden');
+      document.getElementById('analytics-daily-bar-chart')?.classList.remove('hidden');
+    }
+  }
+
+  function renderError(message) {
+    const msg = esc(message || 'Unable to load analytics data.');
+    const errBox = `<div class="p-4 text-center text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded">${msg}</div>`;
+    [
+      'analytics-rescue-trend-chart',
+      'analytics-rescue-status-list',
+      'analytics-rescue-locations-list',
+      'analytics-response-perf-grid',
+      'analytics-comm-summary',
+      'analytics-activity-heatmap',
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = errBox;
+    });
+    const respBody = document.getElementById('analytics-responder-perf-tbody');
+    if (respBody) respBody.innerHTML = `<tr><td colspan="7" class="px-3 py-4 text-center text-red-700 font-semibold">${msg}</td></tr>`;
+    const geoBody = document.getElementById('analytics-geo-areas-tbody');
+    if (geoBody) geoBody.innerHTML = `<tr><td colspan="4" class="px-3 py-4 text-center text-red-700 font-semibold">${msg}</td></tr>`;
   }
 
   async function loadDrilldownPage() {
@@ -634,7 +663,7 @@
 
     tbody.innerHTML = '<tr><td colspan="7" class="px-3 py-6 text-center text-slate-500">Loading matching records...</td></tr>';
 
-    const params = getCurrentFilterParams();
+    const params = getFilterQueryParams();
     Object.entries(state.drilldown.params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
     });
@@ -688,14 +717,15 @@
     });
   }
 
+  window.GeoSafeAnalytics = {
+    getFilterQueryParams,
+    renderFromData,
+    renderError,
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     wireFilterListeners();
     if (window.GeoSafeAdmin) {
-      const origLoad = window.GeoSafeAdmin.loadAnalyticsData;
-      window.GeoSafeAdmin.loadAnalyticsData = async function () {
-        if (typeof origLoad === 'function') await origLoad();
-        await refreshAllAnalytics();
-      };
       window.GeoSafeAdmin.resetAnalyticsFilters = function () {
         ['analytics-filter-category', 'analytics-filter-rescue-type', 'analytics-filter-status', 'analytics-filter-org'].forEach((id) => {
           const el = document.getElementById(id);

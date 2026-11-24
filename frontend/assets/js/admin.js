@@ -4218,7 +4218,9 @@
     const dateTo = document.getElementById('analytics-date-to')?.value || '';
 
     try {
-      const params = new URLSearchParams({ period, from: dateFrom, to: dateTo });
+      const params = window.GeoSafeAnalytics && typeof window.GeoSafeAnalytics.getFilterQueryParams === 'function'
+        ? window.GeoSafeAnalytics.getFilterQueryParams()
+        : new URLSearchParams({ period, from: dateFrom, to: dateTo });
       const data = await apiRequest(`/analytics?${params.toString()}`);
       state.analytics.data = data;
 
@@ -4289,6 +4291,10 @@
           locList.appendChild(item);
         });
       }
+
+      if (window.GeoSafeAnalytics && typeof window.GeoSafeAnalytics.renderFromData === 'function') {
+        window.GeoSafeAnalytics.renderFromData(data);
+      }
     } catch (err) {
       console.error('[Admin] loadAnalyticsData failed:', err.message);
       renderDailyIncidentsBarChart([], period, dateFrom, dateTo);
@@ -4298,6 +4304,9 @@
         null,
         { error: err.message, onRetry: 'window.GeoSafeAdmin.loadAnalyticsData()' }
       );
+      if (window.GeoSafeAnalytics && typeof window.GeoSafeAnalytics.renderError === 'function') {
+        window.GeoSafeAnalytics.renderError(err.message);
+      }
     }
   }
 

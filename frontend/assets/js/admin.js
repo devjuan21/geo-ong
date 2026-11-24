@@ -4976,12 +4976,43 @@
         document.getElementById('security-stat-success').textContent = data.securityStats.successLogins24h;
       }
 
-      // Editable settings from PostgreSQL system_settings
+      if (data.diagnostics) {
+        const d = data.diagnostics;
+        const st = d.storage || {};
+        const stEl = document.getElementById('diag-storage-status');
+        const bucketEl = document.getElementById('diag-storage-bucket');
+        const acctEl = document.getElementById('diag-accounts-summary');
+        const ticketsEl = document.getElementById('diag-open-tickets');
+        const auditEl = document.getElementById('diag-audit-summary');
+
+        if (stEl) {
+          if (st.mode === 'supabase' && st.category === 'OK') {
+            stEl.textContent = 'Supabase Private (Operational)';
+            stEl.className = 'font-bold text-emerald-600 text-right';
+          } else if (st.mode === 'local_fallback') {
+            stEl.textContent = 'Local Disk Fallback';
+            stEl.className = 'font-bold text-amber-600 text-right';
+          } else {
+            stEl.textContent = st.category ? `Unavailable (${st.category})` : 'Unavailable';
+            stEl.className = 'font-bold text-[#D93636] text-right';
+          }
+        }
+        if (bucketEl) bucketEl.textContent = st.bucket || '—';
+        if (acctEl) acctEl.textContent = `${d.totalAccounts ?? 0} total (${d.activeAccounts ?? 0} active)`;
+        if (ticketsEl) ticketsEl.textContent = String(d.openPasswordTickets ?? 0);
+        if (auditEl) {
+          const lastText = d.lastAuditAt ? formatDateTime(d.lastAuditAt) : 'None';
+          auditEl.textContent = `${d.auditEvents24h ?? 0} • ${lastText}`;
+        }
+      }
+
+      // Editable settings from PostgreSQL system_settings (shown only when present)
       const settingsList = data.settings || [];
       if (settingsList.length === 0) {
         listEl.classList.add('hidden');
-        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (emptyEl) emptyEl.classList.add('hidden');
       } else {
+        listEl.classList.remove('hidden');
         settingsList.forEach((st) => {
           const box = document.createElement('div');
           box.className = 'p-3.5 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2.5';

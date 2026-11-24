@@ -15,7 +15,7 @@ const {
   emitReportVerificationResult,
   emitIncidentResolved,
 } = require('../services/socketService');
-const { readPrivateIdentityPhoto } = require('../services/privateStorageService');
+const { readPrivateIdentityPhoto, diagnoseStorageConnectivity } = require('../services/privateStorageService');
 const { expireDueBroadcasts } = require('../services/broadcastExpirationService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { defaultColorForName } = require('../config/advisoryCategories');
@@ -4169,6 +4169,43 @@ async function getAdminSystemSettings(req, res) {
        LIMIT 10`
     );
 
+    const [[usersCountRow]] = await pool.query(
+      `SELECT COUNT(*) AS total_accounts,
+              SUM(CASE WHEN LOWER(COALESCE(account_status, status, 'active')) = 'active' THEN 1 ELSE 0 END) AS active_accounts
+       FROM users`
+    );
+
+    let openPasswordTickets = 0;
+    try {
+      const [[ticketsRow]] = await pool.query(
+        "SELECT COUNT(*) AS count FROM password_assistance_tickets WHERE LOWER(COALESCE(status, 'pending_review')) IN ('pending', 'pending_review', 'open')"
+      );
+      openPasswordTickets = Number((ticketsRow && ticketsRow.count) || 0);
+    } catch (_) {
+      openPasswordTickets = 0;
+    }
+
+    let lastAuditAt = null;
+    let auditEvents24h = 0;
+    try {
+      const [[auditRow]] = await pool.query(
+        'SELECT MAX(created_at) AS last_audit_at, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS events_24h FROM audit_logs',
+        [since24Hours]
+      );
+      lastAuditAt = (auditRow && auditRow.last_audit_at) || null;
+      auditEvents24h = Number((auditRow && auditRow.events_24h) || 0);
+    } catch (_) {
+      lastAuditAt = null;
+      auditEvents24h = 0;
+    }
+
+    const storageDiag = await diagnoseStorageConnectivity().catch((err) => ({
+      configured: false,
+      mode: 'unavailable',
+      category: 'DIAGNOSTIC_ERROR',
+      message: err.message || 'Storage diagnostic failed',
+    }));
+
     return res.json({
       settings: settingsRows,
       health: {
@@ -4181,6 +4218,20 @@ async function getAdminSystemSettings(req, res) {
       securityStats: {
         failedLogins24h: Number((failedLoginsRow && failedLoginsRow.count) || 0),
         successLogins24h: Number((successLoginsRow && successLoginsRow.count) || 0),
+      },
+      diagnostics: {
+        storage: {
+          configured: Boolean(storageDiag.configured),
+          mode: storageDiag.mode || 'unknown',
+          bucket: storageDiag.bucket || null,
+          category: storageDiag.category || 'UNKNOWN',
+          message: storageDiag.message || '',
+        },
+        totalAccounts: Number((usersCountRow && usersCountRow.total_accounts) || 0),
+        activeAccounts: Number((usersCountRow && usersCountRow.active_accounts) || 0),
+        openPasswordTickets,
+        auditEvents24h,
+        lastAuditAt,
       },
       recentSecurityEvents,
     });

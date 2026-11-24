@@ -1594,23 +1594,39 @@
         <!-- Top Dashboard Row: 12-Column Grid (6 / 3 / 3 on >=1200px, 2-col on tablet, 1-col on mobile) -->
         <div class="grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-12 gap-5 items-stretch">
 
-          <!-- System Configuration (6 columns) -->
+          <!-- System & Storage Diagnostics (6 columns) -->
           <div class="md:col-span-2 min-[1200px]:col-span-6 flex flex-col bg-white rounded-[10px] p-5 sm:p-6 border border-slate-200 shadow-subtle">
-            <div class="border-b border-slate-200 pb-3 mb-4">
-              <h2 class="text-sm font-bold text-[#202020] uppercase tracking-wider">System Configuration</h2>
-              <p class="text-xs text-[#777777] mt-1">Manage active operational parameters for Barangay Bayanan EOC.</p>
+            <div class="border-b border-slate-200 pb-3 mb-3">
+              <h2 class="text-sm font-bold text-[#202020] uppercase tracking-wider">System &amp; Storage Diagnostics</h2>
+              <p class="text-xs text-[#777777] mt-1">Live identity storage status, operational totals, and audit activity.</p>
             </div>
 
-            <div id="settings-save-feedback" class="hidden mb-3 p-2.5 rounded-md text-xs font-semibold"></div>
-
-            <div id="system-settings-list" class="space-y-3 flex-1"></div>
-
-            <div id="system-settings-empty" class="hidden flex-1 flex flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-5 py-6 text-center">
-              <p class="text-xs font-bold text-[#202020]">No Configurable Settings</p>
-              <p class="text-xs text-[#64748B] mt-1 max-w-sm leading-relaxed">There are currently no active settings available to manage.</p>
+            <div class="divide-y divide-slate-200 text-xs flex-1 flex flex-col justify-center">
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Identity Document Storage</span>
+                <span id="diag-storage-status" class="font-bold text-[#64748B] text-right">Checking...</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Storage Bucket</span>
+                <span id="diag-storage-bucket" class="font-mono font-semibold text-[#202020]">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Registered Accounts</span>
+                <span id="diag-accounts-summary" class="font-bold text-[#202020] tabular-nums">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Open Password Tickets</span>
+                <span id="diag-open-tickets" class="font-bold text-[#202020] tabular-nums">—</span>
+              </div>
+              <div class="flex items-center justify-between gap-2 py-2.5">
+                <span class="text-[#64748B] font-medium">Audit Events (24H) / Last Recorded</span>
+                <span id="diag-audit-summary" class="font-semibold text-[#202020] text-right">—</span>
+              </div>
             </div>
 
-            <div id="system-settings-loading" class="p-6 text-center text-xs text-[#777777]">Loading system settings...</div>
+            <div id="settings-save-feedback" class="hidden mt-3 p-2.5 rounded-md text-xs font-semibold"></div>
+            <div id="system-settings-list" class="hidden mt-3 pt-3 border-t border-slate-200 space-y-3"></div>
+            <div id="system-settings-loading" class="hidden"></div>
           </div>
 
           <!-- Database & Server Health (3 columns) -->
@@ -3442,7 +3458,7 @@
   <script src="./assets/js/store.js"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/advisory-categories.js"></script>
-  <script src="./assets/js/admin.js?v=20261124g"></script>
+  <script src="./assets/js/admin.js?v=20261124h"></script>
 </body>
 
 </html>

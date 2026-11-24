@@ -324,15 +324,9 @@ async function login(req, res) {
         req,
         details: `Account status is ${effectiveStatus}`,
       });
-      if (effectiveStatus === 'pending_verification' || user.status === 'pending_verification') {
-        return res.status(403).json({
-          error: 'Your account is awaiting Administrator verification. You will be notified once reviewed.',
-          accountStatus: 'pending_verification',
-        });
-      }
       if (effectiveStatus === 'rejected' || user.status === 'rejected') {
         return res.status(403).json({
-          error: 'Your resident verification application was not approved. Please contact the Barangay Bayanan EOC.',
+          error: 'Account access was not approved. Please contact the Barangay Bayanan EOC.',
           accountStatus: 'rejected',
         });
       }

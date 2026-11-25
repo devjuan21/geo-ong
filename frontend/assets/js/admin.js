@@ -439,13 +439,15 @@
       loadAnalyticsData();
     } else if (target === 'settings') {
       loadSystemSettings();
+      resetFacilityForm();
+      loadAdminFacilitiesList();
     } else if (target === 'audit') {
       loadAuditLogs();
     } else if (target === 'messages') {
       loadAdminConversationsList();
     } else if (target === 'facilities') {
-      resetFacilityForm();
-      loadAdminFacilitiesList();
+      switchSection('settings');
+      return;
     }
   }
 

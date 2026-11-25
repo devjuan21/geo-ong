@@ -477,7 +477,7 @@
     if (window.GeoSafeAdmin) {
       window.GeoSafeAdmin.switchSettingsTab = function (tab) {
         state.activeTab = tab;
-        const panels = ['overview', 'facilities', 'evacuation', 'incident-cats', 'rescue-cats', 'broadcast-cats'];
+        const panels = ['overview', 'evacuation', 'incident-cats', 'rescue-cats', 'broadcast-cats'];
         panels.forEach((p) => {
           document.getElementById(`settings-tab-${p}`)?.classList.toggle('hidden', p !== tab);
         });

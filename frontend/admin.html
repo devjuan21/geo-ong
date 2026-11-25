@@ -492,18 +492,6 @@
           </span>
         </button>
 
-        <!-- 10. Healthcare Facilities -->
-        <button type="button" data-admin-nav="facilities" title="Healthcare Facilities"
-          class="admin-sidebar-btn w-full flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold text-[#555555] hover:bg-slate-100 hover:text-[#202020] transition-all">
-          <span class="flex items-center gap-3 min-w-0">
-            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h6m-3-3v6m-3 4h6">
-              </path>
-            </svg>
-            <span class="sidebar-label-wrap truncate">Healthcare Facilities</span>
-          </span>
-        </button>
       </nav>
     </div>
   </aside>
@@ -1787,9 +1775,7 @@
         <!-- Centralized Settings & Maintenance Tabs -->
         <div class="bg-white rounded-[10px] border border-slate-200 shadow-subtle p-1.5 flex flex-wrap gap-1.5">
           <button type="button" data-settings-tab="overview" onclick="window.GeoSafeAdmin.switchSettingsTab('overview')"
-            class="px-3 py-1.5 rounded-md text-xs font-bold bg-[#0f172a] text-white transition-colors">System &amp; Diagnostics</button>
-          <button type="button" data-settings-tab="facilities" onclick="window.GeoSafeAdmin.switchSettingsTab('facilities')"
-            class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Health Facilities</button>
+            class="px-3 py-1.5 rounded-md text-xs font-bold bg-[#0f172a] text-white transition-colors">System &amp; Facilities</button>
           <button type="button" data-settings-tab="evacuation" onclick="window.GeoSafeAdmin.switchSettingsTab('evacuation')"
             class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Evacuation Centers</button>
           <button type="button" data-settings-tab="incident-cats" onclick="window.GeoSafeAdmin.switchSettingsTab('incident-cats')"
@@ -1912,42 +1898,118 @@
             <div id="security-events-empty" class="hidden p-5 text-center text-xs text-[#777777]">No recent security events recorded.</div>
           </div>
         </div>
-        </div>
 
-        <!-- TAB 2: HEALTH FACILITIES -->
-        <div id="settings-tab-facilities" class="hidden bg-white rounded-[10px] border border-slate-200 shadow-subtle p-5 space-y-4">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-            <div>
-              <h3 class="text-sm font-bold text-[#202020] uppercase tracking-wider">Health Facilities Directory</h3>
-              <p class="text-xs text-[#777777]">Manage Barangay Bayanan &amp; Muntinlupa hospitals and health centers.</p>
+        <!-- Healthcare & Hospital Directory (Integrated in System Configuration) -->
+        <div class="bg-white rounded-lg border border-slate-200 shadow-subtle overflow-hidden">
+          <div
+            class="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h2 class="text-sm sm:text-base font-bold text-[#0f172a]">Healthcare &amp; Hospital Directory</h2>
+              <p class="text-[11px] text-slate-500">Manage verified hospitals, health centers, and coordinate/status
+                verification across GeoSafe.</p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <input id="maint-facilities-search" type="text" placeholder="Search facilities..."
-                oninput="window.GeoSafeAdmin.filterMaintenanceTable('facilities')"
-                class="h-8 px-2.5 rounded-md border border-slate-300 text-xs text-[#202020] w-44">
-              <button type="button" onclick="window.GeoSafeAdmin.openMaintenanceModal('facility')"
-                class="h-8 px-3 rounded-md bg-[#0f172a] hover:bg-[#1e293b] text-white text-xs font-bold">
-                + Add Facility
-              </button>
+            <button type="button" onclick="window.GeoSafeAdmin.loadAdminFacilitiesList()"
+              class="h-8 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a] shrink-0">
+              Refresh List
+            </button>
+          </div>
+
+          <div class="p-4 sm:p-5 space-y-5 text-xs">
+            <!-- Add / Edit Facility Form -->
+            <form id="admin-facility-form" onsubmit="window.GeoSafeAdmin.saveAdminFacility(event)"
+              class="p-4 rounded-lg border border-slate-200 bg-slate-50/70 space-y-3">
+              <input type="hidden" id="fac-edit-id" value="">
+              <div class="flex items-center justify-between gap-2">
+                <span id="fac-form-title" class="text-xs font-bold text-[#0f172a]">Add Verified Hospital /
+                  Facility</span>
+                <button type="button" onclick="window.GeoSafeAdmin.resetFacilityForm()"
+                  class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Clear Form</button>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Name *</label>
+                  <input id="fac-name" type="text" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Type *</label>
+                  <select id="fac-type"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Hospital">Hospital</option>
+                    <option value="Health Center">Health Center</option>
+                    <option value="Medical Clinic">Medical Clinic</option>
+                    <option value="Birthing Home">Birthing Home</option>
+                    <option value="Laboratory">Laboratory</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Verification Status</label>
+                  <select id="fac-verification"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Verified">Verified</option>
+                    <option value="Pending Verification">Pending Verification</option>
+                    <option value="Unverified">Unverified</option>
+                    <option value="Flagged">Flagged</option>
+                  </select>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Complete Address *</label>
+                  <input id="fac-address" type="text" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operating Hours</label>
+                  <input id="fac-hours" type="text" placeholder="e.g. 24 Hours or Unverified"
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Latitude *</label>
+                  <input id="fac-lat" type="number" step="any" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Longitude *</label>
+                  <input id="fac-lng" type="number" step="any" required
+                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operational Status</label>
+                  <select id="fac-status"
+                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
+                    <option value="Operational">Operational</option>
+                    <option value="Under Assessment">Under Assessment</option>
+                    <option value="Full Capacity">Full Capacity</option>
+                    <option value="Critical Supplies">Critical Supplies</option>
+                    <option value="Closed">Closed (Deactivated)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <label class="inline-flex items-center gap-2 text-xs font-semibold text-[#0f172a]">
+                  <input id="fac-emergency-capable" type="checkbox">
+                  <span>Emergency Department Capable</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <button type="button" id="fac-cancel-btn" onclick="window.GeoSafeAdmin.resetFacilityForm()"
+                    class="hidden h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a]">
+                    Cancel Edit
+                  </button>
+                  <button type="submit" id="fac-submit-btn"
+                    class="h-8 px-4 rounded bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                    Save Facility Record
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <!-- Directory List -->
+            <div class="space-y-2">
+              <div class="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Registered Healthcare
+                Facilities</div>
+              <div id="admin-facility-list" class="space-y-2"></div>
             </div>
           </div>
-          <div id="maint-facilities-feedback" class="hidden p-2.5 rounded-md text-xs font-semibold"></div>
-          <div class="overflow-x-auto border border-slate-200 rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
-              <thead class="bg-slate-50">
-                <tr>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Facility</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Type</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Address</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Coordinates</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Contact</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase">Status</th>
-                  <th class="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="maint-facilities-tbody" class="divide-y divide-slate-100"></tbody>
-            </table>
-          </div>
+        </div>
         </div>
 
         <!-- TAB 3: EVACUATION CENTERS -->
@@ -2307,119 +2369,7 @@
 
       <!-- ================================================================== -->
       <!-- SECTION 10: HEALTHCARE & HOSPITAL DIRECTORY (Independent View)     -->
-      <!-- ================================================================== -->
-      <section id="section-facilities" class="space-y-6 hidden min-w-0 max-w-full" hidden>
-        <div class="bg-white rounded-lg border border-slate-200 shadow-subtle overflow-hidden">
-          <div
-            class="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-            <div class="min-w-0">
-              <h2 class="text-sm sm:text-base font-bold text-[#0f172a]">Healthcare &amp; Hospital Directory</h2>
-              <p class="text-[11px] text-slate-500">Manage verified hospitals, health centers, and coordinate/status
-                verification across GeoSafe.</p>
-            </div>
-            <button type="button" onclick="window.GeoSafeAdmin.loadAdminFacilitiesList()"
-              class="h-8 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a] shrink-0">
-              Refresh List
-            </button>
-          </div>
 
-          <div class="p-4 sm:p-5 space-y-5 text-xs">
-            <!-- Add / Edit Facility Form -->
-            <form id="admin-facility-form" onsubmit="window.GeoSafeAdmin.saveAdminFacility(event)"
-              class="p-4 rounded-lg border border-slate-200 bg-slate-50/70 space-y-3">
-              <input type="hidden" id="fac-edit-id" value="">
-              <div class="flex items-center justify-between gap-2">
-                <span id="fac-form-title" class="text-xs font-bold text-[#0f172a]">Add Verified Hospital /
-                  Facility</span>
-                <button type="button" onclick="window.GeoSafeAdmin.resetFacilityForm()"
-                  class="text-[11px] font-semibold text-[#0A58CA] hover:underline">Clear Form</button>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Name *</label>
-                  <input id="fac-name" type="text" required
-                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Facility Type *</label>
-                  <select id="fac-type"
-                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
-                    <option value="Hospital">Hospital</option>
-                    <option value="Health Center">Health Center</option>
-                    <option value="Medical Clinic">Medical Clinic</option>
-                    <option value="Birthing Home">Birthing Home</option>
-                    <option value="Laboratory">Laboratory</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Verification Status</label>
-                  <select id="fac-verification"
-                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
-                    <option value="Verified">Verified</option>
-                    <option value="Pending Verification">Pending Verification</option>
-                    <option value="Unverified">Unverified</option>
-                    <option value="Flagged">Flagged</option>
-                  </select>
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Complete Address *</label>
-                  <input id="fac-address" type="text" required
-                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operating Hours</label>
-                  <input id="fac-hours" type="text" placeholder="e.g. 24 Hours or Unverified"
-                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Latitude *</label>
-                  <input id="fac-lat" type="number" step="any" required
-                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Longitude *</label>
-                  <input id="fac-lng" type="number" step="any" required
-                    class="w-full h-8 px-2.5 rounded border border-slate-300 bg-white text-xs">
-                </div>
-                <div>
-                  <label class="text-[10px] font-bold text-slate-600 uppercase block mb-1">Operational Status</label>
-                  <select id="fac-status"
-                    class="w-full h-8 px-2 rounded border border-slate-300 bg-white text-xs font-semibold">
-                    <option value="Operational">Operational</option>
-                    <option value="Under Assessment">Under Assessment</option>
-                    <option value="Full Capacity">Full Capacity</option>
-                    <option value="Critical Supplies">Critical Supplies</option>
-                    <option value="Closed">Closed (Deactivated)</option>
-                  </select>
-                </div>
-              </div>
-              <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <label class="inline-flex items-center gap-2 text-xs font-semibold text-[#0f172a]">
-                  <input id="fac-emergency-capable" type="checkbox">
-                  <span>Emergency Department Capable</span>
-                </label>
-                <div class="flex items-center gap-2">
-                  <button type="button" id="fac-cancel-btn" onclick="window.GeoSafeAdmin.resetFacilityForm()"
-                    class="hidden h-8 px-3.5 rounded border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-[#0f172a]">
-                    Cancel Edit
-                  </button>
-                  <button type="submit" id="fac-submit-btn"
-                    class="h-8 px-4 rounded bg-[#0A58CA] hover:bg-[#084298] text-white text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed">
-                    Save Facility Record
-                  </button>
-                </div>
-              </div>
-            </form>
-
-            <!-- Directory List -->
-            <div class="space-y-2">
-              <div class="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Registered Healthcare
-                Facilities</div>
-              <div id="admin-facility-list" class="space-y-2"></div>
-            </div>
-          </div>
-        </div>
-      </section>
 
     </main>
 
@@ -3896,9 +3846,9 @@
     </form>
   </div>
 
-  <script src="./assets/js/admin.js?v=20261124i"></script>
+  <script src="./assets/js/admin.js?v=20261125b"></script>
   <script src="./assets/js/admin-analytics.js?v=20261124b"></script>
-  <script src="./assets/js/admin-maintenance.js?v=20261125a"></script>
+  <script src="./assets/js/admin-maintenance.js?v=20261125b"></script>
 </body>
 
 </html>

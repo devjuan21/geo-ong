@@ -95,6 +95,21 @@
       : '<tr><td colspan="7" class="px-3 py-6 text-center text-slate-500">No health facilities found.</td></tr>';
   }
 
+  function evacStatusBadge(status) {
+    const s = String(status || 'Operational');
+    const low = s.toLowerCase();
+    if (low === 'full') {
+      return '<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase">Full</span>';
+    }
+    if (low === 'temporarily closed') {
+      return '<span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-bold uppercase">Temporarily Closed</span>';
+    }
+    if (low === 'inactive' || low.includes('closed')) {
+      return `<span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold uppercase">${esc(s)}</span>`;
+    }
+    return `<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">${esc(s)}</span>`;
+  }
+
   function renderEvacTable() {
     const tbody = document.getElementById('maint-evac-tbody');
     if (!tbody) return;
@@ -103,19 +118,20 @@
     tbody.innerHTML = rows.length
       ? rows
           .map((e) => {
-            const isActive = !String(e.status || '').toLowerCase().includes('closed');
+            const low = String(e.status || '').toLowerCase();
+            const isInactive = low === 'inactive' || low.includes('closed');
             return `
             <tr class="hover:bg-slate-50">
               <td class="px-3 py-2.5 font-bold text-[#202020]">${esc(e.name)}</td>
               <td class="px-3 py-2.5 text-slate-600">${esc(e.address || 'Barangay Bayanan')}</td>
               <td class="px-3 py-2.5 font-mono text-[11px] text-slate-500">${Number(e.latitude).toFixed(5)}, ${Number(e.longitude).toFixed(5)}</td>
-              <td class="px-3 py-2.5">${statusBadge(isActive, e.status || 'Open - Accommodating', e.status || 'Full / Closed')}</td>
+              <td class="px-3 py-2.5">${evacStatusBadge(e.status)}</td>
               <td class="px-3 py-2.5 text-right whitespace-nowrap space-x-1.5">
                 <button type="button" onclick="window.GeoSafeAdmin.openMaintenanceModal('evac', ${e.id})"
                   class="px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-[11px] font-bold text-[#202020]">Edit</button>
-                <button type="button" onclick="window.GeoSafeAdmin.toggleMaintenanceStatus('evac', ${e.id}, ${!isActive})"
-                  class="px-2.5 py-1 rounded border ${isActive ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} text-[11px] font-bold">
-                  ${isActive ? 'Deactivate' : 'Activate'}
+                <button type="button" onclick="window.GeoSafeAdmin.toggleMaintenanceStatus('evac', ${e.id}, ${isInactive})"
+                  class="px-2.5 py-1 rounded border ${!isInactive ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} text-[11px] font-bold">
+                  ${!isInactive ? 'Deactivate' : 'Activate'}
                 </button>
               </td>
             </tr>`;
@@ -280,10 +296,16 @@
     } else if (kind === 'evac') {
       rec = id ? state.evac.find((x) => Number(x.id) === Number(id)) : null;
       titleEl.textContent = rec ? 'Edit Evacuation Center' : 'Add Evacuation Center';
+      const curRaw = String(rec?.status || 'Operational');
+      const curOpt = curRaw === 'Open - Accommodating' ? 'Operational' : curRaw === 'Full / Closed' ? 'Inactive' : curRaw;
       fieldsEl.innerHTML = [
         fieldHtml('m-evac-name', 'Center Name *', rec?.name || '', 'text', 'required'),
         fieldHtml('m-evac-addr', 'Address *', rec?.address || '', 'text', 'required'),
         `<div class="grid grid-cols-2 gap-2.5">${fieldHtml('m-evac-lat', 'Latitude *', rec?.latitude ?? '', 'number', 'step="any" required')}${fieldHtml('m-evac-lng', 'Longitude *', rec?.longitude ?? '', 'number', 'step="any" required')}</div>`,
+        `<div><label for="m-evac-status" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Operational Status</label>
+          <select id="m-evac-status" class="w-full h-9 px-3 rounded border border-slate-300 text-xs bg-white font-semibold text-[#202020]">
+            ${['Operational', 'Full', 'Temporarily Closed', 'Inactive'].map((st) => `<option value="${st}" ${curOpt === st ? 'selected' : ''}>${st}</option>`).join('')}
+          </select></div>`,
       ].join('');
     } else if (kind === 'incident-cat') {
       rec = id ? state.incidentCats.find((x) => Number(x.id) === Number(id)) : null;
@@ -363,6 +385,7 @@
           address: document.getElementById('m-evac-addr').value.trim(),
           latitude: Number(document.getElementById('m-evac-lat').value),
           longitude: Number(document.getElementById('m-evac-lng').value),
+          status: document.getElementById('m-evac-status').value,
         };
         const res = await apiCall(id ? `/evacuation-centers/${id}` : '/evacuation-centers', {
           method: id ? 'PATCH' : 'POST',
@@ -437,7 +460,7 @@
       } else if (kind === 'evac') {
         const res = await apiCall(`/evacuation-centers/${id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ status: nextActive ? 'Open - Accommodating' : 'Full / Closed' }),
+          body: JSON.stringify({ status: nextActive ? 'Operational' : 'Inactive' }),
         });
         showFeedback('maint-evac-feedback', res.message || 'Evacuation center status updated.');
         await loadTabData('evacuation');

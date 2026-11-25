@@ -2,15 +2,27 @@ const pool = require('../models/db');
 const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
 
 function normalizeEvacStatus(status) {
-  if (!status) return 'Open - Accommodating';
+  if (!status) return 'Operational';
   const s = String(status).trim();
-  const valid = ['Open - Accommodating', 'Full / Closed', 'Standby'];
+  const valid = [
+    'Operational',
+    'Full',
+    'Temporarily Closed',
+    'Inactive',
+    'Open - Accommodating',
+    'Full / Closed',
+    'Standby',
+  ];
   if (valid.includes(s)) return s;
   const lower = s.toLowerCase();
-  if (lower.includes('open') || lower.includes('accommodat')) return 'Open - Accommodating';
-  if (lower.includes('full') || lower.includes('close')) return 'Full / Closed';
+  if (lower === 'full') return 'Full';
+  if (lower.includes('temporarily') || lower.includes('temp')) return 'Temporarily Closed';
+  if (lower === 'inactive') return 'Inactive';
+  if (lower.includes('full') && lower.includes('close')) return 'Full / Closed';
+  if (lower.includes('close')) return 'Temporarily Closed';
+  if (lower.includes('open') || lower.includes('accommodat') || lower.includes('operational')) return 'Operational';
   if (lower.includes('standby')) return 'Standby';
-  return 'Open - Accommodating';
+  return 'Operational';
 }
 
 function enrichEvacRow(row, facilities = []) {
@@ -230,6 +242,9 @@ async function updateEvacuationCenter(req, res) {
     }
 
     if (status !== undefined) {
+      if (String(req.user?.role || '').toLowerCase() !== 'admin') {
+        return res.status(403).json({ error: 'Only an Administrator can change the operational status of an evacuation center.' });
+      }
       updates.push('status = ?');
       params.push(normalizeEvacStatus(status));
     }

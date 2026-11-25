@@ -250,11 +250,19 @@ function renderMapMarkers() {
       });
 
       const m = L.marker([center.coordinates.lat, center.coordinates.lng], { icon: shelterIcon });
+      const statusLabel = center.status || 'Operational';
+      const statusColorClass = (statusLabel === 'Operational' || statusLabel === 'Open - Accommodating')
+        ? 'text-emerald-600'
+        : statusLabel === 'Full'
+          ? 'text-amber-600'
+          : statusLabel === 'Temporarily Closed'
+            ? 'text-rose-600'
+            : 'text-slate-500';
       m.bindPopup(`
         <div class="text-xs p-1">
           <strong class="text-emerald-800 block">${center.name}</strong>
           <span class="text-[10px] text-[#777777] block">${center.address || 'Barangay Bayanan'}</span>
-          <span class="text-[10px] font-bold text-emerald-600">${center.status || 'Open - Accommodating'}</span>
+          <span class="text-[10px] font-bold ${statusColorClass}">${statusLabel}</span>
         </div>
       `);
       markerLayerGroup.addLayer(m);

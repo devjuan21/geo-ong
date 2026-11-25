@@ -863,16 +863,22 @@ const GeoSafeUI = {
   /**
    * Render an evacuation center status badge HTML snippet
    */
-  renderCenterStatusBadge(status = 'Open') {
-    const normalized = String(status || 'Open');
+  renderCenterStatusBadge(status = 'Operational') {
+    const normalized = String(status || 'Operational');
     const styles = {
+      'Operational': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Open - Accommodating': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'Open': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'Available': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Full': 'bg-amber-100 text-amber-800 border-amber-200',
       'Limited': 'bg-amber-100 text-amber-800 border-amber-200',
-      'Full': 'bg-rose-100 text-rose-700 border-rose-200',
+      'Temporarily Closed': 'bg-rose-100 text-rose-700 border-rose-200',
+      'Inactive': 'bg-slate-100 text-slate-600 border-slate-200',
+      'Full / Closed': 'bg-slate-100 text-slate-600 border-slate-200',
+      'Standby': 'bg-slate-100 text-slate-600 border-slate-200',
       'Closed': 'bg-slate-100 text-slate-600 border-slate-200'
     };
-    const cls = styles[normalized] || styles.Open;
+    const cls = styles[normalized] || styles.Operational;
     return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${cls}">${normalized}</span>`;
   },
 

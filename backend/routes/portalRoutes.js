@@ -1235,8 +1235,8 @@ router.get('/emergency-facilities', async (req, res) => {
             lat: Number(e.latitude),
             lng: Number(e.longitude),
           },
-          is_operational: e.status === 'Full / Closed' ? 0 : 1,
-          isOperational: e.status !== 'Full / Closed',
+          is_operational: ['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(e.status) ? 0 : 1,
+          isOperational: !['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(e.status),
         })),
     ];
 
@@ -3444,9 +3444,9 @@ router.post('/responder/assignments/:id/outcome', requireRole('responder', 'admi
           return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
         }
         const ec = ecRows[0];
-        if (ec.status === 'Full / Closed') {
+        if (['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(ec.status)) {
           await conn.rollback();
-          return res.status(400).json({ error: `${ec.name} is currently Full / Closed.` });
+          return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and cannot accept new evacuation assignments.` });
         }
         validatedTransports.push({
           destinationCategory: cat,
@@ -3753,9 +3753,9 @@ router.post('/responder/assignments/:id/transports', requireRole('responder', 'a
         return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
       }
       const ec = ecRows[0];
-      if (ec.status === 'Full / Closed') {
+      if (['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(ec.status)) {
         await conn.rollback();
-        return res.status(400).json({ error: `${ec.name} is currently Full / Closed.` });
+        return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and cannot accept new evacuation assignments.` });
       }
       destData = {
         hospitalId: null,

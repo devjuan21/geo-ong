@@ -102,7 +102,15 @@ async function loadEvacuationCenters() {
 function filterEvacuationCenters(status) {
   let filtered = allCenters;
   if (status !== 'All') {
-    filtered = allCenters.filter(c => c.status.toLowerCase().includes(status.toLowerCase()));
+    const target = String(status || '').trim().toLowerCase();
+    filtered = allCenters.filter(c => {
+      const val = String(c.status || '').trim().toLowerCase();
+      if (target === 'operational') return val === 'operational' || val === 'open - accommodating';
+      if (target === 'full') return val === 'full' || val === 'full / closed';
+      if (target === 'temporarily closed') return val === 'temporarily closed' || val === 'standby';
+      if (target === 'inactive') return val === 'inactive';
+      return val === target;
+    });
   }
   renderCenterCards(filtered);
 }
@@ -119,12 +127,20 @@ function renderMapMarkers(centers) {
   centers.forEach(c => {
     if (!c.coordinates) return;
 
+    const statusText = String(c.status || 'Operational');
+    const statusCls = (statusText === 'Operational' || statusText === 'Open - Accommodating')
+      ? 'text-emerald-700'
+      : statusText === 'Full'
+        ? 'text-amber-700'
+        : statusText === 'Temporarily Closed'
+          ? 'text-rose-700'
+          : 'text-slate-600';
     const popupHtml = `
       <div class="p-1 font-sans text-xs">
         <h4 class="font-bold text-slate-900">${c.name}</h4>
         <p class="text-slate-600 mt-0.5">${c.address}</p>
         <div class="mt-1.5 flex items-center justify-between">
-          <span class="font-bold ${c.status === 'Open - Accommodating' ? 'text-emerald-700' : 'text-amber-700'}">${c.status}</span>
+          <span class="font-bold ${statusCls}">${statusText}</span>
         </div>
       </div>
     `;

@@ -630,7 +630,7 @@ function getCenterCoords(center) {
 
 function isActiveDestinationCenter(center) {
   const status = String((center && center.status) || '').trim().toLowerCase();
-  return status === 'open - accommodating' || status === 'active' || status === 'open';
+  return status === 'operational' || status === 'open - accommodating' || status === 'active' || status === 'open';
 }
 
 function isBayananCenter(center) {

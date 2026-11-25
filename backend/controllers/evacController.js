@@ -4,41 +4,34 @@ const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/b
 function normalizeEvacStatus(status) {
   if (!status) return 'Open - Accommodating';
   const s = String(status).trim();
-  const valid = ['Open - Accommodating', 'Near Capacity', 'Full / Closed', 'Standby'];
+  const valid = ['Open - Accommodating', 'Full / Closed', 'Standby'];
   if (valid.includes(s)) return s;
   const lower = s.toLowerCase();
   if (lower.includes('open') || lower.includes('accommodat')) return 'Open - Accommodating';
-  if (lower.includes('near')) return 'Near Capacity';
   if (lower.includes('full') || lower.includes('close')) return 'Full / Closed';
   if (lower.includes('standby')) return 'Standby';
   return 'Open - Accommodating';
 }
 
 function enrichEvacRow(row, facilities = []) {
-  const cap = Number(row.total_capacity || row.capacity || 0);
-  const avail =
-    row.available_slots !== null && row.available_slots !== undefined
-      ? Number(row.available_slots)
-      : Math.max(0, cap - Number(row.current_occupancy || 0));
-  const occ =
-    row.current_occupancy !== null && row.current_occupancy !== undefined
-      ? Number(row.current_occupancy)
-      : Math.max(0, cap - avail);
   return {
-    ...row,
-    capacity: cap,
-    total_capacity: cap,
-    available_slots: avail,
-    current_occupancy: occ,
+    id: row.id,
+    name: row.name,
+    address: row.address,
+    barangay: row.barangay,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    status: normalizeEvacStatus(row.status),
+    contact_person: row.contact_person || '',
     contact_number: row.contact_number || row.contact_phone || '',
     contact_phone: row.contact_phone || row.contact_number || '',
     coordinates: {
       lat: Number(row.latitude),
       lng: Number(row.longitude),
     },
-    currentOccupancy: occ,
-    availableSlots: avail,
     facilities,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
@@ -46,7 +39,6 @@ async function getEvacuationCenters(req, res) {
   try {
     const [rows] = await pool.query(
       `SELECT id, name, latitude, longitude, address, barangay, status,
-              capacity, total_capacity, available_slots, current_occupancy,
               contact_person, contact_phone, contact_number, created_at, updated_at
        FROM evacuation_centers
        ORDER BY name ASC`
@@ -109,13 +101,6 @@ async function createEvacuationCenter(req, res) {
     latitude,
     longitude,
     coordinates,
-    capacity,
-    total_capacity,
-    totalCapacity,
-    available_slots,
-    availableSlots,
-    current_occupancy,
-    currentOccupancy,
     status,
     contact_person,
     contactPerson,
@@ -141,21 +126,6 @@ async function createEvacuationCenter(req, res) {
     return res.status(400).json({ error: 'Valid latitude and longitude coordinates are required' });
   }
 
-  const cap = Math.max(
-    1,
-    parseInt(capacity !== undefined ? capacity : total_capacity !== undefined ? total_capacity : totalCapacity, 10) || 100
-  );
-  const occ =
-    current_occupancy !== undefined || currentOccupancy !== undefined
-      ? Math.max(0, parseInt(current_occupancy !== undefined ? current_occupancy : currentOccupancy, 10) || 0)
-      : available_slots !== undefined || availableSlots !== undefined
-      ? Math.max(0, cap - (parseInt(available_slots !== undefined ? available_slots : availableSlots, 10) || 0))
-      : 0;
-  const avail =
-    available_slots !== undefined || availableSlots !== undefined
-      ? Math.max(0, parseInt(available_slots !== undefined ? available_slots : availableSlots, 10) || 0)
-      : Math.max(0, cap - occ);
-
   const normalizedStatus = normalizeEvacStatus(status);
   const contactPersonVal = String(contact_person || contactPerson || 'Barangay DRRM Officer').trim().slice(0, 120);
   const contactPhoneVal = String(contact_phone || contact_number || contactNumber || '').trim().slice(0, 40) || null;
@@ -165,17 +135,13 @@ async function createEvacuationCenter(req, res) {
     const [result] = await pool.query(
       `INSERT INTO evacuation_centers
          (name, address, barangay, latitude, longitude, capacity, available_slots, total_capacity, current_occupancy, status, contact_person, contact_phone, contact_number)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
       [
         trimmedName.slice(0, 150),
         trimmedAddress.slice(0, 255),
         brgy,
         lat,
         lng,
-        cap,
-        avail,
-        cap,
-        occ,
         normalizedStatus,
         contactPersonVal,
         contactPhoneVal,
@@ -222,13 +188,6 @@ async function updateEvacuationCenter(req, res) {
     longitude,
     coordinates,
     status,
-    available_slots,
-    availableSlots,
-    capacity,
-    total_capacity,
-    totalCapacity,
-    current_occupancy,
-    currentOccupancy,
     contact_person,
     contactPerson,
     contact_phone,
@@ -273,39 +232,6 @@ async function updateEvacuationCenter(req, res) {
     if (status !== undefined) {
       updates.push('status = ?');
       params.push(normalizeEvacStatus(status));
-    }
-
-    const rawCap =
-      capacity !== undefined ? capacity : total_capacity !== undefined ? total_capacity : totalCapacity;
-    const rawAvail = available_slots !== undefined ? available_slots : availableSlots;
-    const rawOcc = current_occupancy !== undefined ? current_occupancy : currentOccupancy;
-
-    const nextCap =
-      rawCap !== undefined ? Math.max(0, parseInt(rawCap, 10) || 0) : Number(existing.total_capacity || existing.capacity || 0);
-
-    if (rawCap !== undefined) {
-      updates.push('capacity = ?', 'total_capacity = ?');
-      params.push(nextCap, nextCap);
-    }
-
-    if (rawAvail !== undefined) {
-      const nextAvail = Math.max(0, parseInt(rawAvail, 10) || 0);
-      updates.push('available_slots = ?');
-      params.push(nextAvail);
-      if (rawOcc === undefined) {
-        updates.push('current_occupancy = ?');
-        params.push(Math.max(0, nextCap - nextAvail));
-      }
-    }
-
-    if (rawOcc !== undefined) {
-      const nextOcc = Math.max(0, parseInt(rawOcc, 10) || 0);
-      updates.push('current_occupancy = ?');
-      params.push(nextOcc);
-      if (rawAvail === undefined) {
-        updates.push('available_slots = ?');
-        params.push(Math.max(0, nextCap - nextOcc));
-      }
     }
 
     const cp = contact_person !== undefined ? contact_person : contactPerson;

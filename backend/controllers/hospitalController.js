@@ -124,8 +124,8 @@ async function getDestinationRecommendations(req, res) {
 
     if (category === 'evacuation_center') {
       const [evacRows] = await pool.query(
-        `SELECT id, name, address, barangay, latitude, longitude, capacity, available_slots,
-                total_capacity, current_occupancy, status, contact_person, contact_phone, contact_number
+        `SELECT id, name, address, barangay, latitude, longitude,
+                status, contact_person, contact_phone, contact_number
          FROM evacuation_centers
          WHERE status <> 'Full / Closed'
          ORDER BY name ASC`
@@ -164,8 +164,6 @@ async function getDestinationRecommendations(req, res) {
           verificationStatus: 'Verified',
           isVerified: true,
           emergencyCapable: false,
-          capacity: Number(ec.total_capacity ?? ec.capacity ?? 0) || null,
-          availableSlots: Number(ec.available_slots ?? 0),
           straightLineMeters: haversineMeters(originLat, originLng, dLat, dLng),
         });
       }

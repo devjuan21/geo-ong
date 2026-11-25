@@ -1,8 +1,8 @@
 /**
  * GeoSafe - Evacuation Centers Page Logic
  * Features:
- * - Interactive Leaflet map with colored capacity markers
- * - Evacuation center list with real-time occupancy metrics
+ * - Interactive Leaflet map with evacuation center markers
+ * - Evacuation center list with operational status and coordinates
  * - Facilities checklist
  * - "View on Map" auto-panning and popup trigger
  * - Filter by status

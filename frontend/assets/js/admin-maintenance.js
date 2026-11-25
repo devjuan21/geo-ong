@@ -109,7 +109,6 @@
               <td class="px-3 py-2.5 font-bold text-[#202020]">${esc(e.name)}</td>
               <td class="px-3 py-2.5 text-slate-600">${esc(e.address || 'Barangay Bayanan')}</td>
               <td class="px-3 py-2.5 font-mono text-[11px] text-slate-500">${Number(e.latitude).toFixed(5)}, ${Number(e.longitude).toFixed(5)}</td>
-              <td class="px-3 py-2.5 tabular-nums">${Number(e.available_slots ?? e.capacity ?? 0)} / ${Number(e.capacity || 0)}</td>
               <td class="px-3 py-2.5">${statusBadge(isActive, e.status || 'Open - Accommodating', e.status || 'Full / Closed')}</td>
               <td class="px-3 py-2.5 text-right whitespace-nowrap space-x-1.5">
                 <button type="button" onclick="window.GeoSafeAdmin.openMaintenanceModal('evac', ${e.id})"
@@ -122,7 +121,7 @@
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No evacuation centers found.</td></tr>';
+      : '<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No evacuation centers found.</td></tr>';
   }
 
   function renderIncidentCatsTable() {
@@ -213,7 +212,7 @@
         renderFacilitiesTable();
       } else if (tab === 'evacuation') {
         const evacBody = document.getElementById('maint-evac-tbody');
-        if (evacBody) evacBody.innerHTML = '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Loading evacuation centers from PostgreSQL...</td></tr>';
+        if (evacBody) evacBody.innerHTML = '<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">Loading evacuation centers from PostgreSQL...</td></tr>';
         const res = await apiCall('/evacuation-centers');
         state.evac = Array.isArray(res) ? res : res.evacuation_centers || res.centers || res.evacuationCenters || [];
         renderEvacTable();
@@ -241,7 +240,7 @@
       if (fbMap[tab]) showFeedback(fbMap[tab], err.message, true);
       if (tab === 'evacuation') {
         const evacBody = document.getElementById('maint-evac-tbody');
-        if (evacBody) evacBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-red-700 font-semibold">${esc(err.message)}</td></tr>`;
+        if (evacBody) evacBody.innerHTML = `<tr><td colspan="5" class="px-3 py-6 text-center text-red-700 font-semibold">${esc(err.message)}</td></tr>`;
       }
     }
   }
@@ -285,7 +284,6 @@
         fieldHtml('m-evac-name', 'Center Name *', rec?.name || '', 'text', 'required'),
         fieldHtml('m-evac-addr', 'Address *', rec?.address || '', 'text', 'required'),
         `<div class="grid grid-cols-2 gap-2.5">${fieldHtml('m-evac-lat', 'Latitude *', rec?.latitude ?? '', 'number', 'step="any" required')}${fieldHtml('m-evac-lng', 'Longitude *', rec?.longitude ?? '', 'number', 'step="any" required')}</div>`,
-        `<div class="grid grid-cols-2 gap-2.5">${fieldHtml('m-evac-cap', 'Capacity', rec?.capacity ?? 0, 'number', 'min="0"')}${fieldHtml('m-evac-slots', 'Available Slots', rec?.available_slots ?? 0, 'number', 'min="0"')}</div>`,
       ].join('');
     } else if (kind === 'incident-cat') {
       rec = id ? state.incidentCats.find((x) => Number(x.id) === Number(id)) : null;
@@ -365,8 +363,6 @@
           address: document.getElementById('m-evac-addr').value.trim(),
           latitude: Number(document.getElementById('m-evac-lat').value),
           longitude: Number(document.getElementById('m-evac-lng').value),
-          capacity: Number(document.getElementById('m-evac-cap').value || 0),
-          available_slots: Number(document.getElementById('m-evac-slots').value || 0),
         };
         const res = await apiCall(id ? `/evacuation-centers/${id}` : '/evacuation-centers', {
           method: id ? 'PATCH' : 'POST',

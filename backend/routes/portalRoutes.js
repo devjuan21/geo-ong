@@ -1194,7 +1194,9 @@ router.get('/evacuation-routes', async (req, res) => {
 router.get('/emergency-facilities', async (req, res) => {
   try {
     const [hospitalRows] = await pool.query('SELECT * FROM hospitals ORDER BY name ASC');
-    const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
+    const [evacRows] = await pool.query(
+      'SELECT id, name, address, barangay, latitude, longitude, status, contact_person, contact_phone, contact_number FROM evacuation_centers ORDER BY name ASC'
+    );
 
     const { isPointInsideBayanan, isExcludedEvacuationCenter } = require('../utils/bayananBoundary');
     const facilities = [
@@ -4089,7 +4091,9 @@ router.get('/eoc-location', async (req, res) => {
 
 router.get('/responder/map-data', requireRole('responder', 'admin'), async (req, res) => {
   try {
-    const [evacRows] = await pool.query('SELECT * FROM evacuation_centers ORDER BY name ASC');
+    const [evacRows] = await pool.query(
+      'SELECT id, name, address, barangay, latitude, longitude, status, contact_person, contact_phone, contact_number FROM evacuation_centers ORDER BY name ASC'
+    );
     const [hospitalRows] = await pool.query('SELECT * FROM hospitals ORDER BY name ASC');
     const [profRows] = await pool.query(
       'SELECT current_latitude, current_longitude FROM responder_profiles WHERE user_id = ? LIMIT 1',

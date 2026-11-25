@@ -383,7 +383,7 @@ async function getAdminOverview(req, res) {
 
     // Fetch live evacuation centers for map display if present
     const [evacCenterRows] = await pool.query(
-      `SELECT id, name, address, latitude, longitude, capacity, available_slots, status
+      `SELECT id, name, address, latitude, longitude, status
        FROM evacuation_centers
        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
        ORDER BY name ASC`
@@ -397,8 +397,6 @@ async function getAdminOverview(req, res) {
         address: e.address,
         latitude: Number(e.latitude),
         longitude: Number(e.longitude),
-        capacity: Number(e.capacity || 0),
-        availableSlots: Number(e.available_slots || 0),
         status: e.status || 'Standby',
       }));
 
@@ -472,13 +470,6 @@ async function getAdminStats(req, res) {
       "SELECT COUNT(*) AS count FROM users WHERE role_id = ? AND status = 'active'",
       [ROLE_IDS.RESPONDER]
     );
-    const [evacRows] = await pool.query(
-      'SELECT SUM(capacity) AS total_capacity, SUM(available_slots) AS total_available FROM evacuation_centers'
-    );
-    const totalCapacity = Number(evacRows[0].total_capacity) || 0;
-    const totalAvailable = Number(evacRows[0].total_available) || 0;
-    const occupied = Math.max(0, totalCapacity - totalAvailable);
-    const evacOccupancyPercent = totalCapacity > 0 ? Math.round((occupied / totalCapacity) * 100) : 0;
 
     const [residentRows] = await pool.query(
       'SELECT safety_status, COUNT(*) AS count FROM users WHERE role_id = ? GROUP BY safety_status',
@@ -507,12 +498,6 @@ async function getAdminStats(req, res) {
         totalReports: totalRows[0].count,
         resolvedCount: resolvedRows[0].count,
         respondersCount: responderRows[0].count,
-        evac: {
-          totalCapacity,
-          totalAvailable,
-          occupied,
-          percentage: evacOccupancyPercent,
-        },
         safety: {
           totalResidents,
           safeCount,

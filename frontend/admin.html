@@ -1826,13 +1826,19 @@
       <section id="section-settings" class="space-y-5 hidden min-w-0 max-w-full" hidden>
 
         <!-- Internal System Settings Navigation Tabs -->
-        <div class="bg-white rounded-[10px] border border-slate-200 shadow-subtle p-1.5 flex flex-wrap gap-1.5">
+        <div class="bg-white rounded-[10px] border border-slate-200 shadow-subtle p-1.5 flex items-center gap-1.5 overflow-x-auto">
           <button type="button" data-settings-tab="overview" onclick="window.GeoSafeAdmin.switchSettingsTab('overview')"
-            class="px-3.5 py-1.5 rounded-md text-xs font-bold bg-[#0f172a] text-white transition-colors">System Configuration</button>
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap bg-[#0f172a] text-white transition-colors">System Configuration</button>
           <button type="button" data-settings-tab="facilities" onclick="window.GeoSafeAdmin.switchSettingsTab('facilities')"
-            class="px-3.5 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Healthcare Facilities</button>
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 hover:bg-slate-100 transition-colors">Healthcare Facilities</button>
+          <button type="button" data-settings-tab="evacuation" onclick="window.GeoSafeAdmin.switchSettingsTab('evacuation')"
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 hover:bg-slate-100 transition-colors">Evacuation Centers</button>
           <button type="button" data-settings-tab="incident-cats" onclick="window.GeoSafeAdmin.switchSettingsTab('incident-cats')"
-            class="px-3.5 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Incident Categories</button>
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 hover:bg-slate-100 transition-colors">Incident Categories</button>
+          <button type="button" data-settings-tab="rescue-cats" onclick="window.GeoSafeAdmin.switchSettingsTab('rescue-cats')"
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 hover:bg-slate-100 transition-colors">Rescue Categories</button>
+          <button type="button" data-settings-tab="broadcast-cats" onclick="window.GeoSafeAdmin.switchSettingsTab('broadcast-cats')"
+            class="px-3.5 py-1.5 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 hover:bg-slate-100 transition-colors">Broadcast Categories</button>
         </div>
 
         <div id="settings-tab-overview" class="space-y-5">

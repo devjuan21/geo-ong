@@ -5955,7 +5955,7 @@
     if (!listEl) return;
     listEl.innerHTML = '<div class="p-4 text-center text-slate-500">Loading facility directory from PostgreSQL...</div>';
     try {
-      const data = await apiRequest('/facilities');
+      const data = await apiRequest('/facilities?includeInactive=true');
       const items = Array.isArray(data && data.facilities) ? data.facilities : [];
       adminFacilityMap.clear();
       items.forEach((f) => adminFacilityMap.set(Number(f.id), f));

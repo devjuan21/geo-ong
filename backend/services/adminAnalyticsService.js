@@ -2,16 +2,13 @@ const pool = require('../models/db');
 const { isPointInsideBayanan } = require('../utils/bayananBoundary');
 
 const CANONICAL_DISASTER_CATEGORIES = [
-  { name: 'Fire', color: '#DC2626' },
-  { name: 'Flood', color: '#2563EB' },
-  { name: 'Earthquake', color: '#D97706' },
-  { name: 'Landslide', color: '#92400E' },
-  { name: 'Typhoon', color: '#0284C7' },
-  { name: 'Medical Emergency', color: '#059669' },
-  { name: 'Vehicular Accident', color: '#7C3AED' },
-  { name: 'Power Outage / Utility Hazard', color: '#EA580C' },
-  { name: 'Fallen Tree / Road Obstruction', color: '#65A30D' },
-  { name: 'Other Hazard', color: '#475569' },
+  { name: 'Flooding / Rising Water', color: '#2563EB' },
+  { name: 'Fallen Tree / Road Obstruction', color: '#D97706' },
+  { name: 'Downed Electrical Power Cable', color: '#8B5CF6' },
+  { name: 'Structural / Wall Collapse', color: '#EA580C' },
+  { name: 'Fire Outbreak', color: '#DC2626' },
+  { name: 'Severe Drainage Overflow', color: '#0D9488' },
+  { name: 'Other Disaster Hazard', color: '#475569' },
 ];
 
 function getManilaDateParts(date = new Date()) {
@@ -113,20 +110,32 @@ function buildDateFilterClause(period, from, to, dateColumn = 'created_at') {
 
 function normalizeCanonicalDisasterCategory(rawName) {
   const raw = String(rawName || '').trim();
-  if (!raw) return 'Other Hazard';
+  if (!raw) return 'Other Disaster Hazard';
   const low = raw.toLowerCase();
-  if (low === 'fire' || low.includes('fire')) return 'Fire';
-  if (low === 'flood' || low.includes('flood')) return 'Flood';
-  if (low === 'earthquake' || low.includes('earthquake')) return 'Earthquake';
-  if (low === 'landslide' || low.includes('landslide')) return 'Landslide';
-  if (low === 'typhoon' || low.includes('typhoon') || low.includes('storm')) return 'Typhoon';
-  if (low.includes('medical') || low === 'sos') return 'Medical Emergency';
-  if (low.includes('vehicular') || low.includes('traffic') || low.includes('accident')) return 'Vehicular Accident';
-  if (low.includes('power') || low.includes('utility') || low.includes('electric')) return 'Power Outage / Utility Hazard';
-  if (low.includes('fallen tree') || low.includes('obstruction') || low.includes('road')) return 'Fallen Tree / Road Obstruction';
-  if (low.includes('other')) return 'Other Hazard';
-  return raw;
+  if (low.includes('flood') || low.includes('rising water')) return 'Flooding / Rising Water';
+  if (low.includes('fallen tree') || low.includes('road obstruction') || low.includes('blocked road')) return 'Fallen Tree / Road Obstruction';
+  if (low.includes('electrical') || low.includes('power cable') || low.includes('power line')) return 'Downed Electrical Power Cable';
+  if (low.includes('structural') || low.includes('wall collapse') || low.includes('collapse')) return 'Structural / Wall Collapse';
+  if (low.includes('fire')) return 'Fire Outbreak';
+  if (low.includes('drainage')) return 'Severe Drainage Overflow';
+  return 'Other Disaster Hazard';
 }
+
+const CANONICAL_CATEGORY_SQL_EXPR = `CASE
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%flood%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%rising water%' THEN 'Flooding / Rising Water'
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%fallen tree%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%road obstruction%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%blocked road%' THEN 'Fallen Tree / Road Obstruction'
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%electrical%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%power cable%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%power line%' THEN 'Downed Electrical Power Cable'
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%structural%'
+    OR LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%collapse%' THEN 'Structural / Wall Collapse'
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%fire%' THEN 'Fire Outbreak'
+  WHEN LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, '')) LIKE '%drainage%' THEN 'Severe Drainage Overflow'
+  ELSE 'Other Disaster Hazard'
+END`;
 
 function parseFilters(query = {}) {
   const period = String(query.period || 'this_month').trim().toLowerCase();
@@ -157,7 +166,7 @@ function buildIncidentFilterSql(filters, dateClauseOverride = null, dateParamsOv
   const params = [...(dateParamsOverride || dateFilter.params)];
 
   if (filters.category && filters.category.toLowerCase() !== 'all') {
-    clauses.push(`LOWER(COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Other Hazard')) = LOWER(?)`);
+    clauses.push(`LOWER(${CANONICAL_CATEGORY_SQL_EXPR}) = LOWER(?)`);
     params.push(filters.category);
   }
   if (filters.status && filters.status !== 'all') {
@@ -968,7 +977,7 @@ async function getComprehensiveAnalytics(query = {}) {
       endYmd: incSql.dateFilter.endYmd,
     },
     filterOptions: {
-      categories: catOptRows.map((r) => r.val).filter(Boolean),
+      categories: CANONICAL_DISASTER_CATEGORIES.map((c) => c.name),
       rescueTypes: rescueTypeOptRows.map((r) => r.val).filter(Boolean),
       responders: responderOptRows.map((r) => ({
         id: r.id,
@@ -1062,16 +1071,8 @@ async function getMonthlyIncidentsByCategoryWithComparison(query = {}) {
   availableYearsSet.add(year);
   const availableYears = Array.from(availableYearsSet).sort((a, b) => b - a);
 
-  const [catRows] = await pool.query('SELECT id, name FROM incident_categories ORDER BY id ASC');
-  const categoryOrder = [];
-  const seenCats = new Set();
-  catRows.forEach((c) => {
-    const normalized = normalizeCanonicalDisasterCategory(c.name) || String(c.name || '').trim();
-    if (normalized && !seenCats.has(normalized)) {
-      seenCats.add(normalized);
-      categoryOrder.push(normalized);
-    }
-  });
+  const categoryOrder = CANONICAL_DISASTER_CATEGORIES.map((c) => c.name);
+  const seenCats = new Set(categoryOrder);
 
   const [monthlyRows] = await pool.query(
     `SELECT EXTRACT(MONTH FROM r.created_at AT TIME ZONE 'Asia/Manila')::int AS month_num,

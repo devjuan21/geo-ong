@@ -3834,7 +3834,8 @@
     'downed electrical power cable': '#8B5CF6',
     'structural / wall collapse': '#EA580C',
     'fire outbreak': '#DC2626',
-    'severe drainage overflow': '#0D9488'
+    'severe drainage overflow': '#0D9488',
+    'other disaster hazard': '#475569'
   };
   const CATEGORY_CHART_PALETTE = ['#3478C7', '#D93636', '#278653', '#F5B900', '#8B5CF6', '#EA580C', '#0D9488', '#DB2777', '#4F46E5'];
 
@@ -4011,7 +4012,10 @@
     });
 
     const segIndexByName = new Map(segments.map((s, i) => [s.name, i]));
-    const legendItems = (allCats.length > 0 ? allCats : segments).map((c, idx) => {
+    const sortedLegendSource = (allCats.length > 0 ? allCats : segments)
+      .slice()
+      .sort((a, b) => Number(b.count || 0) - Number(a.count || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+    const legendItems = sortedLegendSource.map((c, idx) => {
       const count = Number(c.count || 0);
       const color = getCategoryChartColor(c.name, idx);
       const isZero = count === 0;

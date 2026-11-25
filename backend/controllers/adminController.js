@@ -3695,18 +3695,19 @@ const CANONICAL_DISASTER_CATEGORIES = [
   'Structural / Wall Collapse',
   'Fire Outbreak',
   'Severe Drainage Overflow',
+  'Other Disaster Hazard',
 ];
 
 function normalizeCanonicalDisasterCategory(rawName) {
   const s = String(rawName || '').trim().toLowerCase();
   if (!s) return null;
-  if (s.includes('flood')) return 'Flooding / Rising Water';
+  if (s.includes('flood') || s.includes('rising water')) return 'Flooding / Rising Water';
   if (s.includes('fallen tree') || s.includes('road obstruction') || s.includes('blocked road')) return 'Fallen Tree / Road Obstruction';
-  if (s.includes('electrical') || s.includes('power line') || s.includes('power cable') || s.includes('utility')) return 'Downed Electrical Power Cable';
+  if (s.includes('electrical') || s.includes('power line') || s.includes('power cable')) return 'Downed Electrical Power Cable';
   if (s.includes('structural') || s.includes('collapse')) return 'Structural / Wall Collapse';
   if (s.includes('fire')) return 'Fire Outbreak';
   if (s.includes('drainage')) return 'Severe Drainage Overflow';
-  return null;
+  return 'Other Disaster Hazard';
 }
 
 async function getReportCategoryDistribution(dateFilter = { clause: '1=1', params: [] }) {

@@ -103,14 +103,14 @@
     tbody.innerHTML = rows.length
       ? rows
           .map((e) => {
-            const isActive = e.status !== 'Closed';
+            const isActive = !String(e.status || '').toLowerCase().includes('closed');
             return `
             <tr class="hover:bg-slate-50">
               <td class="px-3 py-2.5 font-bold text-[#202020]">${esc(e.name)}</td>
               <td class="px-3 py-2.5 text-slate-600">${esc(e.address || 'Barangay Bayanan')}</td>
               <td class="px-3 py-2.5 font-mono text-[11px] text-slate-500">${Number(e.latitude).toFixed(5)}, ${Number(e.longitude).toFixed(5)}</td>
               <td class="px-3 py-2.5 tabular-nums">${Number(e.available_slots ?? e.capacity ?? 0)} / ${Number(e.capacity || 0)}</td>
-              <td class="px-3 py-2.5">${statusBadge(isActive, e.status || 'Open', 'Closed')}</td>
+              <td class="px-3 py-2.5">${statusBadge(isActive, e.status || 'Open - Accommodating', e.status || 'Full / Closed')}</td>
               <td class="px-3 py-2.5 text-right whitespace-nowrap space-x-1.5">
                 <button type="button" onclick="window.GeoSafeAdmin.openMaintenanceModal('evac', ${e.id})"
                   class="px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-[11px] font-bold text-[#202020]">Edit</button>
@@ -212,8 +212,10 @@
         state.facilities = res.facilities || [];
         renderFacilitiesTable();
       } else if (tab === 'evacuation') {
+        const evacBody = document.getElementById('maint-evac-tbody');
+        if (evacBody) evacBody.innerHTML = '<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">Loading evacuation centers from PostgreSQL...</td></tr>';
         const res = await apiCall('/evacuation-centers');
-        state.evac = Array.isArray(res) ? res : res.centers || res.evacuationCenters || [];
+        state.evac = Array.isArray(res) ? res : res.evacuation_centers || res.centers || res.evacuationCenters || [];
         renderEvacTable();
       } else if (tab === 'incident-cats') {
         const res = await apiCall('/admin/incident-categories');
@@ -237,6 +239,10 @@
         'broadcast-cats': 'maint-broadcast-cats-feedback',
       };
       if (fbMap[tab]) showFeedback(fbMap[tab], err.message, true);
+      if (tab === 'evacuation') {
+        const evacBody = document.getElementById('maint-evac-tbody');
+        if (evacBody) evacBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-red-700 font-semibold">${esc(err.message)}</td></tr>`;
+      }
     }
   }
 
@@ -435,7 +441,7 @@
       } else if (kind === 'evac') {
         const res = await apiCall(`/evacuation-centers/${id}`, {
           method: 'PATCH',
-          body: JSON.stringify({ status: nextActive ? 'Open - Accommodating' : 'Closed' }),
+          body: JSON.stringify({ status: nextActive ? 'Open - Accommodating' : 'Full / Closed' }),
         });
         showFeedback('maint-evac-feedback', res.message || 'Evacuation center status updated.');
         await loadTabData('evacuation');
@@ -497,6 +503,7 @@
       window.GeoSafeAdmin.closeMaintenanceModal = closeMaintenanceModal;
       window.GeoSafeAdmin.submitMaintenanceForm = submitMaintenanceForm;
       window.GeoSafeAdmin.toggleMaintenanceStatus = toggleMaintenanceStatus;
+      window.GeoSafeAdmin.refreshMaintenanceTab = loadTabData;
     }
   });
 })();

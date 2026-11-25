@@ -477,7 +477,7 @@
     if (window.GeoSafeAdmin) {
       window.GeoSafeAdmin.switchSettingsTab = function (tab) {
         state.activeTab = tab;
-        const panels = ['overview', 'evacuation', 'incident-cats', 'rescue-cats', 'broadcast-cats'];
+        const panels = ['overview', 'facilities', 'evacuation', 'incident-cats', 'rescue-cats', 'broadcast-cats'];
         panels.forEach((p) => {
           document.getElementById(`settings-tab-${p}`)?.classList.toggle('hidden', p !== tab);
         });
@@ -487,7 +487,7 @@
             ? 'px-3 py-1.5 rounded-md text-xs font-bold bg-[#0f172a] text-white transition-colors'
             : 'px-3 py-1.5 rounded-md text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors';
         });
-        if (tab !== 'overview') loadTabData(tab);
+        if (tab === 'facilities') { window.GeoSafeAdmin?.resetFacilityForm?.(); window.GeoSafeAdmin?.loadAdminFacilitiesList?.(); } else if (tab !== 'overview') { loadTabData(tab); }
       };
       window.GeoSafeAdmin.filterMaintenanceTable = function (kind) {
         if (kind === 'facilities') renderFacilitiesTable();

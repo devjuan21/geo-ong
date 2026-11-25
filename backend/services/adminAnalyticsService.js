@@ -244,27 +244,48 @@ function buildRescueFilterSql(filters, dateClauseOverride = null, dateParamsOver
   };
 }
 
-function buildCategoryDistributionFromRows(rows) {
-  const countMap = new Map(CANONICAL_DISASTER_CATEGORIES.map((c) => [c.name, 0]));
+const CATEGORY_COLOR_PALETTE = ['#2563EB', '#D97706', '#8B5CF6', '#EA580C', '#DC2626', '#0D9488', '#475569', '#059669', '#DB2777'];
+const CANONICAL_COLOR_BY_NAME = new Map(CANONICAL_DISASTER_CATEGORIES.map((c) => [c.name.toLowerCase(), c.color]));
+
+function buildCategoryDistributionFromRows(rows, dbCategories = []) {
+  const activeDb = (dbCategories || []).filter((c) => c.is_active !== false);
+  const baseList = activeDb.length > 0
+    ? activeDb.map((c, idx) => ({
+        name: String(c.name || '').trim(),
+        color: CANONICAL_COLOR_BY_NAME.get(String(c.name || '').trim().toLowerCase()) || CATEGORY_COLOR_PALETTE[idx % CATEGORY_COLOR_PALETTE.length],
+      }))
+    : CANONICAL_DISASTER_CATEGORIES;
+
+  const exactLookup = new Map(baseList.map((c) => [c.name.toLowerCase(), c.name]));
+  const allDbLookup = new Map((dbCategories || []).map((c) => [String(c.name || '').trim().toLowerCase(), String(c.name || '').trim()]));
+  const countMap = new Map(baseList.map((c) => [c.name, 0]));
   const extraCategories = [];
   let totalReports = 0;
 
   rows.forEach((row) => {
     const count = Number(row.count || 0);
     if (count <= 0) return;
-    const normalized = normalizeCanonicalDisasterCategory(row.raw_category);
+    const rawTrim = String(row.raw_category || '').trim();
+    const rawLow = rawTrim.toLowerCase();
+    const resolved = exactLookup.get(rawLow) || allDbLookup.get(rawLow) || normalizeCanonicalDisasterCategory(rawTrim);
     totalReports += count;
-    if (countMap.has(normalized)) {
-      countMap.set(normalized, countMap.get(normalized) + count);
+    if (countMap.has(resolved)) {
+      countMap.set(resolved, countMap.get(resolved) + count);
     } else {
-      const existing = extraCategories.find((e) => e.name === normalized);
+      const existing = extraCategories.find((e) => e.name.toLowerCase() === resolved.toLowerCase());
       if (existing) existing.count += count;
-      else extraCategories.push({ name: normalized, color: '#64748B', count });
+      else {
+        extraCategories.push({
+          name: resolved,
+          color: CANONICAL_COLOR_BY_NAME.get(resolved.toLowerCase()) || '#64748B',
+          count,
+        });
+      }
     }
   });
 
   const allCategories = [
-    ...CANONICAL_DISASTER_CATEGORIES.map((c) => {
+    ...baseList.map((c) => {
       const count = countMap.get(c.name) || 0;
       const percentage = totalReports > 0 ? Number(((count / totalReports) * 100).toFixed(1)) : 0;
       return { name: c.name, color: c.color, count, percentage };
@@ -333,11 +354,9 @@ async function getComprehensiveAnalytics(query = {}) {
 
   // 1. Filter dropdown options (from genuine PostgreSQL tables)
   const [catOptRows] = await pool.query(
-    `SELECT DISTINCT COALESCE(NULLIF(TRIM(ic.name), ''), NULLIF(TRIM(r.incident_type), '')) AS val
-     FROM incident_categories ic
-     FULL OUTER JOIN reports r ON r.category_id = ic.id
-     WHERE COALESCE(NULLIF(TRIM(ic.name), ''), NULLIF(TRIM(r.incident_type), '')) IS NOT NULL
-     ORDER BY val ASC`
+    `SELECT id, name, is_active, sort_order
+     FROM incident_categories
+     ORDER BY sort_order ASC, id ASC`
   );
   const [rescueTypeOptRows] = await pool.query(
     `SELECT DISTINCT COALESCE(NULLIF(TRIM(emergency_type), ''), 'Unspecified') AS val
@@ -367,7 +386,7 @@ async function getComprehensiveAnalytics(query = {}) {
      GROUP BY COALESCE(NULLIF(TRIM(r.incident_type), ''), ic.name, 'Other Hazard')`,
     incSql.params
   );
-  const categoryDistribution = buildCategoryDistributionFromRows(incCatRows);
+  const categoryDistribution = buildCategoryDistributionFromRows(incCatRows, catOptRows);
   const totalIncidents = categoryDistribution.totalReports;
 
   const [[incSummaryRow]] = await pool.query(
@@ -977,7 +996,7 @@ async function getComprehensiveAnalytics(query = {}) {
       endYmd: incSql.dateFilter.endYmd,
     },
     filterOptions: {
-      categories: CANONICAL_DISASTER_CATEGORIES.map((c) => c.name),
+      categories: catOptRows.filter((r) => r.is_active !== false).map((r) => r.name),
       rescueTypes: rescueTypeOptRows.map((r) => r.val).filter(Boolean),
       responders: responderOptRows.map((r) => ({
         id: r.id,
@@ -1071,7 +1090,9 @@ async function getMonthlyIncidentsByCategoryWithComparison(query = {}) {
   availableYearsSet.add(year);
   const availableYears = Array.from(availableYearsSet).sort((a, b) => b - a);
 
-  const categoryOrder = CANONICAL_DISASTER_CATEGORIES.map((c) => c.name);
+  const [dbCatRows] = await pool.query('SELECT id, name, is_active FROM incident_categories ORDER BY sort_order ASC, id ASC');
+  const activeDbCats = dbCatRows.filter((c) => c.is_active !== false).map((c) => String(c.name || '').trim()).filter(Boolean);
+  const categoryOrder = activeDbCats.length > 0 ? activeDbCats : CANONICAL_DISASTER_CATEGORIES.map((c) => c.name);
   const seenCats = new Set(categoryOrder);
 
   const [monthlyRows] = await pool.query(

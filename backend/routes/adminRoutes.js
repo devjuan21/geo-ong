@@ -47,6 +47,15 @@ const {
   approvePasswordAssistanceTicket,
   rejectPasswordAssistanceTicket,
 } = require('../controllers/passwordAssistanceController');
+const {
+  getIncidentCategories,
+  createIncidentCategory,
+  updateIncidentCategory,
+  getRescueCategories,
+  createRescueCategory,
+  updateRescueCategory,
+  updateBroadcastCategory,
+} = require('../controllers/adminMaintenanceController');
 
 const router = express.Router();
 
@@ -187,5 +196,16 @@ router.get('/audit-logs', getAdminAuditLogs);
 router.get('/facilities', getAdminFacilities);
 router.post('/facilities', createAdminFacility);
 router.patch('/facilities/:id', updateAdminFacility);
+
+// 10. Centralized Category Maintenance (Incident, Rescue, Broadcast)
+router.get('/incident-categories', getIncidentCategories);
+router.post('/incident-categories', createIncidentCategory);
+router.patch('/incident-categories/:id', updateIncidentCategory);
+
+router.get('/rescue-categories', getRescueCategories);
+router.post('/rescue-categories', createRescueCategory);
+router.patch('/rescue-categories/:id', updateRescueCategory);
+
+router.patch('/broadcast-categories/:id', updateBroadcastCategory);
 
 module.exports = router;

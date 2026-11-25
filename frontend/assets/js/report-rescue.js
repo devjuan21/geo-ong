@@ -26,6 +26,56 @@ let rescueGpsAutoAttempted = false;
 let rescueLocAutoFilled = false;
 let rescuePhotoBase64 = null;
 
+async function loadDynamicReportAndRescueCategories() {
+  const apiBase = window.geoSafeStore?.config?.API_BASE_URL || '/api';
+  const repSelect = document.getElementById('rep-type');
+  const resSelect = document.getElementById('res-type');
+
+  if (repSelect) {
+    try {
+      const resp = await fetch(`${apiBase}/portal/incident-categories`, { credentials: 'include' });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && Array.isArray(data.categories)) {
+        const currentVal = repSelect.value;
+        repSelect.innerHTML = '<option value="" disabled selected>Select category...</option>';
+        data.categories.forEach((cat) => {
+          const opt = document.createElement('option');
+          opt.value = cat.name;
+          opt.textContent = cat.name;
+          repSelect.appendChild(opt);
+        });
+        if (currentVal && data.categories.some((c) => c.name === currentVal)) {
+          repSelect.value = currentVal;
+        }
+      }
+    } catch (err) {
+      console.warn('[Report/Rescue] Could not load dynamic incident categories:', err.message);
+    }
+  }
+
+  if (resSelect) {
+    try {
+      const resp = await fetch(`${apiBase}/portal/rescue-categories`, { credentials: 'include' });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && Array.isArray(data.categories)) {
+        const currentVal = resSelect.value;
+        resSelect.innerHTML = '<option value="" disabled selected>Select condition...</option>';
+        data.categories.forEach((cat) => {
+          const opt = document.createElement('option');
+          opt.value = cat.name;
+          opt.textContent = cat.display_label || cat.name;
+          resSelect.appendChild(opt);
+        });
+        if (currentVal && data.categories.some((c) => c.name === currentVal)) {
+          resSelect.value = currentVal;
+        }
+      }
+    } catch (err) {
+      console.warn('[Report/Rescue] Could not load dynamic rescue categories:', err.message);
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Initialize common shell navigation
   GeoSafeUI.init('report-rescue', 'Report / Rescue');
@@ -36,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize both Leaflet map pickers
   initReportMapPicker();
   initRescueMapPicker();
+  loadDynamicReportAndRescueCategories();
 
   // Check URL query parameters for direct tab activation (e.g. ?action=rescue)
   const urlParams = new URLSearchParams(window.location.search);

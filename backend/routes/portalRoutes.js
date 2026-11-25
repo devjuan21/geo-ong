@@ -981,6 +981,36 @@ router.get('/broadcast-categories', async (req, res) => {
   }
 });
 
+router.get('/incident-categories', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, description, default_severity, sort_order
+       FROM incident_categories
+       WHERE is_active = TRUE
+       ORDER BY sort_order ASC, id ASC`
+    );
+    return res.json({ categories: rows });
+  } catch (err) {
+    console.error('[Portal API] GET /incident-categories failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load incident categories' });
+  }
+});
+
+router.get('/rescue-categories', async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name, display_label, description, sort_order
+       FROM rescue_categories
+       WHERE is_active = TRUE
+       ORDER BY sort_order ASC, id ASC`
+    );
+    return res.json({ categories: rows });
+  } catch (err) {
+    console.error('[Portal API] GET /rescue-categories failed:', err.message);
+    return res.status(503).json({ error: 'Unable to load rescue categories' });
+  }
+});
+
 router.get('/hazard-alerts', async (req, res) => {
   try {
     const { defaultColorForName } = require('../config/advisoryCategories');

@@ -3045,10 +3045,12 @@ async function createResidentAccount(req, res) {
 
 async function getBroadcastCategories(req, res) {
   try {
+    const includeInactive = String(req.query.includeInactive || '').toLowerCase() === 'true';
+    const whereSql = includeInactive ? '' : 'WHERE is_active = TRUE';
     const [rows] = await pool.query(
       `SELECT id, name, slug, badge_color, priority, description, is_active
        FROM broadcast_categories
-       WHERE is_active = TRUE
+       ${whereSql}
        ORDER BY priority ASC, name ASC`
     );
     return res.json({ categories: rows });

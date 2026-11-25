@@ -866,8 +866,10 @@ const GeoSafeUI = {
   renderCenterStatusBadge(status = 'Operational') {
     const normalized = String(status || 'Operational');
     const styles = {
-      'Operational': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Open for Accommodation': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'Open - Accommodating': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'OPEN-ACCOMMODATING': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Operational': 'bg-sky-100 text-sky-700 border-sky-200',
       'Open': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'Available': 'bg-emerald-100 text-emerald-700 border-emerald-200',
       'Full': 'bg-amber-100 text-amber-800 border-amber-200',

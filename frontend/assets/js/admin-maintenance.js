@@ -98,6 +98,12 @@
   function evacStatusBadge(status) {
     const s = String(status || 'Operational');
     const low = s.toLowerCase();
+    if (low === 'open for accommodation' || low === 'open - accommodating' || low === 'open-accommodating') {
+      return '<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase">Open for Accommodation</span>';
+    }
+    if (low === 'operational') {
+      return '<span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase">Operational</span>';
+    }
     if (low === 'full') {
       return '<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold uppercase">Full</span>';
     }
@@ -107,7 +113,7 @@
     if (low === 'inactive' || low.includes('closed')) {
       return `<span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold uppercase">${esc(s)}</span>`;
     }
-    return `<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">${esc(s)}</span>`;
+    return `<span class="px-2 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold uppercase">${esc(s)}</span>`;
   }
 
   function renderEvacTable() {
@@ -296,15 +302,20 @@
     } else if (kind === 'evac') {
       rec = id ? state.evac.find((x) => Number(x.id) === Number(id)) : null;
       titleEl.textContent = rec ? 'Edit Evacuation Center' : 'Add Evacuation Center';
-      const curRaw = String(rec?.status || 'Operational');
-      const curOpt = curRaw === 'Open - Accommodating' ? 'Operational' : curRaw === 'Full / Closed' ? 'Inactive' : curRaw;
+      const curRaw = String(rec?.status || 'Open for Accommodation');
+      const curLow = curRaw.toLowerCase();
+      const curOpt = (curLow === 'open - accommodating' || curLow === 'open-accommodating')
+        ? 'Open for Accommodation'
+        : curRaw === 'Full / Closed'
+          ? 'Inactive'
+          : curRaw;
       fieldsEl.innerHTML = [
         fieldHtml('m-evac-name', 'Center Name *', rec?.name || '', 'text', 'required'),
         fieldHtml('m-evac-addr', 'Address *', rec?.address || '', 'text', 'required'),
         `<div class="grid grid-cols-2 gap-2.5">${fieldHtml('m-evac-lat', 'Latitude *', rec?.latitude ?? '', 'number', 'step="any" required')}${fieldHtml('m-evac-lng', 'Longitude *', rec?.longitude ?? '', 'number', 'step="any" required')}</div>`,
         `<div><label for="m-evac-status" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Operational Status</label>
           <select id="m-evac-status" class="w-full h-9 px-3 rounded border border-slate-300 text-xs bg-white font-semibold text-[#202020]">
-            ${['Operational', 'Full', 'Temporarily Closed', 'Inactive'].map((st) => `<option value="${st}" ${curOpt === st ? 'selected' : ''}>${st}</option>`).join('')}
+            ${['Open for Accommodation', 'Operational', 'Full', 'Temporarily Closed', 'Inactive'].map((st) => `<option value="${st}" ${curOpt === st ? 'selected' : ''}>${st}</option>`).join('')}
           </select></div>`,
       ].join('');
     } else if (kind === 'incident-cat') {

@@ -1220,24 +1220,31 @@ router.get('/emergency-facilities', async (req, res) => {
       })),
       ...evacRows
         .filter((e) => !isExcludedEvacuationCenter(e) && (String(e.barangay || '').toLowerCase().includes('bayanan') || isPointInsideBayanan(e.latitude, e.longitude)))
-        .map((e) => ({
-          ...e,
-          id: `EVAC-${e.id}`,
-          dbId: e.id,
-          name: e.name,
-          type: 'Evacuation Center',
-          category: 'Evacuation Center',
-          address: e.address || 'Barangay Bayanan, Muntinlupa City',
-          phone: e.contact_phone || e.contact_number || '',
-          latitude: Number(e.latitude),
-          longitude: Number(e.longitude),
-          coordinates: {
-            lat: Number(e.latitude),
-            lng: Number(e.longitude),
-          },
-          is_operational: ['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(e.status) ? 0 : 1,
-          isOperational: !['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(e.status),
-        })),
+        .map((e) => {
+          const isConfirmedOpen = ['Open for Accommodation', 'Open - Accommodating', 'OPEN-ACCOMMODATING'].includes(e.status);
+          const displayStatus = ['Open - Accommodating', 'OPEN-ACCOMMODATING'].includes(e.status)
+            ? 'Open for Accommodation'
+            : e.status;
+          return {
+            ...e,
+            status: displayStatus,
+            id: `EVAC-${e.id}`,
+            dbId: e.id,
+            name: e.name,
+            type: 'Evacuation Center',
+            category: 'Evacuation Center',
+            address: e.address || 'Barangay Bayanan, Muntinlupa City',
+            phone: e.contact_phone || e.contact_number || '',
+            latitude: Number(e.latitude),
+            longitude: Number(e.longitude),
+            coordinates: {
+              lat: Number(e.latitude),
+              lng: Number(e.longitude),
+            },
+            is_operational: isConfirmedOpen ? 1 : 0,
+            isOperational: isConfirmedOpen,
+          };
+        }),
     ];
 
     return res.json(facilities);
@@ -3444,9 +3451,9 @@ router.post('/responder/assignments/:id/outcome', requireRole('responder', 'admi
           return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
         }
         const ec = ecRows[0];
-        if (['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(ec.status)) {
+        if (!['Open for Accommodation', 'Open - Accommodating', 'OPEN-ACCOMMODATING'].includes(ec.status)) {
           await conn.rollback();
-          return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and cannot accept new evacuation assignments.` });
+          return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and is not open for accommodation.` });
         }
         validatedTransports.push({
           destinationCategory: cat,
@@ -3753,9 +3760,9 @@ router.post('/responder/assignments/:id/transports', requireRole('responder', 'a
         return res.status(404).json({ error: 'Selected evacuation center does not exist.' });
       }
       const ec = ecRows[0];
-      if (['Full', 'Full / Closed', 'Temporarily Closed', 'Inactive'].includes(ec.status)) {
+      if (!['Open for Accommodation', 'Open - Accommodating', 'OPEN-ACCOMMODATING'].includes(ec.status)) {
         await conn.rollback();
-        return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and cannot accept new evacuation assignments.` });
+        return res.status(400).json({ error: `${ec.name} is currently ${ec.status} and is not open for accommodation.` });
       }
       destData = {
         hospitalId: null,

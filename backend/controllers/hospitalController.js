@@ -127,7 +127,7 @@ async function getDestinationRecommendations(req, res) {
         `SELECT id, name, address, barangay, latitude, longitude,
                 status, contact_person, contact_phone, contact_number
          FROM evacuation_centers
-         WHERE status NOT IN ('Full', 'Full / Closed', 'Temporarily Closed', 'Inactive')
+         WHERE status IN ('Open for Accommodation', 'Open - Accommodating', 'OPEN-ACCOMMODATING')
          ORDER BY name ASC`
       );
 

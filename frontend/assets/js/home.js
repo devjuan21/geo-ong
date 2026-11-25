@@ -324,11 +324,12 @@ function renderNearestEvacuationCenter() {
     return;
   }
 
-  const available = centers.filter((c) => {
-    const st = String(c.status || '').toLowerCase();
-    return !st.includes('closed') && !st.includes('full');
+  const confirmedOpen = centers.filter((c) => {
+    const st = String(c.status || '').trim().toLowerCase();
+    return st === 'open for accommodation' || st === 'open - accommodating' || st === 'open-accommodating';
   });
-  const pool = available.length > 0 ? available : centers;
+  const operationalFallback = centers.filter((c) => String(c.status || '').trim().toLowerCase() === 'operational');
+  const pool = confirmedOpen.length > 0 ? confirmedOpen : (operationalFallback.length > 0 ? operationalFallback : centers);
 
   let nearest = null;
   let minMeters = Infinity;
@@ -372,14 +373,21 @@ function renderShelterMarkers(centers) {
     const shelterIcon = GeoSafeMapping.createCustomIcon('evacuation');
     const marker = L.marker([lat, lng], { icon: shelterIcon, zIndexOffset: 100 });
 
-    const statusText = center.status || 'Open';
-    const isClosed = String(statusText).toLowerCase().includes('closed') || String(statusText).toLowerCase().includes('full');
+    const statusText = center.status || 'Operational';
+    const statusLow = String(statusText).toLowerCase();
+    const statusColor = (statusLow === 'open for accommodation' || statusLow === 'open - accommodating' || statusLow === 'open-accommodating')
+      ? 'text-emerald-700'
+      : statusLow === 'operational'
+        ? 'text-sky-700'
+        : statusLow === 'full'
+          ? 'text-amber-700'
+          : 'text-red-700';
 
     const popupHtml = `
       <div class="p-2.5 text-xs font-sans max-w-xs">
         <div class="flex items-center justify-between gap-2 mb-1.5">
           <span class="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 uppercase">Shelter</span>
-          <span class="text-[10px] font-semibold ${isClosed ? 'text-red-700' : 'text-emerald-700'}">${escapeHtmlSafe(statusText)}</span>
+          <span class="text-[10px] font-semibold ${statusColor}">${escapeHtmlSafe(statusText)}</span>
         </div>
         <h4 class="font-semibold text-slate-900 text-xs sm:text-sm mb-1">${escapeHtmlSafe(center.name || 'Evacuation Center')}</h4>
         <div class="bg-slate-50 p-2 rounded-md border border-slate-200 text-[10px] text-slate-600 space-y-0.5 mb-2.5">

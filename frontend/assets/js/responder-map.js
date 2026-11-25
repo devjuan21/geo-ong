@@ -251,13 +251,16 @@ function renderMapMarkers() {
 
       const m = L.marker([center.coordinates.lat, center.coordinates.lng], { icon: shelterIcon });
       const statusLabel = center.status || 'Operational';
-      const statusColorClass = (statusLabel === 'Operational' || statusLabel === 'Open - Accommodating')
+      const statusLow = String(statusLabel).toLowerCase();
+      const statusColorClass = (statusLow === 'open for accommodation' || statusLow === 'open - accommodating' || statusLow === 'open-accommodating')
         ? 'text-emerald-600'
-        : statusLabel === 'Full'
-          ? 'text-amber-600'
-          : statusLabel === 'Temporarily Closed'
-            ? 'text-rose-600'
-            : 'text-slate-500';
+        : statusLow === 'operational'
+          ? 'text-sky-600'
+          : statusLow === 'full'
+            ? 'text-amber-600'
+            : statusLow === 'temporarily closed'
+              ? 'text-rose-600'
+              : 'text-slate-500';
       m.bindPopup(`
         <div class="text-xs p-1">
           <strong class="text-emerald-800 block">${center.name}</strong>

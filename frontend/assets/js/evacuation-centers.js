@@ -105,7 +105,10 @@ function filterEvacuationCenters(status) {
     const target = String(status || '').trim().toLowerCase();
     filtered = allCenters.filter(c => {
       const val = String(c.status || '').trim().toLowerCase();
-      if (target === 'operational') return val === 'operational' || val === 'open - accommodating';
+      if (target === 'open for accommodation') {
+        return val === 'open for accommodation' || val === 'open - accommodating' || val === 'open-accommodating';
+      }
+      if (target === 'operational') return val === 'operational';
       if (target === 'full') return val === 'full' || val === 'full / closed';
       if (target === 'temporarily closed') return val === 'temporarily closed' || val === 'standby';
       if (target === 'inactive') return val === 'inactive';
@@ -128,13 +131,16 @@ function renderMapMarkers(centers) {
     if (!c.coordinates) return;
 
     const statusText = String(c.status || 'Operational');
-    const statusCls = (statusText === 'Operational' || statusText === 'Open - Accommodating')
+    const statusLow = statusText.toLowerCase();
+    const statusCls = (statusLow === 'open for accommodation' || statusLow === 'open - accommodating' || statusLow === 'open-accommodating')
       ? 'text-emerald-700'
-      : statusText === 'Full'
-        ? 'text-amber-700'
-        : statusText === 'Temporarily Closed'
-          ? 'text-rose-700'
-          : 'text-slate-600';
+      : statusLow === 'operational'
+        ? 'text-sky-700'
+        : statusLow === 'full'
+          ? 'text-amber-700'
+          : statusLow === 'temporarily closed'
+            ? 'text-rose-700'
+            : 'text-slate-600';
     const popupHtml = `
       <div class="p-1 font-sans text-xs">
         <h4 class="font-bold text-slate-900">${c.name}</h4>

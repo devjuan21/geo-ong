@@ -5,22 +5,31 @@ function normalizeEvacStatus(status) {
   if (!status) return 'Operational';
   const s = String(status).trim();
   const valid = [
+    'Open for Accommodation',
     'Operational',
     'Full',
     'Temporarily Closed',
     'Inactive',
-    'Open - Accommodating',
     'Full / Closed',
     'Standby',
   ];
   if (valid.includes(s)) return s;
   const lower = s.toLowerCase();
+  if (
+    lower === 'open for accommodation' ||
+    lower === 'open - accommodating' ||
+    lower === 'open-accommodating' ||
+    lower.includes('accommodat')
+  ) {
+    return 'Open for Accommodation';
+  }
+  if (lower === 'operational') return 'Operational';
   if (lower === 'full') return 'Full';
   if (lower.includes('temporarily') || lower.includes('temp')) return 'Temporarily Closed';
   if (lower === 'inactive') return 'Inactive';
   if (lower.includes('full') && lower.includes('close')) return 'Full / Closed';
   if (lower.includes('close')) return 'Temporarily Closed';
-  if (lower.includes('open') || lower.includes('accommodat') || lower.includes('operational')) return 'Operational';
+  if (lower.includes('open')) return 'Open for Accommodation';
   if (lower.includes('standby')) return 'Standby';
   return 'Operational';
 }

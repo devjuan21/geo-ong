@@ -632,7 +632,8 @@ function renderIncidentVerificationPanel(assignment) {
   const section = document.getElementById('dtl-incident-verify-section');
   if (!section) return;
 
-  if (!assignment || assignment.isUnassignedIncoming) {
+  const isRescue = String(assignment?.assignmentType || '').toLowerCase() === 'rescue';
+  if (!assignment || assignment.isUnassignedIncoming || isRescue) {
     section.classList.add('hidden');
     return;
   }
@@ -646,13 +647,12 @@ function renderIncidentVerificationPanel(assignment) {
   const isVerified = Boolean(assignment.isPublic || assignment.verifiedAt);
   const rawStatus = String(assignment.rawStatus || '').toLowerCase();
   const isRejected = rawStatus === 'false_alarm' || rawStatus === 'dismissed' || rawStatus === 'cancelled' || String(assignment.status || '').toLowerCase() === 'cancelled';
-  const isRescue = assignment.assignmentType === 'rescue';
   const hazardWrap = document.getElementById('dtl-verify-hazard-wrap');
   const hazardSelect = document.getElementById('dtl-verify-hazard-type');
 
   if (badgeEl) {
     if (isVerified) {
-      badgeEl.textContent = isRescue ? 'Verified • Linked Hazard Public' : 'Verified • Public';
+      badgeEl.textContent = 'Verified • Public';
       badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border border-emerald-200';
     } else if (isRejected) {
       badgeEl.textContent = 'Rejected • Private';
@@ -664,29 +664,15 @@ function renderIncidentVerificationPanel(assignment) {
   }
 
   if (hazardWrap && hazardSelect) {
-    hazardWrap.classList.toggle('hidden', !isRescue || isVerified || isRejected);
-    if (isRescue && !isVerified && !isRejected) {
-      const catLower = `${assignment.category || ''} ${assignment.title || ''}`.toLowerCase();
-      hazardSelect.value = catLower.includes('fire') ? 'Fire' : (catLower.includes('flood') ? 'Flood' : '');
-    }
+    hazardWrap.classList.add('hidden');
+    hazardSelect.value = '';
   }
 
   const verifyBtnEl = document.getElementById('btn-verify-incident');
-  const statusNorm = String(assignment.status || '').toLowerCase();
-  const isRescueOnScene = Boolean(
-    assignment.onSceneAt ||
-    ['on scene', 'on site', 'in progress', 'completed', 'resolved'].includes(statusNorm)
-  );
   if (verifyBtnEl) {
-    if (isRescue) {
-      verifyBtnEl.textContent = 'Verify & Publish Public Awareness';
-      verifyBtnEl.disabled = !isRescueOnScene;
-      verifyBtnEl.title = isRescueOnScene ? '' : 'Arrive On Scene to verify and publish public awareness';
-    } else {
-      verifyBtnEl.textContent = 'Verify Situation';
-      verifyBtnEl.disabled = false;
-      verifyBtnEl.title = '';
-    }
+    verifyBtnEl.textContent = 'Verify Situation';
+    verifyBtnEl.disabled = false;
+    verifyBtnEl.title = '';
   }
 
   if (isVerified || isRejected) {
@@ -736,17 +722,10 @@ window.claimAndRespondIncident = async function () {
 
 window.submitIncidentVerification = async function (action) {
   if (!activeAssignmentDetail) return;
+  const isRescue = String(activeAssignmentDetail.assignmentType || '').toLowerCase() === 'rescue';
+  if (isRescue) return;
   const reasonEl = document.getElementById('dtl-verify-reason');
   const reason = reasonEl ? reasonEl.value.trim() : '';
-  const isRescue = activeAssignmentDetail.assignmentType === 'rescue';
-  const hazardEl = document.getElementById('dtl-verify-hazard-type');
-  const hazardType = hazardEl ? hazardEl.value.trim() : '';
-
-  if (action === 'verify' && isRescue && !['Fire', 'Flood'].includes(hazardType)) {
-    GeoSafeResponderUI.showToast('Please select the verified hazard type (Fire or Flood).', 'warning');
-    if (hazardEl) hazardEl.focus();
-    return;
-  }
 
   if (action === 'reject' && !reason) {
     GeoSafeResponderUI.showToast('Please enter a rejection reason before rejecting.', 'warning');
@@ -766,7 +745,6 @@ window.submitIncidentVerification = async function (action) {
       body: JSON.stringify({
         action,
         reason,
-        hazardType: isRescue ? hazardType : undefined,
         assignmentType: activeAssignmentDetail.assignmentType || 'incident',
       }),
     });

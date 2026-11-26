@@ -982,11 +982,12 @@
             <div class="relative flex items-center justify-center" style="width:${sizePx}px;height:${sizePx}px;">
               <span class="animate-ping absolute inline-flex ${circleClass} rounded-full ${pulseBg} opacity-45 pointer-events-none"></span>
               <div style="${staleBg}" class="${circleClass} rounded-full ${stateClasses} flex items-center justify-center border-2 border-white">
-                <div class="geosafe-gps-arrow-rotator flex items-center justify-center" data-has-heading="${hasHeading ? 'true' : 'false'}" style="width:100%;height:100%;transform:rotate(${angle}deg);transition:transform 120ms linear;transform-origin:50% 50%;will-change:transform;">
+                <div class="geosafe-gps-arrow-rotator flex items-center justify-center" data-has-heading="${hasHeading ? 'true' : 'false'}" style="display:${hasHeading ? 'flex' : 'none'};width:100%;height:100%;transform:rotate(${angle}deg);transition:transform 120ms linear;transform-origin:50% 50%;will-change:transform;">
                   <svg class="${svgClass} text-white drop-shadow-sm" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"></path>
                   </svg>
                 </div>
+                <span class="geosafe-gps-no-heading-dot rounded-full bg-white shadow-sm" style="display:${hasHeading ? 'none' : 'block'};width:${isCompact ? 9 : 11}px;height:${isCompact ? 9 : 11}px;" aria-hidden="true"></span>
               </div>
             </div>
           `,
@@ -2086,11 +2087,21 @@
         }
       };
 
+      let hasAbsoluteListener = false;
       if ('ondeviceorientationabsolute' in window) {
         window.addEventListener('deviceorientationabsolute', hub.handler, true);
+        hasAbsoluteListener = true;
+        // Fallback to standard deviceorientation only if absolute events never arrive
+        setTimeout(() => {
+          if (hub.listening && !hub.absoluteAvailable && hub.handler) {
+            window.addEventListener('deviceorientation', hub.handler, true);
+          }
+        }, 1500);
+      } else {
+        window.addEventListener('deviceorientation', hub.handler, true);
       }
-      window.addEventListener('deviceorientation', hub.handler, true);
       hub.listening = true;
+      hub._hasAbsoluteListener = hasAbsoluteListener;
 
       if (!hub.cleanupBound) {
         hub.cleanupBound = true;
@@ -2151,15 +2162,24 @@
       const el = marker.getElement();
       if (!el) return false;
       const rotator = el.querySelector('.geosafe-gps-arrow-rotator');
+      const dot = el.querySelector('.geosafe-gps-no-heading-dot');
       if (!rotator) return false;
       const norm = GeoSafeMapping.normalizeHeading(headingDeg);
-      if (norm === null) return false;
+      const hub = GeoSafeMapping._getCompassHub();
+      if (norm === null) {
+        rotator.setAttribute('data-has-heading', 'false');
+        rotator.style.display = 'none';
+        if (dot) dot.style.display = 'block';
+        hub.appliedRotationDeg = null;
+        return false;
+      }
       const baseAngle = Number.isFinite(Number(continuousAngleDeg)) ? Number(continuousAngleDeg) : norm;
       const mapBearing = GeoSafeMapping.getMapBearing(map || marker._map);
       const appliedAngle = baseAngle - mapBearing;
       rotator.setAttribute('data-has-heading', 'true');
+      rotator.style.display = 'flex';
+      if (dot) dot.style.display = 'none';
       rotator.style.transform = `rotate(${appliedAngle.toFixed(1)}deg)`;
-      const hub = GeoSafeMapping._getCompassHub();
       hub.appliedRotationDeg = GeoSafeMapping.normalizeHeading(appliedAngle);
       return true;
     },
@@ -2277,7 +2297,7 @@
       }
       const headingLabel = resolvedHeading.heading !== null
         ? `<span class="block text-[10px] text-[#2563EB] font-semibold">Heading: ${Math.round(resolvedHeading.heading)}° (${resolvedHeading.source === 'compass' ? 'Compass' : 'Movement'})</span>`
-        : '';
+        : '<span class="block text-[10px] text-[#777777]">Direction: Unavailable</span>';
 
       const statusBadge = isStale
         ? '<span style="display:inline-block;padding:1px 6px;border-radius:9999px;background:#FFF9E8;color:#8A6800;border:1px solid #FFE872;font-size:10px;font-weight:700;">Stale</span>'
@@ -2318,10 +2338,10 @@
         if (markerState._lastStale !== isStale) {
           markerState._lastStale = isStale;
           markerState.marker.setIcon(GeoSafeMapping.createCustomIcon('user', {
-            heading: resolvedHeading.continuousHeading,
+            heading: resolvedHeading.heading !== null ? resolvedHeading.continuousHeading : null,
             stale: isStale,
           }));
-        } else if (resolvedHeading.heading !== null) {
+        } else {
           GeoSafeMapping.updateGpsMarkerHeading(
             markerState.marker,
             resolvedHeading.heading,
@@ -2353,25 +2373,42 @@
       GeoSafeMapping._notifyCompassDiagnostics();
 
       if (accuracy !== null) {
+        const prevSmoothed = Number.isFinite(markerState._smoothedAccuracy) ? markerState._smoothedAccuracy : accuracy;
+        const smoothedAccuracy = markerState._smoothedAccuracy === undefined
+          ? accuracy
+          : prevSmoothed + 0.25 * (accuracy - prevSmoothed);
+        markerState._smoothedAccuracy = smoothedAccuracy;
+        const targetRadius = Math.max(1, Math.round(smoothedAccuracy));
         const ringColor = isStale ? '#D97706' : '#2563EB';
         const ringFill = isStale ? '#F59E0B' : '#3B82F6';
-        if (!markerState.accuracyCircle) {
+        if (!markerState.accuracyCircle || (typeof map.hasLayer === 'function' && !map.hasLayer(markerState.accuracyCircle))) {
+          if (markerState.accuracyCircle) {
+            try { map.removeLayer(markerState.accuracyCircle); } catch (_) { }
+          }
           markerState.accuracyCircle = L.circle([lat, lng], {
-            radius: accuracy,
+            radius: targetRadius,
             color: ringColor,
             fillColor: ringFill,
             fillOpacity: 0.1,
             weight: 1.5,
             interactive: false
           }).addTo(map);
+          markerState._lastAppliedRadius = targetRadius;
         } else {
           markerState.accuracyCircle.setLatLng([lat, lng]);
-          markerState.accuracyCircle.setRadius(accuracy);
+          const prevApplied = Number(markerState._lastAppliedRadius || targetRadius);
+          const minDelta = Math.max(2, prevApplied * 0.08);
+          if (Math.abs(targetRadius - prevApplied) >= minDelta) {
+            markerState.accuracyCircle.setRadius(targetRadius);
+            markerState._lastAppliedRadius = targetRadius;
+          }
           markerState.accuracyCircle.setStyle({ color: ringColor, fillColor: ringFill });
         }
       } else if (markerState.accuracyCircle) {
         try { map.removeLayer(markerState.accuracyCircle); } catch (_) { }
         markerState.accuracyCircle = null;
+        markerState._smoothedAccuracy = undefined;
+        markerState._lastAppliedRadius = undefined;
       }
     },
 
@@ -2416,26 +2453,81 @@
       function acceptPosition(pos, sourceSeq) {
         if (!state.active || !pos || !pos.coords) return null;
         if (sourceSeq !== undefined && sourceSeq < state.lastAcceptedSeq) return null;
-        const lat = Number(pos.coords.latitude);
-        const lng = Number(pos.coords.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        const rawLat = Number(pos.coords.latitude);
+        const rawLng = Number(pos.coords.longitude);
+        if (
+          !Number.isFinite(rawLat) || !Number.isFinite(rawLng) ||
+          rawLat < -90 || rawLat > 90 || rawLng < -180 || rawLng > 180 ||
+          (rawLat === 0 && rawLng === 0)
+        ) {
           return null;
         }
-        const rawTs = Number(pos.timestamp || Date.now());
+        const rawAccuracy = Number.isFinite(Number(pos.coords.accuracy)) && Number(pos.coords.accuracy) > 0
+          ? Number(pos.coords.accuracy)
+          : null;
+        const now = Date.now();
+        const rawTs = Number(pos.timestamp || now);
+        // Reject stale OS-cached timestamps older than staleThresholdMs
+        if (rawTs > 1e12 && now - rawTs > cfg.staleThresholdMs) {
+          return null;
+        }
         if (state.lastReading && rawTs < state.lastReading.timestamp - 2000) {
           return null; // Prevent older cached reading from overwriting newer coordinates
         }
+        // Reject coarse/inaccurate readings when we already have a much better recent fix
+        if (rawAccuracy !== null && rawAccuracy > 1500) {
+          return null;
+        }
+        if (
+          rawAccuracy !== null &&
+          rawAccuracy > 250 &&
+          state.lastReading &&
+          !state.lastReading.isStale &&
+          state.lastReading.accuracy !== null &&
+          state.lastReading.accuracy <= 80 &&
+          now - state.lastReading.updatedAt < 20000
+        ) {
+          return null;
+        }
+
+        const speed = Number.isFinite(Number(pos.coords.speed)) && Number(pos.coords.speed) >= 0
+          ? Number(pos.coords.speed)
+          : null;
+        let lat = rawLat;
+        let lng = rawLng;
+        if (state.lastReading) {
+          const distMeters = GeoSafeMapping.computeDistanceMeters(
+            { lat: state.lastReading.lat, lng: state.lastReading.lng },
+            { lat: rawLat, lng: rawLng }
+          );
+          const dtSec = Math.max(0.1, (rawTs - state.lastReading.timestamp) / 1000);
+          const prevAcc = state.lastReading.accuracy || 15;
+          const curAcc = rawAccuracy || 15;
+          // Reject unrealistic GPS teleportation jumps
+          if (dtSec >= 0.5 && distMeters > prevAcc + curAcc + 60 && distMeters / dtSec > 55) {
+            return null;
+          }
+          // Smooth small GPS noise while stationary/slow; track responsively while moving
+          const noiseRadius = Math.max(4, curAcc * 0.35);
+          const isMoving = (speed !== null && speed >= 0.8) || distMeters > 40;
+          const alpha = isMoving ? (distMeters > 40 ? 1 : 0.75) : (distMeters < noiseRadius ? 0.25 : 0.5);
+          lat = state.lastReading.lat + alpha * (rawLat - state.lastReading.lat);
+          lng = state.lastReading.lng + alpha * (rawLng - state.lastReading.lng);
+        }
+
         if (sourceSeq !== undefined) {
           state.lastAcceptedSeq = sourceSeq;
         }
         const reading = {
           lat,
           lng,
-          accuracy: Number.isFinite(Number(pos.coords.accuracy)) ? Number(pos.coords.accuracy) : null,
+          rawLat,
+          rawLng,
+          accuracy: rawAccuracy,
           heading: Number.isFinite(Number(pos.coords.heading)) ? Number(pos.coords.heading) : null,
-          speed: Number.isFinite(Number(pos.coords.speed)) ? Number(pos.coords.speed) : null,
+          speed,
           timestamp: rawTs,
-          updatedAt: Date.now(),
+          updatedAt: now,
           isStale: false,
         };
         state.lastReading = reading;
@@ -2518,7 +2610,11 @@
         // Request initial GPS position immediately
         fetchCurrentOnce(true);
 
-        // Start watchPosition for movement between 10-second ticks
+        // Start single watchPosition for movement between 10-second ticks
+        if (state.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+          try { navigator.geolocation.clearWatch(state.watchId); } catch (_) { }
+          state.watchId = null;
+        }
         try {
           state.watchId = navigator.geolocation.watchPosition(
             (pos) => {

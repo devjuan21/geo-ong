@@ -520,6 +520,8 @@ function ensureEvacCompassSubscription() {
   }
 }
 
+const evacUserMarkerState = { marker: null, accuracyCircle: null, continuousHeading: null };
+
 /**
  * Render or update Resident's actual GPS location marker and accuracy circle on the map
  */
@@ -534,54 +536,36 @@ function renderUserLocationMarker() {
       evacMap.removeLayer(userAccuracyCircle);
       userAccuracyCircle = null;
     }
+    evacUserMarkerState.marker = null;
+    evacUserMarkerState.accuracyCircle = null;
     return;
   }
 
-  const latLng = [currentUserPosition.lat, currentUserPosition.lng];
-  const userIcon = createNavigationUserIcon();
-  const safeLabel = escapeHtml(currentUserPosition.label || `${currentUserPosition.lat.toFixed(5)}, ${currentUserPosition.lng.toFixed(5)}`);
   const title = hasArrived
     ? 'Arrived at Evacuation Center'
     : isNavigationActive()
     ? 'Your Live GPS Location'
     : 'Your Current GPS Location';
-  const accInfo = Number.isFinite(currentUserPosition.accuracy)
-    ? `<br><span class="text-[10px] text-slate-500">Accuracy: ±${Math.round(currentUserPosition.accuracy)}m</span>`
-    : '';
 
-  if (!userMarker || !evacMap.hasLayer(userMarker)) {
-    userMarker = L.marker(latLng, { icon: userIcon, zIndexOffset: 700 }).addTo(evacMap);
-    userMarker.bindPopup(`<strong>${title}</strong><br><span class="text-xs text-slate-600">${safeLabel}</span>${accInfo}`);
-  } else {
-    userMarker.setLatLng(latLng);
-    userMarker.setPopupContent(`<strong>${title}</strong><br><span class="text-xs text-slate-600">${safeLabel}</span>${accInfo}`);
-    const compass = GeoSafeMapping && typeof GeoSafeMapping.getCompassStatus === 'function'
-      ? GeoSafeMapping.getCompassStatus()
-      : null;
-    if (compass && compass.hasHeading) {
-      GeoSafeMapping.updateGpsMarkerHeading(userMarker, compass.heading, compass.continuousHeading);
-    } else if (Number.isFinite(lastUserHeading)) {
-      GeoSafeMapping.updateGpsMarkerHeading(userMarker, lastUserHeading, lastUserHeading);
+  GeoSafeMapping.renderLiveGpsMarker(
+    evacMap,
+    evacUserMarkerState,
+    {
+      lat: currentUserPosition.lat,
+      lng: currentUserPosition.lng,
+      accuracy: currentUserPosition.accuracy,
+      heading: Number.isFinite(lastUserHeading) ? lastUserHeading : null,
+      speed: Number.isFinite(currentUserPosition.speed) ? currentUserPosition.speed : null,
+      updatedAt: currentUserPosition.updatedAt || Date.now(),
+      isStale: Boolean(currentUserPosition.isStale),
+    },
+    {
+      title,
+      zIndexOffset: 700,
     }
-  }
-  ensureEvacCompassSubscription();
-
-  if (Number.isFinite(currentUserPosition.accuracy) && currentUserPosition.accuracy > 0) {
-    const radius = Math.min(currentUserPosition.accuracy, 500);
-    if (!userAccuracyCircle || !evacMap.hasLayer(userAccuracyCircle)) {
-      userAccuracyCircle = L.circle(latLng, {
-        radius,
-        color: '#2563EB',
-        weight: 1,
-        fillColor: '#2563EB',
-        fillOpacity: 0.12,
-        interactive: false
-      }).addTo(evacMap);
-    } else {
-      userAccuracyCircle.setLatLng(latLng);
-      userAccuracyCircle.setRadius(radius);
-    }
-  }
+  );
+  userMarker = evacUserMarkerState.marker;
+  userAccuracyCircle = evacUserMarkerState.accuracyCircle;
 }
 
 function renderRoutePolylines(coordinates) {

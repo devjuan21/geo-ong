@@ -826,13 +826,17 @@ const GeoSafeResponderUI = {
       this._globalGpsWatchId = navigator.geolocation.watchPosition(
         pushReading,
         () => {},
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
       );
-      window.addEventListener('beforeunload', () => {
+      const cleanupGlobalWatch = () => {
         if (this._globalGpsWatchId !== undefined && navigator.geolocation) {
           try { navigator.geolocation.clearWatch(this._globalGpsWatchId); } catch (_) {}
+          this._globalGpsWatchId = undefined;
         }
-      }, { once: true });
+      };
+      window.addEventListener('pagehide', cleanupGlobalWatch, { once: true });
+      window.addEventListener('beforeunload', cleanupGlobalWatch, { once: true });
+      window.addEventListener('geosafe:logout', cleanupGlobalWatch, { once: true });
     } catch (_) {}
   },
 

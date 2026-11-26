@@ -1501,20 +1501,21 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
           if (!rescuePhotosMap.has(a.rescue_id)) rescuePhotosMap.set(a.rescue_id, []);
           rescuePhotosMap.get(a.rescue_id).push(a.file_url);
 
-          const evType = a.evidence_type || (Number(a.uploader_role_id) === 2 ? 'responder_completion' : 'resident_report');
+          const evType = a.evidence_type || (Number(a.uploader_role_id) === 2 ? 'responder_completion' : 'resident_submission');
+          const isResidentSub = evType === 'resident_report' || evType === 'resident_submission';
           const evItem = {
             fileUrl: a.file_url,
             fileName: a.file_name || 'Photo Evidence',
             fileType: a.file_type || 'image/jpeg',
             evidenceType: evType,
             assignmentId: a.assignment_id || null,
-            uploadedByName: a.uploaded_by_name || (evType === 'resident_report' ? 'Resident' : 'Responder'),
+            uploadedByName: a.uploaded_by_name || (isResidentSub ? 'Resident' : 'Responder'),
             createdAt: a.created_at,
           };
           if (evType === 'responder_completion') {
             if (!rescueCompletionEvidenceMap.has(a.rescue_id)) rescueCompletionEvidenceMap.set(a.rescue_id, []);
             rescueCompletionEvidenceMap.get(a.rescue_id).push(evItem);
-          } else if (evType === 'resident_report') {
+          } else if (isResidentSub) {
             if (!rescueResidentEvidenceMap.has(a.rescue_id)) rescueResidentEvidenceMap.set(a.rescue_id, []);
             rescueResidentEvidenceMap.get(a.rescue_id).push(evItem);
           }
@@ -1571,19 +1572,20 @@ async function loadResponderAssignmentsForUser(userId, isAdmin = false) {
           reportPhotosMap.get(a.incident_id).push(a.file_url);
 
           const evType = a.evidence_type || (Number(a.uploader_role_id) === 2 ? 'responder_completion' : 'resident_report');
+          const isResidentSub = evType === 'resident_report' || evType === 'resident_submission';
           const evItem = {
             fileUrl: a.file_url,
             fileName: a.file_name || 'Photo Evidence',
             fileType: a.file_type || 'image/jpeg',
             evidenceType: evType,
             assignmentId: a.assignment_id || null,
-            uploadedByName: a.uploaded_by_name || (evType === 'resident_report' ? 'Resident' : 'Responder'),
+            uploadedByName: a.uploaded_by_name || (isResidentSub ? 'Resident' : 'Responder'),
             createdAt: a.created_at,
           };
           if (evType === 'responder_completion') {
             if (!reportCompletionEvidenceMap.has(a.incident_id)) reportCompletionEvidenceMap.set(a.incident_id, []);
             reportCompletionEvidenceMap.get(a.incident_id).push(evItem);
-          } else if (evType === 'resident_report') {
+          } else if (isResidentSub) {
             if (!reportResidentEvidenceMap.has(a.incident_id)) reportResidentEvidenceMap.set(a.incident_id, []);
             reportResidentEvidenceMap.get(a.incident_id).push(evItem);
           }

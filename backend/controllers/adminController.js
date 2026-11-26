@@ -1050,7 +1050,7 @@ async function getAdminReportDetail(req, res) {
       createdAt: att.created_at,
       created_at: att.created_at,
     }));
-    const rescueResidentEvidence = mappedAttachments.filter((a) => a.evidenceType === 'resident_report');
+    const rescueResidentEvidence = mappedAttachments.filter((a) => ['resident_report', 'resident_submission'].includes(a.evidenceType));
     const rescueCompletionEvidence = mappedAttachments.filter((a) => a.evidenceType === 'responder_completion');
 
     const mappedHistory = history.map((h) => ({

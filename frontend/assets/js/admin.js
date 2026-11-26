@@ -1466,16 +1466,20 @@
     }
   }
 
-  async function openReportDetailModal(recordType, id) {
+  async function openReportDetailModal(recordType, id, options = {}) {
     const modal = document.getElementById('admin-report-modal');
     const loadingEl = document.getElementById('admin-report-modal-loading');
     const bodyEl = document.getElementById('admin-report-modal-body');
     const errEl = document.getElementById('review-form-error');
     if (!modal) return;
 
+    const prevBodyScroll = options.preserveScroll && bodyEl ? bodyEl.scrollTop : 0;
+    const prevModalScroll = options.preserveScroll ? modal.scrollTop : 0;
     modal.classList.remove('hidden');
-    if (loadingEl) loadingEl.classList.remove('hidden');
-    if (bodyEl) bodyEl.classList.add('hidden');
+    if (!options.silent) {
+      if (loadingEl) loadingEl.classList.remove('hidden');
+      if (bodyEl) bodyEl.classList.add('hidden');
+    }
     if (errEl) errEl.classList.add('hidden');
 
     try {
@@ -1914,9 +1918,15 @@
 
       if (loadingEl) loadingEl.classList.add('hidden');
       if (bodyEl) bodyEl.classList.remove('hidden');
+      if (options.preserveScroll) {
+        if (bodyEl) bodyEl.scrollTop = prevBodyScroll;
+        modal.scrollTop = prevModalScroll;
+      }
     } catch (err) {
       console.error('[Admin] openReportDetailModal failed:', err.message);
-      if (loadingEl) loadingEl.textContent = 'Unable to load report detail from MySQL.';
+      if (!options.silent && loadingEl) {
+        loadingEl.textContent = 'Unable to load report detail from PostgreSQL.';
+      }
     }
   }
 
@@ -2027,8 +2037,8 @@
       });
       await Promise.all([
         loadReportsList(),
-        loadDashboardOverview(),
-        openReportDetailModal('incident', detail.id),
+        loadDashboardOverview({ silent: true, fitBounds: false }),
+        openReportDetailModal('incident', detail.id, { silent: true, preserveScroll: true }),
       ]);
     } catch (err) {
       const msg = err?.message || 'Unable to close incident report.';
@@ -2063,6 +2073,18 @@
     if (detail.reviewNotesLocked) {
       if (errEl) {
         errEl.textContent = 'Operation completed – review notes and status cannot be modified.';
+        errEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    const rawStLower = String(detail.rawStatus || detail.status || '').toLowerCase();
+    const isAlreadyVerified = detail.recordType === 'rescue'
+      ? Boolean(detail.verifiedAt || detail.isPublic)
+      : Boolean(detail.verifiedAt || detail.isPublic || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower));
+    if (actionType === 'verify' && isAlreadyVerified) {
+      if (errEl) {
+        errEl.textContent = 'This report has already been verified.';
         errEl.classList.remove('hidden');
       }
       return;
@@ -2106,9 +2128,9 @@
       });
 
       showBannerMessage(result.message || 'Report verification updated.');
-      await openReportModal(detail.recordType, detail.dbId || detail.id);
+      await openReportDetailModal(detail.recordType, detail.dbId || detail.id, { silent: true, preserveScroll: true });
       loadReportsList();
-      loadDashboardOverview();
+      loadDashboardOverview({ silent: true, fitBounds: false });
     } catch (err) {
       const msg = String((err && err.message) || '');
       const alreadyDone = /already been verified|already been rejected|already completed|locked/i.test(msg);
@@ -2175,9 +2197,9 @@
       });
 
       showBannerMessage(result.message || 'Responder assigned successfully.');
-      await openReportModal(detail.recordType, detail.dbId || detail.id);
+      await openReportDetailModal(detail.recordType, detail.dbId || detail.id, { silent: true, preserveScroll: true });
       loadReportsList();
-      loadDashboardOverview();
+      loadDashboardOverview({ silent: true, fitBounds: false });
     } catch (err) {
       if (errEl) {
         errEl.textContent = (err && err.message) || 'Failed to assign responder.';

@@ -2362,20 +2362,18 @@ function renderRescueOutcomePanel(assignment) {
   }
 
   if (form) {
-    const hasHandedOverTransport = transports.some(
-      (tr) => String(tr.transportStatus || '') === 'Handed Over'
+    const activeTransports = transports.filter(
+      (tr) => String(tr.transportStatus || '') !== 'Cancelled'
     );
-    const showTransportForm = canEdit && !hasHandedOverTransport;
+    const showTransportForm = canEdit && activeTransports.length === 0;
     form.classList.toggle('hidden', !showTransportForm);
     if (showTransportForm) {
-      const neededCheck = document.getElementById('out-transport-needed');
       const picker = document.getElementById('out-destination-picker');
       const typeSelect = document.getElementById('out-transport-type');
       const destSelect = document.getElementById('out-rec-destination');
       const statusEl = document.getElementById('out-rec-status');
       loadedRecommendedFacilities = [];
-      if (neededCheck) neededCheck.checked = false;
-      if (picker) picker.classList.add('hidden');
+      if (picker) picker.classList.remove('hidden');
       if (typeSelect) typeSelect.value = '';
       if (destSelect) {
         destSelect.disabled = true;
@@ -2385,24 +2383,6 @@ function renderRescueOutcomePanel(assignment) {
     }
   }
 }
-
-window.toggleOptionalTransportPicker = function () {
-  const needed = Boolean(document.getElementById('out-transport-needed')?.checked);
-  const picker = document.getElementById('out-destination-picker');
-  const typeSelect = document.getElementById('out-transport-type');
-  const destSelect = document.getElementById('out-rec-destination');
-  const statusEl = document.getElementById('out-rec-status');
-  if (picker) picker.classList.toggle('hidden', !needed);
-  if (!needed) {
-    loadedRecommendedFacilities = [];
-    if (typeSelect) typeSelect.value = '';
-    if (destSelect) {
-      destSelect.disabled = true;
-      destSelect.innerHTML = '<option value="">Select destination type first...</option>';
-    }
-    if (statusEl) statusEl.classList.add('hidden');
-  }
-};
 
 window.handleTransportTypeChange = function () {
   const recCat = document.getElementById('out-transport-type')?.value || '';

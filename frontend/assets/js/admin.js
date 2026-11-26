@@ -1676,8 +1676,11 @@
             `;
           } else {
             card.innerHTML = `
-              <div class="w-full overflow-hidden bg-[#F7F7F7] flex items-center justify-center" style="height:80px;">
-                <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="w-full h-full object-cover transition-transform group-hover:scale-[1.03]" onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML='<div class=\\'p-2 text-[10px] text-center text-[#777777] flex items-center justify-center h-full\\'>Photo unavailable</div>';">
+              <div class="relative w-full overflow-hidden bg-[#F7F7F7] flex items-center justify-center" style="height:80px;">
+                <span class="geosafe-img-loading text-[10px] text-[#777777]">Loading...</span>
+                <img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(fileName)}" class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all group-hover:scale-[1.03]"
+                  onload="this.classList.remove('opacity-0'); const l=this.parentElement.querySelector('.geosafe-img-loading'); if(l) l.remove();"
+                  onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'p-2 text-[10px] text-center text-[#777777] flex flex-col items-center justify-center gap-1 h-full\\'><span>Photo unavailable</span><button type=\\'button\\' onclick=\\'event.stopPropagation(); window.GeoSafeAdmin.retryEvidenceImage(this)\\' data-src=\\'${escapeHtml(fileUrl)}\\' data-alt=\\'${escapeHtml(fileName)}\\' class=\\'text-[10px] font-bold text-[#0A58CA] underline\\'>Retry</button></div>';">
               </div>
               <div class="px-1.5 py-1 border-t border-slate-200 bg-white text-[9px] text-[#777777] truncate">${escapeHtml(metaLabel)}</div>
             `;
@@ -6364,6 +6367,28 @@
     loadPasswordAssistanceTickets,
     openPasswordAssistanceModal,
     closePasswordAssistanceModal,
+    retryEvidenceImage(btn) {
+      const box = btn && btn.closest ? btn.closest('.relative') || btn.parentElement?.parentElement : null;
+      const rawSrc = btn?.getAttribute('data-src') || '';
+      const alt = btn?.getAttribute('data-alt') || 'Evidence';
+      if (!box || !rawSrc) return;
+      const sep = rawSrc.includes('?') ? '&' : '?';
+      const nextSrc = `${rawSrc}${sep}_retry=${Date.now()}`;
+      box.innerHTML = `<span class="geosafe-img-loading text-[10px] text-[#777777]">Loading...</span>`;
+      const img = document.createElement('img');
+      img.src = nextSrc;
+      img.alt = alt;
+      img.className = 'absolute inset-0 w-full h-full object-cover opacity-0 transition-all group-hover:scale-[1.03]';
+      img.onload = () => {
+        img.classList.remove('opacity-0');
+        const l = box.querySelector('.geosafe-img-loading');
+        if (l) l.remove();
+      };
+      img.onerror = () => {
+        box.innerHTML = `<div class="p-2 text-[10px] text-center text-[#777777] flex flex-col items-center justify-center gap-1 h-full"><span>Photo unavailable</span><button type="button" onclick="event.stopPropagation(); window.GeoSafeAdmin.retryEvidenceImage(this)" data-src="${escapeHtml(rawSrc)}" data-alt="${escapeHtml(alt)}" class="text-[10px] font-bold text-[#0A58CA] underline">Retry</button></div>`;
+      };
+      box.appendChild(img);
+    },
     handleSidebarToggle,
     openMobileDrawer,
     closeMobileDrawer,

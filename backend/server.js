@@ -277,17 +277,25 @@ app.use('/assets/uploads', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid attachment path.' });
     }
 
-    if (!fs.existsSync(resolvedFile)) {
-      return res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
-    }
-
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    return res.sendFile(resolvedFile, (err) => {
-      if (err && !res.headersSent) {
-        res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
-      }
-    });
+
+    if (fs.existsSync(resolvedFile)) {
+      return res.sendFile(resolvedFile, (err) => {
+        if (err && !res.headersSent) {
+          res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
+        }
+      });
+    }
+
+    const { readEvidencePhoto } = require('./services/privateStorageService');
+    const remote = await readEvidencePhoto({ category, fileName: decodedName });
+    if (remote && remote.buffer) {
+      res.setHeader('Content-Type', remote.mimeType || 'image/jpeg');
+      return res.send(remote.buffer);
+    }
+
+    return res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
   } catch (err) {
     console.error('[Uploads] Error serving protected attachment:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to retrieve attachment.' });

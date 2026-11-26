@@ -19,6 +19,7 @@ const {
 const { getArrivalConfig, computeHaversineMeters } = require('../config/arrivalConfig');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { getEocLocation } = require('../config/eocConfig');
+const { saveEvidencePhoto } = require('../services/privateStorageService');
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ const ALLOWED_IMAGE_MIME_TYPES = {
 };
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10MB
 
-function parseAndSaveBase64Photo(rawPhoto, subDir, prefix) {
+async function parseAndSaveBase64Photo(rawPhoto, subDir, prefix, evidenceType = 'resident_submission') {
   if (!rawPhoto) return null;
   const dataUrl = typeof rawPhoto === 'string' ? rawPhoto.trim() : String(rawPhoto.dataUrl || rawPhoto.url || '').trim();
   if (!dataUrl) return null;
@@ -66,15 +67,18 @@ function parseAndSaveBase64Photo(rawPhoto, subDir, prefix) {
     throw err;
   }
 
-  const uploadDir = path.join(__dirname, '..', '..', 'frontend', 'assets', 'uploads', subDir);
-  fs.mkdirSync(uploadDir, { recursive: true });
   const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
-  const fullPath = path.join(uploadDir, fileName);
-  fs.writeFileSync(fullPath, buffer);
+  const saved = await saveEvidencePhoto({
+    category: subDir,
+    evidenceType,
+    fileName,
+    buffer,
+    mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
+  });
 
   return {
-    fileName,
-    publicUrl: `/assets/uploads/${subDir}/${fileName}`,
+    fileName: saved.fileName,
+    publicUrl: saved.publicUrl,
     mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
     byteLength: buffer.length,
   };
@@ -777,7 +781,7 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
   const savedPhotos = [];
   try {
     for (let i = 0; i < Math.min(rawPhotoList.length, 5); i++) {
-      const parsed = parseAndSaveBase64Photo(rawPhotoList[i], 'rescues', `RES-${req.user.id}-${i}`);
+      const parsed = await parseAndSaveBase64Photo(rawPhotoList[i], 'rescues', `RES-${req.user.id}-${i}`, 'resident_submission');
       if (parsed) savedPhotos.push(parsed);
     }
   } catch (photoErr) {
@@ -2127,7 +2131,12 @@ async function handleResponderAssignmentUpdate(req, res) {
     const savedPhotos = [];
     try {
       for (let i = 0; i < Math.min(rawPhotoList.length, 5); i++) {
-        const parsed = parseAndSaveBase64Photo(rawPhotoList[i], subDir, `${prefix}-${i}`);
+        const parsed = await parseAndSaveBase64Photo(
+          rawPhotoList[i],
+          subDir,
+          `${prefix}-${i}`,
+          isCompleting ? 'responder_completion' : 'responder_progress'
+        );
         if (parsed) savedPhotos.push(parsed);
       }
     } catch (photoErr) {

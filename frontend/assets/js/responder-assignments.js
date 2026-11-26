@@ -491,13 +491,18 @@ window.openAssignmentDetails = async function (id) {
         const name = ev.fileName || ev.file_name || 'Photo Evidence';
         const timeStr = formatAssignmentDateTime(ev.createdAt || ev.created_at);
         const uploaderStr = showUploader && ev.uploadedByName ? `${ev.uploadedByName} • ` : '';
+        const safeUrl = escapeHtml(url);
+        const safeName = escapeHtml(name);
         return `
-          <div class="group rounded-md border border-slate-200 bg-white overflow-hidden shadow-subtle cursor-pointer hover:border-[#F5B900] transition-colors" onclick="window.open('${url}', '_blank')">
-            <div class="h-24 w-full bg-[#F7F7F7] flex items-center justify-center overflow-hidden">
-              <img src="${url}" alt="${name}" class="w-full h-full object-cover group-hover:scale-[1.03] transition-transform">
+          <div class="group rounded-md border border-slate-200 bg-white overflow-hidden shadow-subtle cursor-pointer hover:border-[#F5B900] transition-colors" onclick="window.open('${safeUrl}', '_blank', 'noopener')">
+            <div class="relative h-24 w-full bg-[#F7F7F7] flex items-center justify-center overflow-hidden">
+              <span class="geosafe-img-loading text-[10px] text-[#777777]">Loading...</span>
+              <img src="${safeUrl}" alt="${safeName}" class="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:scale-[1.03] transition-all"
+                onload="this.classList.remove('opacity-0'); const l=this.parentElement.querySelector('.geosafe-img-loading'); if(l) l.remove();"
+                onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'p-2 text-[10px] text-center text-[#777777] flex flex-col items-center justify-center gap-1 h-full\\'><span>Photo unavailable</span><button type=\\'button\\' onclick=\\'event.stopPropagation(); window.retryResponderEvidenceImage(this)\\' data-src=\\'${safeUrl}\\' data-alt=\\'${safeName}\\' class=\\'text-[10px] font-bold text-[#0A58CA] underline\\'>Retry</button></div>';">
             </div>
             <div class="px-2 py-1.5 border-t border-slate-200">
-              <p class="text-[10px] font-semibold text-[#202020] truncate">${uploaderStr}${timeStr}</p>
+              <p class="text-[10px] font-semibold text-[#202020] truncate">${escapeHtml(uploaderStr)}${escapeHtml(timeStr)}</p>
             </div>
           </div>
         `;
@@ -557,6 +562,29 @@ window.openAssignmentDetails = async function (id) {
   } catch (err) {
     GeoSafeResponderUI.showToast(err.message || 'Could not open assignment details.', 'error');
   }
+};
+
+window.retryResponderEvidenceImage = function (btn) {
+  const box = btn && btn.closest ? btn.closest('.relative') || btn.parentElement?.parentElement : null;
+  const rawSrc = btn?.getAttribute('data-src') || '';
+  const alt = btn?.getAttribute('data-alt') || 'Photo Evidence';
+  if (!box || !rawSrc) return;
+  const sep = rawSrc.includes('?') ? '&' : '?';
+  const nextSrc = `${rawSrc}${sep}_retry=${Date.now()}`;
+  box.innerHTML = `<span class="geosafe-img-loading text-[10px] text-[#777777]">Loading...</span>`;
+  const img = document.createElement('img');
+  img.src = nextSrc;
+  img.alt = alt;
+  img.className = 'absolute inset-0 w-full h-full object-cover opacity-0 group-hover:scale-[1.03] transition-all';
+  img.onload = () => {
+    img.classList.remove('opacity-0');
+    const l = box.querySelector('.geosafe-img-loading');
+    if (l) l.remove();
+  };
+  img.onerror = () => {
+    box.innerHTML = `<div class="p-2 text-[10px] text-center text-[#777777] flex flex-col items-center justify-center gap-1 h-full"><span>Photo unavailable</span><button type="button" onclick="event.stopPropagation(); window.retryResponderEvidenceImage(this)" data-src="${escapeHtml(rawSrc)}" data-alt="${escapeHtml(alt)}" class="text-[10px] font-bold text-[#0A58CA] underline">Retry</button></div>`;
+  };
+  box.appendChild(img);
 };
 
 window.closeAssignmentDetails = function () {

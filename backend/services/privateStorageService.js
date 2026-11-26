@@ -4,7 +4,11 @@ const crypto = require('crypto');
 const dns = require('dns').promises;
 
 const PRIVATE_BUCKET = process.env.SUPABASE_BUCKET_RESIDENT_IDENTITY || 'resident-identity-docs';
+const INCIDENT_EVIDENCE_BUCKET = process.env.SUPABASE_BUCKET_INCIDENT_EVIDENCE || 'incident-evidence';
+const RESCUE_EVIDENCE_BUCKET = process.env.SUPABASE_BUCKET_RESCUE_EVIDENCE || 'rescue-evidence';
+const RESCUE_COMPLETION_BUCKET = process.env.SUPABASE_BUCKET_RESCUE_COMPLETION || 'rescue-completion-evidence';
 const LOCAL_PRIVATE_DIR = path.resolve(__dirname, '../private_uploads', PRIVATE_BUCKET);
+const LOCAL_EVIDENCE_ROOT = path.resolve(__dirname, '../../frontend/assets/uploads');
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const MIN_IMAGE_BYTES = 2048; // 2 KB minimum to reject empty/blank images
 const STORAGE_FETCH_TIMEOUT_MS = 15000;
@@ -145,9 +149,9 @@ async function safeStorageFetch(url, options = {}, meta = {}) {
   }
 }
 
-let bucketVerified = false;
-async function ensurePrivateSupabaseBucket(cfg, correlationId = null) {
-  if (bucketVerified) return;
+const verifiedBuckets = new Set();
+async function ensurePrivateSupabaseBucket(cfg, correlationId = null, bucketName = PRIVATE_BUCKET, fileSizeLimit = MAX_IMAGE_BYTES) {
+  if (verifiedBuckets.has(bucketName)) return;
   if (cfg.invalidUrl) {
     const err = new Error(`Configured SUPABASE_URL is invalid (${cfg.urlError || 'malformed URL'}).`);
     err.code = 'STORAGE_ERR_INVALID_URL';
@@ -157,7 +161,7 @@ async function ensurePrivateSupabaseBucket(cfg, correlationId = null) {
   }
 
   const res = await safeStorageFetch(
-    `${cfg.url}/storage/v1/bucket/${encodeURIComponent(PRIVATE_BUCKET)}`,
+    `${cfg.url}/storage/v1/bucket/${encodeURIComponent(bucketName)}`,
     {
       method: 'GET',
       headers: {
@@ -169,7 +173,7 @@ async function ensurePrivateSupabaseBucket(cfg, correlationId = null) {
   );
 
   if (res.ok) {
-    bucketVerified = true;
+    verifiedBuckets.add(bucketName);
     return;
   }
   if (res.status === 404 || res.status === 400) {
@@ -183,10 +187,10 @@ async function ensurePrivateSupabaseBucket(cfg, correlationId = null) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: PRIVATE_BUCKET,
-          name: PRIVATE_BUCKET,
+          id: bucketName,
+          name: bucketName,
           public: false,
-          file_size_limit: MAX_IMAGE_BYTES,
+          file_size_limit: fileSizeLimit,
           allowed_mime_types: ['image/jpeg', 'image/png', 'image/webp'],
         }),
       },
@@ -199,7 +203,7 @@ async function ensurePrivateSupabaseBucket(cfg, correlationId = null) {
       err.isStorageError = true;
       throw err;
     }
-    bucketVerified = true;
+    verifiedBuckets.add(bucketName);
     return;
   }
 
@@ -436,10 +440,126 @@ async function diagnoseStorageConnectivity() {
   }
 }
 
+function resolveEvidenceBucket(category, evidenceType = '') {
+  if (category === 'incidents') return INCIDENT_EVIDENCE_BUCKET;
+  const evLow = String(evidenceType || '').toLowerCase();
+  if (evLow.includes('completion') || evLow.includes('progress')) {
+    return RESCUE_COMPLETION_BUCKET;
+  }
+  return RESCUE_EVIDENCE_BUCKET;
+}
+
+async function saveEvidencePhoto({ category, evidenceType = 'resident_report', fileName, buffer, mimeType, correlationId = null }) {
+  const safeCat = category === 'rescues' ? 'rescues' : 'incidents';
+  const safeName = path.basename(String(fileName || ''));
+  if (!safeName || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('Invalid evidence photo payload.');
+  }
+
+  const sb = getSupabaseStorageConfig();
+  let storedInSupabase = false;
+  if (sb && !sb.invalidUrl) {
+    const bucket = resolveEvidenceBucket(safeCat, evidenceType);
+    await ensurePrivateSupabaseBucket(sb, correlationId, bucket, 10 * 1024 * 1024);
+    const uploadRes = await safeStorageFetch(
+      `${sb.url}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeURIComponent(safeName)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sb.key}`,
+          apikey: sb.key,
+          'Content-Type': mimeType || 'image/jpeg',
+          'x-upsert': 'true',
+        },
+        body: new Uint8Array(buffer),
+      },
+      { operation: `upload_evidence_${safeCat}`, correlationId }
+    );
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => '');
+      const err = new Error(`Persistent evidence upload failed: HTTP ${uploadRes.status} ${errText}`);
+      err.code = `STORAGE_HTTP_${uploadRes.status}`;
+      err.isStorageError = true;
+      throw err;
+    }
+    storedInSupabase = true;
+  }
+
+  // Also write to local uploads folder for local development or fast local cache
+  const uploadDir = path.resolve(LOCAL_EVIDENCE_ROOT, safeCat);
+  const targetPath = path.resolve(uploadDir, safeName);
+  if (targetPath.startsWith(uploadDir + path.sep)) {
+    try {
+      fs.mkdirSync(uploadDir, { recursive: true });
+      fs.writeFileSync(targetPath, buffer);
+    } catch (diskErr) {
+      if (!storedInSupabase) throw diskErr;
+    }
+  }
+
+  return {
+    fileName: safeName,
+    publicUrl: `/assets/uploads/${safeCat}/${safeName}`,
+    storageMode: storedInSupabase ? 'supabase' : 'local',
+  };
+}
+
+async function readEvidencePhoto({ category, fileName }) {
+  const safeCat = category === 'rescues' ? 'rescues' : 'incidents';
+  const safeName = path.basename(String(fileName || ''));
+  if (!safeName) return null;
+
+  const uploadDir = path.resolve(LOCAL_EVIDENCE_ROOT, safeCat);
+  const resolvedFile = path.resolve(uploadDir, safeName);
+  if (resolvedFile.startsWith(uploadDir + path.sep) && fs.existsSync(resolvedFile)) {
+    return {
+      filePath: resolvedFile,
+      mimeType: safeName.endsWith('.png') ? 'image/png' : safeName.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
+    };
+  }
+
+  const sb = getSupabaseStorageConfig();
+  if (!sb || sb.invalidUrl) return null;
+
+  const candidateBuckets =
+    safeCat === 'incidents'
+      ? [INCIDENT_EVIDENCE_BUCKET]
+      : safeName.startsWith('RES-UPD-')
+        ? [RESCUE_COMPLETION_BUCKET, RESCUE_EVIDENCE_BUCKET]
+        : [RESCUE_EVIDENCE_BUCKET, RESCUE_COMPLETION_BUCKET];
+
+  for (const bucket of candidateBuckets) {
+    try {
+      const res = await safeStorageFetch(
+        `${sb.url}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${encodeURIComponent(safeName)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${sb.key}`,
+            apikey: sb.key,
+          },
+        },
+        { operation: `read_evidence_${safeCat}` }
+      );
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        return {
+          buffer: Buffer.from(arrayBuf),
+          mimeType: res.headers.get('content-type') || (safeName.endsWith('.png') ? 'image/png' : safeName.endsWith('.webp') ? 'image/webp' : 'image/jpeg'),
+        };
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
+
 module.exports = {
   parseAndValidateImageDataUrl,
   savePrivateIdentityPhoto,
   readPrivateIdentityPhoto,
   deletePrivateIdentityPhoto,
   diagnoseStorageConnectivity,
+  saveEvidencePhoto,
+  readEvidencePhoto,
 };

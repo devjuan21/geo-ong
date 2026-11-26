@@ -6,6 +6,7 @@ const { ROLE_IDS } = require('../config/roles');
 const { emitNewReport, emitPublicVerifiedReport, emitReportVerificationResult, emitStatusUpdate, emitIncidentResolved } = require('../services/socketService');
 const { dispatchIncidentResolvedCommunityBroadcast } = require('../services/incidentResolutionService');
 const { isPointInsideBayanan } = require('../utils/bayananBoundary');
+const { saveEvidencePhoto } = require('../services/privateStorageService');
 
 // Canonical incident storage: `reports` is the ONLY incident table written by the application.
 // Allowed values mirror the reports.status ENUM exactly.
@@ -179,11 +180,17 @@ async function createReport(req, res) {
       for (let idx = 0; idx < parsedPhotos.length; idx++) {
         const { mimeType, ext, buffer } = parsedPhotos[idx];
         const fileName = `inc-${result.insertId}-${idx + 1}-${Date.now()}.${ext}`;
-        const filePath = path.join(uploadDir, fileName);
-        fs.writeFileSync(filePath, buffer);
-        writtenFilePaths.push(filePath);
+        const saved = await saveEvidencePhoto({
+          category: 'incidents',
+          evidenceType: 'resident_report',
+          fileName,
+          buffer,
+          mimeType,
+        });
+        const localSavedPath = path.join(uploadDir, fileName);
+        if (fs.existsSync(localSavedPath)) writtenFilePaths.push(localSavedPath);
 
-        const fileUrl = `/assets/uploads/incidents/${fileName}`;
+        const fileUrl = saved.publicUrl;
         const fileSize = buffer.length;
 
         await conn.query(

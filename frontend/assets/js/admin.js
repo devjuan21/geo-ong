@@ -6166,7 +6166,7 @@
         const statusStyles = {
           pending: 'bg-amber-100 text-amber-800',
           in_review: 'bg-blue-100 text-blue-800',
-          approved: 'bg-teal-100 text-teal-800',
+          approved: 'bg-emerald-100 text-emerald-800',
           rejected: 'bg-red-100 text-red-700',
           resolved: 'bg-emerald-100 text-emerald-800',
         };
@@ -6197,6 +6197,10 @@
       }).join('');
     } catch (err) {
       if (loadingEl) loadingEl.classList.add('hidden');
+      if (emptyEl) emptyEl.classList.add('hidden');
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-xs font-semibold text-red-700">${escapeHtml(err.message || 'Unable to load password reset requests.')}</td></tr>`;
+      }
       console.error('[Admin] loadPasswordAssistanceTickets failed:', err.message);
     }
   }
@@ -6252,17 +6256,18 @@
       }
     }
 
-    const canAct = ['pending', 'in_review', 'approved'].includes(ticket.status);
+    const canAct = ['pending', 'in_review'].includes(ticket.status);
     if (actionBox) actionBox.classList.toggle('hidden', !canAct);
     if (reviewBtn) reviewBtn.classList.toggle('hidden', ticket.status !== 'pending');
 
     if (!canAct && existingBox) {
+      const isApprovedDecision = ticket.status === 'approved' || ticket.status === 'resolved';
       existingBox.classList.remove('hidden');
-      existingBox.className = ticket.status === 'resolved'
+      existingBox.className = isApprovedDecision
         ? 'p-3.5 rounded-lg border border-emerald-200 bg-emerald-50 space-y-1'
         : 'p-3.5 rounded-lg border border-red-200 bg-red-50 space-y-1';
       if (existingTitle) {
-        existingTitle.textContent = ticket.status === 'resolved' ? 'Resolved — Temporary Password Issued' : 'Request Rejected';
+        existingTitle.textContent = isApprovedDecision ? 'Approved — Temporary Password Issued' : 'Request Rejected';
       }
       if (existingMeta) {
         const revTime = ticket.reviewedAt ? new Date(ticket.reviewedAt).toLocaleString() : '—';

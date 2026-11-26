@@ -346,7 +346,7 @@ async function approvePasswordAssistanceTicket(req, res) {
     }
 
     const ticket = ticketRows[0];
-    if (!['pending', 'in_review', 'approved'].includes(ticket.status)) {
+    if (!['pending', 'in_review'].includes(ticket.status)) {
       await conn.rollback();
       return res.status(409).json({ error: `This ticket has already been finalized (${ticket.status}).` });
     }
@@ -391,7 +391,7 @@ async function approvePasswordAssistanceTicket(req, res) {
     await conn.query(
       `UPDATE password_assistance_tickets
           SET user_id = ?,
-              status = 'resolved',
+              status = 'approved',
               reviewed_by = ?,
               reviewed_at = NOW(),
               decision_reason = 'Identity verified; temporary password issued by Administrator',
@@ -425,7 +425,7 @@ async function approvePasswordAssistanceTicket(req, res) {
     emitAdminPasswordAssistanceEvent('password-assistance-updated', {
       ticketId,
       ticketReference: ticket.ticket_reference,
-      status: 'resolved',
+      status: 'approved',
     });
 
     // Returned ONCE in this authenticated Admin response; never stored or logged in plaintext
@@ -433,7 +433,7 @@ async function approvePasswordAssistanceTicket(req, res) {
       message: 'Identity confirmed and temporary password generated. Communicate this temporary password through a verified offline or in-person channel.',
       ticketId,
       ticketReference: ticket.ticket_reference,
-      status: 'resolved',
+      status: 'approved',
       targetUserCode: targetUser.user_code,
       targetEmail: targetUser.email,
       temporaryPassword,

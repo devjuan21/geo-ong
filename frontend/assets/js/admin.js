@@ -5365,8 +5365,6 @@
     }
     const paModalCloseBtn = document.getElementById('pa-modal-close-btn');
     if (paModalCloseBtn) paModalCloseBtn.addEventListener('click', closePasswordAssistanceModal);
-    const paReviewBtn = document.getElementById('pa-modal-review-btn');
-    if (paReviewBtn) paReviewBtn.addEventListener('click', markSelectedTicketInReview);
     const paApproveBtn = document.getElementById('pa-modal-approve-btn');
     if (paApproveBtn) paApproveBtn.addEventListener('click', approveSelectedPasswordTicket);
     const paRejectBtn = document.getElementById('pa-modal-reject-btn');
@@ -6217,7 +6215,6 @@
     const chk = document.getElementById('pa-identity-confirmed-chk');
     const reasonEl = document.getElementById('pa-modal-rejection-reason');
     const actionBox = document.getElementById('pa-action-controls-box');
-    const reviewBtn = document.getElementById('pa-modal-review-btn');
     const existingBox = document.getElementById('pa-existing-decision-box');
     const existingTitle = document.getElementById('pa-existing-decision-title');
     const existingMeta = document.getElementById('pa-existing-decision-meta');
@@ -6258,7 +6255,6 @@
 
     const canAct = ['pending', 'in_review'].includes(ticket.status);
     if (actionBox) actionBox.classList.toggle('hidden', !canAct);
-    if (reviewBtn) reviewBtn.classList.toggle('hidden', ticket.status !== 'pending');
 
     if (!canAct && existingBox) {
       const isApprovedDecision = ticket.status === 'approved' || ticket.status === 'resolved';
@@ -6293,27 +6289,10 @@
 
   function setPaSubmitting(isBusy) {
     paQueueState.isSubmitting = isBusy;
-    ['pa-modal-review-btn', 'pa-modal-approve-btn', 'pa-modal-reject-btn'].forEach((id) => {
+    ['pa-modal-approve-btn', 'pa-modal-reject-btn'].forEach((id) => {
       const btn = document.getElementById(id);
       if (btn) btn.disabled = isBusy;
     });
-  }
-
-  async function markSelectedTicketInReview() {
-    if (!paQueueState.activeTicket || paQueueState.isSubmitting) return;
-    const errBox = document.getElementById('pa-modal-error');
-    if (errBox) errBox.classList.add('hidden');
-    setPaSubmitting(true);
-    try {
-      await apiRequest(`/password-assistance/${encodeURIComponent(paQueueState.activeTicket.id)}/review`, { method: 'POST' });
-      showBannerMessage(`Ticket ${paQueueState.activeTicket.ticketReference} marked In Review.`, 'info');
-      await loadPasswordAssistanceTickets();
-      openPasswordAssistanceModal(paQueueState.activeTicket.id);
-    } catch (err) {
-      if (errBox) { errBox.textContent = err.message || 'Unable to update ticket.'; errBox.classList.remove('hidden'); }
-    } finally {
-      setPaSubmitting(false);
-    }
   }
 
   async function approveSelectedPasswordTicket() {

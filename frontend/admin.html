@@ -2613,8 +2613,8 @@
               class="hidden p-2.5 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] text-xs font-semibold text-[#D93636]">
             </div>
 
-            <!-- 1. Report Verification (One-time Decision) -->
-            <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2.5">
+            <!-- 1. Report Verification (Incident Reports Only) -->
+            <div id="admin-report-verification-card" class="p-3 rounded-md bg-white border border-slate-200 space-y-2.5">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">1. Report
                   Verification</span>
@@ -2650,7 +2650,7 @@
             <!-- 2. Responder Response Monitoring (Automatic Distribution / Self-Claim) -->
             <div class="p-3 rounded-md bg-white border border-slate-200 space-y-2 mt-auto">
               <div class="flex items-center justify-between gap-2">
-                <span class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">2. Responder
+                <span id="review-response-heading" class="text-[11px] font-bold text-[#0f172a] uppercase tracking-wider">2. Responder
                   Response</span>
                 <span id="review-assignment-status"
                   class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Unclaimed</span>
@@ -3922,7 +3922,7 @@
     </form>
   </div>
 
-  <script src="./assets/js/admin.js?v=20261126e"></script>
+  <script src="./assets/js/admin.js?v=20261126f"></script>
   <script src="./assets/js/admin-analytics.js?v=20261124b"></script>
   <script src="./assets/js/admin-maintenance.js?v=20261125g"></script>
 </body>

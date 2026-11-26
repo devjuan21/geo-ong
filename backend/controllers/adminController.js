@@ -1158,12 +1158,13 @@ async function getAdminReportDetail(req, res) {
       gpsAccuracy: rescueLocMeta.gpsAccuracy,
       locationCapturedAt: rescueLocMeta.locationCapturedAt,
       assignmentStatus: rescueAssignmentStatus,
+      hasActiveAssignment: Boolean(latestAssign && ['Assigned', 'Accepted', 'En Route', 'On Scene'].includes(latestAssign.assignment_status)),
       responderLocked: rescueResponderLocked,
       reviewNotesLocked: rescueNotesLocked,
       savedReviewNotes: savedRescueReviewNotes,
       status: r.status,
       rawStatus: r.status,
-      statusLabel: normalizeRescueStatusLabel(r.status),
+      statusLabel: normalizeRescueStatusLabel(r.status, rescueAssignmentStatus),
       filterBucket: mapUnifiedFilterBucket('rescue', r.status),
       assignedTo: latestAssign ? latestAssign.responder_user_id : null,
       assignedResponderName: latestAssign ? latestAssign.responder_name : null,
@@ -1557,18 +1558,10 @@ async function reviewAdminReport(req, res) {
     const activeResAssign = resAssignRows.find((a) =>
       ['Assigned', 'Accepted', 'En Route', 'On Scene'].includes(a.assignment_status)
     ) || null;
-    const isAlreadyVerifiedOrAssignedRescue = Boolean(
-      activeResAssign ||
-      ['Assigned', 'Accepted', 'En Route', 'On Scene', 'Completed'].includes(String(current.status || ''))
-    );
-
-    if (action === 'verify' && isAlreadyVerifiedOrAssignedRescue) {
+    if (action === 'verify') {
       await conn.rollback();
-      return res.status(409).json({
-        error: 'This rescue request has already been verified and assigned.',
-        alreadyVerified: true,
-        status: current.status,
-        hasActiveAssignment: Boolean(activeResAssign),
+      return res.status(400).json({
+        error: 'Rescue requests do not require incident verification; active Responders accept and respond directly.',
       });
     }
     const rescueAcceptedOrBeyond = Boolean(

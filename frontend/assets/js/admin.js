@@ -1788,15 +1788,24 @@
       attachEl.appendChild(containerWrap);
 
       const rawStLower = String(data.rawStatus || data.status || '').toLowerCase();
+      const assignLower = String(data.assignmentStatus || '').toLowerCase();
+      const isRescueRecord = recordType === 'rescue';
+      const hasAssignedResponder = Boolean(data.assignedTo || data.assignedResponderName || data.hasActiveAssignment || ['assigned', 'accepted', 'en route', 'on scene', 'completed'].includes(assignLower));
+
+      const verCard = document.getElementById('admin-report-verification-card');
+      const respHeading = document.getElementById('review-response-heading');
+      if (verCard) verCard.classList.toggle('hidden', isRescueRecord);
+      if (respHeading) {
+        respHeading.textContent = isRescueRecord ? 'Responder Assignment & Response' : '2. Responder Response';
+      }
+
       const isAlreadyRejected = ['false_alarm', 'dismissed', 'cancelled'].includes(rawStLower);
-      const isAlreadyVerified = recordType === 'rescue'
-        ? Boolean(data.verifiedAt || data.isPublic)
-        : Boolean(data.verifiedAt || data.isPublic || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment);
-      const hasAssignedResponder = Boolean(data.assignedTo || data.hasActiveAssignment);
-      const isClosedOrRejected = isAlreadyRejected || ['resolved', 'completed', 'cancelled', 'false_alarm', 'dismissed'].includes(rawStLower);
+      const isAlreadyVerified = !isRescueRecord && Boolean(
+        data.verifiedAt || data.isPublic || ['verified', 'dispatched', 'responding', 'on_site', 'in_progress', 'resolved'].includes(rawStLower) || data.hasActiveAssignment
+      );
 
       const verStatusEl = document.getElementById('review-verification-status');
-      if (verStatusEl) {
+      if (verStatusEl && !isRescueRecord) {
         if (isAlreadyRejected) {
           verStatusEl.textContent = 'Rejected';
           verStatusEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-[#D93636] border border-red-200';
@@ -1811,15 +1820,38 @@
 
       const assignStatusEl = document.getElementById('review-assignment-status');
       const assignedRespNameEl = document.getElementById('review-assigned-responder-name');
-      const assignStatusText = data.assignmentStatus || (hasAssignedResponder ? 'Assigned' : 'Unassigned');
+      let assignStatusText = data.assignmentStatus || (hasAssignedResponder ? 'Assigned' : 'Unassigned');
+      let assignBadgeCls = hasAssignedResponder
+        ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200'
+        : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200';
+
+      if (isRescueRecord) {
+        if (rawStLower === 'cancelled') {
+          assignStatusText = 'Cancelled';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-[#D93636] border border-red-200';
+        } else if (rawStLower === 'completed' || assignLower === 'completed') {
+          assignStatusText = 'Completed';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-[#278653] border-emerald-200';
+        } else if (assignLower === 'on scene' || rawStLower === 'on scene') {
+          assignStatusText = 'On Scene';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200';
+        } else if (assignLower === 'en route' || rawStLower === 'en route') {
+          assignStatusText = 'En Route';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200';
+        } else if (hasAssignedResponder) {
+          assignStatusText = 'Accepted / Assigned';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200';
+        } else {
+          assignStatusText = 'Pending Acceptance';
+          assignBadgeCls = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200';
+        }
+      }
       if (assignStatusEl) {
         assignStatusEl.textContent = assignStatusText;
-        assignStatusEl.className = hasAssignedResponder
-          ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0A58CA] border border-blue-200'
-          : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200';
+        assignStatusEl.className = assignBadgeCls;
       }
       if (assignedRespNameEl) {
-        assignedRespNameEl.textContent = data.assignedResponderName || 'None';
+        assignedRespNameEl.textContent = data.assignedResponderName || (isRescueRecord ? 'Awaiting Responder Acceptance' : 'None');
       }
 
       const reasonInput = document.getElementById('review-reason-input');

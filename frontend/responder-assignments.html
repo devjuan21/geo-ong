@@ -44,19 +44,19 @@
         </div>
       </div>
 
-      <!-- Filter Tabs (All, Pending, Completed) -->
+      <!-- Filter Tabs (Pending, Completed, All) -->
       <div class="flex items-center gap-2 flex-nowrap overflow-x-auto pb-0.5 custom-scrollbar text-xs">
-        <button id="tab-assign-all" type="button" onclick="filterAssignments('All')"
-          class="px-3.5 py-1.5 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0 whitespace-nowrap">
-          All
-        </button>
         <button id="tab-assign-pending" type="button" onclick="filterAssignments('Pending')"
-          class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] hover:bg-slate-100 flex-shrink-0 whitespace-nowrap">
+          class="px-3.5 py-1.5 rounded-md text-xs font-bold transition-all bg-[#F5B900] text-[#202020] shadow-subtle flex-shrink-0 whitespace-nowrap">
           Pending
         </button>
         <button id="tab-assign-completed" type="button" onclick="filterAssignments('Completed')"
           class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] hover:bg-slate-100 flex-shrink-0 whitespace-nowrap">
           Completed
+        </button>
+        <button id="tab-assign-all" type="button" onclick="filterAssignments('All')"
+          class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all bg-white border border-slate-200 text-[#777777] hover:text-[#202020] hover:bg-slate-100 flex-shrink-0 whitespace-nowrap">
+          All
         </button>
       </div>
     </div>
@@ -646,7 +646,7 @@
   <script src="./assets/js/store.js?v=20261117c"></script>
   <script src="./assets/js/toast.js?v=20261117c"></script>
   <script src="./assets/js/responder-ui.js?v=20261121n"></script>
-  <script src="./assets/js/responder-assignments.js?v=20261122-sort"></script>
+  <script src="./assets/js/responder-assignments.js?v=20261126a"></script>
 </body>
 
 </html>

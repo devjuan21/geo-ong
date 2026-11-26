@@ -15,7 +15,7 @@
  */
 
 let allAssignments = [];
-let currentFilter = 'All';
+let currentFilter = 'Pending';
 let currentSearchQuery = '';
 let activeAssignmentDetail = null;
 let detailMap = null;
@@ -264,7 +264,7 @@ window.filterAssignments = function (status) {
   currentFilter = status;
 
   // Update tab buttons styling
-  const tabs = ['All', 'Pending', 'Completed'];
+  const tabs = ['Pending', 'Completed', 'All'];
   tabs.forEach(tab => {
     const btn = document.getElementById(`tab-assign-${tab.toLowerCase().replace(/\s+/g, '-')}`);
     if (btn) {

@@ -765,6 +765,24 @@ function emitAdminPasswordAssistanceEvent(eventName, payload = {}) {
   });
 }
 
+function emitIncidentCategoriesUpdated(payload = {}) {
+  if (!io) return;
+  io.emit('incident_categories_updated', {
+    action: payload.action || 'updated',
+    categoryId: payload.categoryId || null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function emitRescueCategoriesUpdated(payload = {}) {
+  if (!io) return;
+  io.emit('rescue_categories_updated', {
+    action: payload.action || 'updated',
+    categoryId: payload.categoryId || null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function emitMaintenanceCategoriesUpdated(payload = {}) {
   if (!io) return;
   io.emit('maintenance:categories-updated', {
@@ -793,6 +811,8 @@ module.exports = {
   emitIncidentResolvedCommunityNotification,
   emitAdminAnnouncement,
   emitAdminPasswordAssistanceEvent,
+  emitIncidentCategoriesUpdated,
+  emitRescueCategoriesUpdated,
   emitMaintenanceCategoriesUpdated,
   emitConversationMessage,
   emitConversationMessagesRead,

@@ -26,13 +26,21 @@ let rescueGpsAutoAttempted = false;
 let rescueLocAutoFilled = false;
 let rescuePhotoBase64 = null;
 
-async function loadDynamicReportAndRescueCategories() {
+let incidentCatsFetchInFlight = null;
+let rescueCatsFetchInFlight = null;
+
+async function loadDynamicIncidentCategories() {
   const apiBase = window.geoSafeStore?.config?.API_BASE_URL || '/api';
   const repSelect = document.getElementById('rep-type');
-  const resSelect = document.getElementById('res-type');
-  const resErrEl = document.getElementById('res-category-error');
+  const repErrEl = document.getElementById('rep-category-error');
+  if (!repSelect) return;
+  if (incidentCatsFetchInFlight) return incidentCatsFetchInFlight;
 
-  if (repSelect) {
+  incidentCatsFetchInFlight = (async () => {
+    if (repErrEl) repErrEl.classList.add('hidden');
+    if (!repSelect.options.length || repSelect.options[0]?.textContent === 'Unable to load incident categories') {
+      repSelect.innerHTML = '<option value="" disabled selected>Loading incident categories...</option>';
+    }
     try {
       const resp = await fetch(`${apiBase}/incident-categories?_=${Date.now()}`, {
         credentials: 'include',
@@ -50,19 +58,40 @@ async function loadDynamicReportAndRescueCategories() {
             const opt = document.createElement('option');
             opt.value = cat.name;
             opt.textContent = cat.name;
+            opt.dataset.categoryId = String(cat.id || '');
             repSelect.appendChild(opt);
           });
           if (currentVal && data.categories.some((c) => c.name === currentVal)) {
             repSelect.value = currentVal;
+          } else {
+            repSelect.value = '';
           }
         }
+        if (typeof updateReportSubmitState === 'function') updateReportSubmitState();
+      } else {
+        repSelect.innerHTML = '<option value="" disabled selected>Unable to load incident categories</option>';
+        if (repErrEl) repErrEl.classList.remove('hidden');
       }
     } catch (err) {
       console.warn('[Report/Rescue] Could not load dynamic incident categories:', err.message);
+      repSelect.innerHTML = '<option value="" disabled selected>Unable to load incident categories</option>';
+      if (repErrEl) repErrEl.classList.remove('hidden');
+    } finally {
+      incidentCatsFetchInFlight = null;
     }
-  }
+  })();
 
-  if (resSelect) {
+  return incidentCatsFetchInFlight;
+}
+
+async function loadDynamicRescueCategories() {
+  const apiBase = window.geoSafeStore?.config?.API_BASE_URL || '/api';
+  const resSelect = document.getElementById('res-type');
+  const resErrEl = document.getElementById('res-category-error');
+  if (!resSelect) return;
+  if (rescueCatsFetchInFlight) return rescueCatsFetchInFlight;
+
+  rescueCatsFetchInFlight = (async () => {
     if (resErrEl) resErrEl.classList.add('hidden');
     if (!resSelect.options.length || resSelect.options[0]?.textContent === 'Unable to load rescue categories') {
       resSelect.innerHTML = '<option value="" disabled selected>Loading rescue categories...</option>';
@@ -105,9 +134,19 @@ async function loadDynamicReportAndRescueCategories() {
       console.warn('[Report/Rescue] Could not load dynamic rescue categories:', err.message);
       resSelect.innerHTML = '<option value="" disabled selected>Unable to load rescue categories</option>';
       if (resErrEl) resErrEl.classList.remove('hidden');
+    } finally {
+      rescueCatsFetchInFlight = null;
     }
-  }
+  })();
+
+  return rescueCatsFetchInFlight;
 }
+
+async function loadDynamicReportAndRescueCategories() {
+  await Promise.all([loadDynamicIncidentCategories(), loadDynamicRescueCategories()]);
+}
+window.loadDynamicIncidentCategories = loadDynamicIncidentCategories;
+window.loadDynamicRescueCategories = loadDynamicRescueCategories;
 window.loadDynamicReportAndRescueCategories = loadDynamicReportAndRescueCategories;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -134,11 +173,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load authenticated resident's genuine submitted reports & rescue requests
   loadSubmittedReports();
   window.addEventListener('geosafe:realtime-update', (ev) => {
-    loadSubmittedReports();
     const evName = ev && ev.detail && ev.detail.event;
+    if (evName === 'incident_categories_updated') {
+      loadDynamicIncidentCategories();
+      return;
+    }
+    if (evName === 'rescue_categories_updated') {
+      loadDynamicRescueCategories();
+      return;
+    }
     if (evName === 'maintenance:categories-updated' || evName === 'reconnect-sync') {
       loadDynamicReportAndRescueCategories();
     }
+    loadSubmittedReports();
   });
   window.addEventListener('focus', loadDynamicReportAndRescueCategories);
   document.addEventListener('visibilitychange', () => {
@@ -216,7 +263,7 @@ window.switchActionTab = function (tab) {
   const sectionRescue = document.getElementById('section-rescue');
 
   if (tab === 'rescue') {
-    loadDynamicReportAndRescueCategories();
+    loadDynamicRescueCategories();
     if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white/70 border border-slate-200 text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
     if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white border-2 border-[#D93636] shadow-subtle ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
 
@@ -231,6 +278,7 @@ window.switchActionTab = function (tab) {
       }
     }, 150);
   } else {
+    loadDynamicIncidentCategories();
     if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white border-2 border-[#F5B900] shadow-subtle text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
     if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white/70 border border-slate-200 text-left transition-all hover:border-[#D93636] flex items-center justify-between gap-3 focus:outline-none';
 

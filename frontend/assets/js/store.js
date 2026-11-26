@@ -625,6 +625,8 @@ class GeoSafeStore {
       'messages:incoming-notification',
       'responder:location-updated',
       'responder:location-offline',
+      'incident_categories_updated',
+      'rescue_categories_updated',
       'maintenance:categories-updated'
     ]);
     const currentUser = (typeof this.getUser === 'function' ? this.getUser() : null) || (this.state && this.state.currentUser) || null;
@@ -841,6 +843,8 @@ class GeoSafeStore {
         'responder:location-offline',
         'password-assistance-submitted',
         'password-assistance-updated',
+        'incident_categories_updated',
+        'rescue_categories_updated',
         'maintenance:categories-updated'
       ];
 

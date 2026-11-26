@@ -1001,6 +1001,7 @@ router.get('/broadcast-categories', async (req, res) => {
 
 router.get('/incident-categories', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const [rows] = await pool.query(
       `SELECT id, name, description, default_severity, sort_order
        FROM incident_categories

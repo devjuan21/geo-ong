@@ -1,5 +1,8 @@
 const pool = require('../models/db');
-const { emitMaintenanceCategoriesUpdated } = require('../services/socketService');
+const {
+  emitIncidentCategoriesUpdated,
+  emitRescueCategoriesUpdated,
+} = require('../services/socketService');
 
 async function logMaintenanceAudit(conn, { userId, action, entityType, entityId, oldValues, newValues, req }) {
   try {
@@ -76,6 +79,7 @@ async function createIncidentCategory(req, res) {
       req,
     });
     await conn.commit();
+    emitIncidentCategoriesUpdated({ action: 'created', categoryId: created.id });
     return res.status(201).json({ message: `Incident category "${cleanName}" created.`, category: created });
   } catch (err) {
     await conn.rollback().catch(() => {});
@@ -143,6 +147,12 @@ async function updateIncidentCategory(req, res) {
       req,
     });
     await conn.commit();
+    emitIncidentCategoriesUpdated({
+      action: isActive !== undefined && Boolean(isActive) !== Boolean(existing.is_active)
+        ? (nextActive ? 'activated' : 'deactivated')
+        : 'updated',
+      categoryId: id,
+    });
     return res.json({ message: `Incident category "${nextName}" updated.`, category: updated });
   } catch (err) {
     await conn.rollback().catch(() => {});
@@ -206,7 +216,7 @@ async function createRescueCategory(req, res) {
       req,
     });
     await conn.commit();
-    emitMaintenanceCategoriesUpdated({ kind: 'rescue', action: 'created', categoryId: created.id });
+    emitRescueCategoriesUpdated({ action: 'created', categoryId: created.id });
     return res.status(201).json({ message: `Rescue category "${cleanName}" created.`, category: created });
   } catch (err) {
     await conn.rollback().catch(() => {});
@@ -271,8 +281,7 @@ async function updateRescueCategory(req, res) {
       req,
     });
     await conn.commit();
-    emitMaintenanceCategoriesUpdated({
-      kind: 'rescue',
+    emitRescueCategoriesUpdated({
       action: isActive !== undefined && Boolean(isActive) !== Boolean(existing.is_active)
         ? (nextActive ? 'activated' : 'deactivated')
         : 'updated',

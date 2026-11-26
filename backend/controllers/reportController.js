@@ -59,7 +59,28 @@ async function createReport(req, res) {
     return res.status(400).json({ error: errorMsg, errors: errors.array() });
   }
 
-  const incident_type = (req.body.incident_type || req.body.incidentType || 'General Incident').trim();
+  let incident_type = (req.body.incident_type || req.body.incidentType || '').trim();
+  if (!incident_type) {
+    return res.status(400).json({ error: 'Incident category is required.' });
+  }
+  let categoryId = null;
+  try {
+    const [catRows] = await pool.query(
+      `SELECT id, name, is_active
+       FROM incident_categories
+       WHERE LOWER(name) = LOWER(?)
+       ORDER BY is_active DESC, id ASC
+       LIMIT 1`,
+      [incident_type]
+    );
+    if (!catRows.length || !catRows[0].is_active) {
+      return res.status(400).json({ error: 'Selected incident category is invalid or currently inactive.' });
+    }
+    categoryId = catRows[0].id;
+    incident_type = catRows[0].name;
+  } catch (catErr) {
+    return dbUnavailable(res, catErr, 'validateIncidentCategory');
+  }
   const title = (req.body.title || `${incident_type} Incident`).trim().substring(0, 180);
   const description = (req.body.description || '').trim();
   const address = (req.body.address || req.body.location || 'Barangay Bayanan, Muntinlupa City').trim().substring(0, 255);
@@ -133,9 +154,9 @@ async function createReport(req, res) {
     }
 
     const [result] = await conn.query(
-      `INSERT INTO reports (user_id, incident_type, title, description, latitude, longitude, address, status, is_public)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [req.user.id, incident_type, title, description, latitude, longitude, address, is_public]
+      `INSERT INTO reports (user_id, category_id, incident_type, title, description, latitude, longitude, address, status, is_public)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [req.user.id, categoryId, incident_type, title, description, latitude, longitude, address, is_public]
     );
 
     // Ticket / reference number derived from the canonical primary key

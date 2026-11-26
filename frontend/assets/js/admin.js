@@ -47,6 +47,10 @@
     },
     mapInstance: null,
     mapLayerGroup: null,
+    mapMarkersByUid: new Map(),
+    staticMapMarkersByKey: new Map(),
+    hasFittedInitialMapBounds: false,
+    hasLoadedOverviewOnce: false,
     selectedMapItem: null,
     mapFilters: {
       type: 'all',
@@ -650,11 +654,11 @@
     }
   }
 
-  function renderMapMarkers() {
+  function renderMapMarkers(options = {}) {
     if (!state.mapInstance || !state.mapLayerGroup) return;
 
-    state.mapLayerGroup.clearLayers();
-    if (state.mapMarkersByUid) state.mapMarkersByUid.clear();
+    if (!state.mapMarkersByUid) state.mapMarkersByUid = new Map();
+    if (!state.staticMapMarkersByKey) state.staticMapMarkersByKey = new Map();
 
     const items = state.overview.mapItems || [];
     const filterType = state.mapFilters.type;
@@ -703,6 +707,8 @@
     }
 
     const bounds = L.latLngBounds([]);
+    const hasSharedIcons = window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function';
+    const nextVisibleUids = new Set();
 
     visibleItems.forEach((item) => {
       const lat = Number(item.latitude);
@@ -719,11 +725,34 @@
         return;
       }
 
+      nextVisibleUids.add(item.uid);
       const isRescue = item.recordType === 'rescue';
       const markerType = isRescue ? 'rescue' : 'incident';
       const isSelected = Boolean(state.selectedMapItem && state.selectedMapItem.uid === item.uid);
+      const tooltipText = `${escapeHtml(item.referenceNumber || '')} (${lat.toFixed(6)}, ${lng.toFixed(6)})`;
 
-      const hasSharedIcons = window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function';
+      const existing = state.mapMarkersByUid.get(item.uid);
+      if (existing && existing.marker) {
+        existing.item = item;
+        if (typeof existing.marker.setLatLng === 'function') {
+          existing.marker.setLatLng([lat, lng]);
+        }
+        if (existing.isSelected !== isSelected || existing.markerType !== markerType) {
+          existing.markerType = markerType;
+          existing.isSelected = isSelected;
+          if (hasSharedIcons && typeof existing.marker.setIcon === 'function') {
+            existing.marker.setIcon(
+              window.GeoSafeMapping.createCustomIcon(markerType, { selected: isSelected })
+            );
+          }
+        }
+        if (typeof existing.marker.setTooltipContent === 'function') {
+          existing.marker.setTooltipContent(tooltipText);
+        }
+        bounds.extend([lat, lng]);
+        return;
+      }
+
       const marker = hasSharedIcons
         ? L.marker([lat, lng], {
           icon: window.GeoSafeMapping.createCustomIcon(markerType, { selected: isSelected }),
@@ -737,36 +766,48 @@
           fillOpacity: 0.9
         });
 
-      marker.bindTooltip(`${escapeHtml(item.referenceNumber || '')} (${lat.toFixed(6)}, ${lng.toFixed(6)})`, {
+      marker.bindTooltip(tooltipText, {
         direction: 'top'
       });
 
+      const entry = { marker, markerType, isSelected, item };
       marker.on('click', () => {
         if (state.mapInstance) {
           state.mapInstance.panTo([lat, lng]);
         }
-        showMapMarkerPanel(item);
+        showMapMarkerPanel(entry.item);
         if (hasSharedIcons && state.mapMarkersByUid) {
-          state.mapMarkersByUid.forEach((entry, uid) => {
-            if (typeof entry.marker.setIcon === 'function') {
-              entry.marker.setIcon(
-                window.GeoSafeMapping.createCustomIcon(entry.markerType, { selected: uid === item.uid })
+          state.mapMarkersByUid.forEach((mEntry, uid) => {
+            const nextSel = uid === item.uid;
+            if (mEntry.isSelected !== nextSel && typeof mEntry.marker.setIcon === 'function') {
+              mEntry.isSelected = nextSel;
+              mEntry.marker.setIcon(
+                window.GeoSafeMapping.createCustomIcon(mEntry.markerType, { selected: nextSel })
               );
             }
           });
         }
       });
 
-      if (!state.mapMarkersByUid) {
-        state.mapMarkersByUid = new Map();
-      }
-      state.mapMarkersByUid.set(item.uid, { marker, markerType });
-
+      state.mapMarkersByUid.set(item.uid, entry);
       marker.addTo(state.mapLayerGroup);
       bounds.extend([lat, lng]);
     });
 
-    // Render evacuation centers on map using the shared Resident UI evacuation icon
+    // Remove only operational markers that are no longer visible (e.g. resolved/closed or filtered out)
+    Array.from(state.mapMarkersByUid.keys()).forEach((uid) => {
+      if (!nextVisibleUids.has(uid)) {
+        const entry = state.mapMarkersByUid.get(uid);
+        if (entry && entry.marker && state.mapLayerGroup.hasLayer(entry.marker)) {
+          state.mapLayerGroup.removeLayer(entry.marker);
+        }
+        state.mapMarkersByUid.delete(uid);
+      }
+    });
+
+    const nextStaticKeys = new Set();
+
+    // Render evacuation centers incrementally
     const evacCenters = state.overview.evacuationCenters || [];
     const evacIcon =
       window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
@@ -774,30 +815,35 @@
         : null;
     evacCenters.forEach((evac) => {
       if (!Number.isFinite(evac.latitude) || !Number.isFinite(evac.longitude)) return;
-      const evacMarker = evacIcon
-        ? L.marker([evac.latitude, evac.longitude], { icon: evacIcon, zIndexOffset: 200 })
-        : L.circleMarker([evac.latitude, evac.longitude], {
-          radius: 8,
-          color: '#278653',
-          weight: 2,
-          fillColor: '#D1FAE5',
-          fillOpacity: 0.9
+      const key = `evac:${evac.id || evac.name}`;
+      nextStaticKeys.add(key);
+      if (!state.staticMapMarkersByKey.has(key)) {
+        const evacMarker = evacIcon
+          ? L.marker([evac.latitude, evac.longitude], { icon: evacIcon, zIndexOffset: 200 })
+          : L.circleMarker([evac.latitude, evac.longitude], {
+            radius: 8,
+            color: '#278653',
+            weight: 2,
+            fillColor: '#D1FAE5',
+            fillOpacity: 0.9
+          });
+        evacMarker.bindTooltip(`Evacuation Center: ${escapeHtml(evac.name)}`, {
+          direction: 'top'
         });
-      evacMarker.bindTooltip(`Evacuation Center: ${escapeHtml(evac.name)}`, {
-        direction: 'top'
-      });
-      evacMarker.bindPopup(`
-        <div class="p-1.5 text-xs font-sans">
-          <div class="text-[10px] font-bold text-[#278653] uppercase tracking-wider mb-0.5">Evacuation Center</div>
-          <div class="font-bold text-[#202020]">${escapeHtml(evac.name)}</div>
-          <div class="text-[11px] text-[#6B7280]">${escapeHtml(evac.address || 'Barangay Bayanan, Muntinlupa City')}</div>
-        </div>
-      `);
-      evacMarker.addTo(state.mapLayerGroup);
+        evacMarker.bindPopup(`
+          <div class="p-1.5 text-xs font-sans">
+            <div class="text-[10px] font-bold text-[#278653] uppercase tracking-wider mb-0.5">Evacuation Center</div>
+            <div class="font-bold text-[#202020]">${escapeHtml(evac.name)}</div>
+            <div class="text-[11px] text-[#6B7280]">${escapeHtml(evac.address || 'Barangay Bayanan, Muntinlupa City')}</div>
+          </div>
+        `);
+        evacMarker.addTo(state.mapLayerGroup);
+        state.staticMapMarkersByKey.set(key, evacMarker);
+      }
       bounds.extend([evac.latitude, evac.longitude]);
     });
 
-    // Render Hospitals and Health Centers on map with consistent red/blue medical pin icons
+    // Render Hospitals and Health Centers incrementally
     if (showFacilities) {
       const hospitalIcon = GeoSafeMapping.createMedicalFacilityIcon('Hospital');
       const healthCenterIcon = GeoSafeMapping.createMedicalFacilityIcon('Health Center');
@@ -807,60 +853,80 @@
         const hLng = Number(fac.longitude);
         if (!Number.isFinite(hLat) || !Number.isFinite(hLng)) return;
 
-        const isHospital = fac.facilityType === 'Hospital';
-        const isVerified = fac.verificationStatus === 'Verified';
-        const iconToUse = isHospital ? hospitalIcon : healthCenterIcon;
-        const typeColor = isHospital ? '#DC2626' : '#2563EB';
-        const verBadgeCls = isVerified
-          ? 'bg-emerald-50 text-[#278653] border-emerald-200'
-          : 'bg-amber-50 text-amber-800 border-amber-200';
+        const key = `hosp:${fac.id || fac.name}`;
+        nextStaticKeys.add(key);
+        if (!state.staticMapMarkersByKey.has(key)) {
+          const isHospital = fac.facilityType === 'Hospital';
+          const isVerified = fac.verificationStatus === 'Verified';
+          const iconToUse = isHospital ? hospitalIcon : healthCenterIcon;
+          const typeColor = isHospital ? '#DC2626' : '#2563EB';
+          const verBadgeCls = isVerified
+            ? 'bg-emerald-50 text-[#278653] border-emerald-200'
+            : 'bg-amber-50 text-amber-800 border-amber-200';
 
-        const hMarker = L.marker([hLat, hLng], { icon: iconToUse, zIndexOffset: isHospital ? 245 : 235 });
-        hMarker.bindTooltip(`${escapeHtml(fac.facilityType)}: ${escapeHtml(fac.name)} (${escapeHtml(fac.verificationStatus)})`, { direction: 'top' });
-        hMarker.bindPopup(`
-          <div class="p-1.5 text-xs font-sans space-y-1 max-w-[260px]">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[10px] font-bold uppercase tracking-wider" style="color:${typeColor};">${escapeHtml(fac.facilityType || 'Hospital')}</span>
-              <span class="px-1.5 py-0.5 rounded border text-[9px] font-bold ${verBadgeCls}">${escapeHtml(fac.verificationStatus || 'Pending Verification')}</span>
+          const hMarker = L.marker([hLat, hLng], { icon: iconToUse, zIndexOffset: isHospital ? 245 : 235 });
+          hMarker.bindTooltip(`${escapeHtml(fac.facilityType)}: ${escapeHtml(fac.name)} (${escapeHtml(fac.verificationStatus)})`, { direction: 'top' });
+          hMarker.bindPopup(`
+            <div class="p-1.5 text-xs font-sans space-y-1 max-w-[260px]">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-bold uppercase tracking-wider" style="color:${typeColor};">${escapeHtml(fac.facilityType || 'Hospital')}</span>
+                <span class="px-1.5 py-0.5 rounded border text-[9px] font-bold ${verBadgeCls}">${escapeHtml(fac.verificationStatus || 'Pending Verification')}</span>
+              </div>
+              <div class="font-bold text-[#0f172a]">${escapeHtml(fac.name)}</div>
+              <div class="text-[11px] text-[#475569]">${escapeHtml(fac.address || 'Address unavailable')}</div>
+              <div class="text-[10px] text-[#334155]">
+                <strong>Hours:</strong> ${escapeHtml(fac.operatingHours || 'Unverified')} &bull;
+                <strong>Status:</strong> ${escapeHtml(fac.status || 'Under Assessment')}
+              </div>
+              <div class="text-[10px] font-mono text-[#64748b]">${hLat.toFixed(6)}, ${hLng.toFixed(6)}</div>
+              ${fac.coordinateFlag ? `<div class="text-[10px] text-amber-800 font-semibold">${escapeHtml(fac.coordinateFlag)}</div>` : ''}
             </div>
-            <div class="font-bold text-[#0f172a]">${escapeHtml(fac.name)}</div>
-            <div class="text-[11px] text-[#475569]">${escapeHtml(fac.address || 'Address unavailable')}</div>
-            <div class="text-[10px] text-[#334155]">
-              <strong>Hours:</strong> ${escapeHtml(fac.operatingHours || 'Unverified')} &bull;
-              <strong>Status:</strong> ${escapeHtml(fac.status || 'Under Assessment')}
-            </div>
-            <div class="text-[10px] font-mono text-[#64748b]">${hLat.toFixed(6)}, ${hLng.toFixed(6)}</div>
-            ${fac.coordinateFlag ? `<div class="text-[10px] text-amber-800 font-semibold">${escapeHtml(fac.coordinateFlag)}</div>` : ''}
-          </div>
-        `);
-        hMarker.addTo(state.mapLayerGroup);
+          `);
+          hMarker.addTo(state.mapLayerGroup);
+          state.staticMapMarkersByKey.set(key, hMarker);
+        }
         bounds.extend([hLat, hLng]);
       });
     }
 
-    // Plot Official GeoSafe Emergency Operations Center (EOC) Marker
+    // Plot Official GeoSafe Emergency Operations Center (EOC) Marker incrementally
     const eoc = state.overview.eocLocation || (window.GeoSafeMapping && typeof window.GeoSafeMapping.getEocLocation === 'function' ? window.GeoSafeMapping.getEocLocation() : null);
     if (eoc && Number.isFinite(Number(eoc.latitude)) && Number.isFinite(Number(eoc.longitude))) {
       const eocLat = Number(eoc.latitude);
       const eocLng = Number(eoc.longitude);
-      const eocIcon = window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
-        ? window.GeoSafeMapping.createCustomIcon('eoc', 'EOC')
-        : null;
-      const eocMarker = eocIcon
-        ? L.marker([eocLat, eocLng], { icon: eocIcon, zIndexOffset: 300 })
-        : L.circleMarker([eocLat, eocLng], { radius: 9, color: '#4338CA', weight: 2, fillColor: '#EEF2FF', fillOpacity: 0.95 });
-      eocMarker.bindTooltip(`${escapeHtml(eoc.name || 'GeoSafe EOC')}`, { direction: 'top' });
-      eocMarker.bindPopup(`
-        <div class="p-1.5 text-xs font-sans">
-          <div class="text-[10px] font-bold text-[#4338CA] uppercase tracking-wider mb-0.5">Official Command Center</div>
-          <div class="font-bold text-[#202020]">${escapeHtml(eoc.name || 'GeoSafe Emergency Operations Center (EOC)')}</div>
-          <div class="text-[11px] text-[#555555]">${escapeHtml(eoc.address || 'Bayanan Baywalk Ilaya, Muntinlupa, Metro Manila, Philippines')}</div>
-          <div class="text-[10px] font-mono text-[#777777] mt-0.5">${eocLat.toFixed(5)}, ${eocLng.toFixed(5)}</div>
-        </div>
-      `);
-      eocMarker.addTo(state.mapLayerGroup);
+      nextStaticKeys.add('eoc');
+      if (!state.staticMapMarkersByKey.has('eoc')) {
+        const eocIcon = window.GeoSafeMapping && typeof window.GeoSafeMapping.createCustomIcon === 'function'
+          ? window.GeoSafeMapping.createCustomIcon('eoc', 'EOC')
+          : null;
+        const eocMarker = eocIcon
+          ? L.marker([eocLat, eocLng], { icon: eocIcon, zIndexOffset: 300 })
+          : L.circleMarker([eocLat, eocLng], { radius: 9, color: '#4338CA', weight: 2, fillColor: '#EEF2FF', fillOpacity: 0.95 });
+        eocMarker.bindTooltip(`${escapeHtml(eoc.name || 'GeoSafe EOC')}`, { direction: 'top' });
+        eocMarker.bindPopup(`
+          <div class="p-1.5 text-xs font-sans">
+            <div class="text-[10px] font-bold text-[#4338CA] uppercase tracking-wider mb-0.5">Official Command Center</div>
+            <div class="font-bold text-[#202020]">${escapeHtml(eoc.name || 'GeoSafe Emergency Operations Center (EOC)')}</div>
+            <div class="text-[11px] text-[#555555]">${escapeHtml(eoc.address || 'Bayanan Baywalk Ilaya, Muntinlupa, Metro Manila, Philippines')}</div>
+            <div class="text-[10px] font-mono text-[#777777] mt-0.5">${eocLat.toFixed(5)}, ${eocLng.toFixed(5)}</div>
+          </div>
+        `);
+        eocMarker.addTo(state.mapLayerGroup);
+        state.staticMapMarkersByKey.set('eoc', eocMarker);
+      }
       bounds.extend([eocLat, eocLng]);
     }
+
+    // Remove static markers that were toggled off (e.g. facilities toggle)
+    Array.from(state.staticMapMarkersByKey.keys()).forEach((key) => {
+      if (!nextStaticKeys.has(key)) {
+        const m = state.staticMapMarkersByKey.get(key);
+        if (m && state.mapLayerGroup.hasLayer(m)) {
+          state.mapLayerGroup.removeLayer(m);
+        }
+        state.staticMapMarkersByKey.delete(key);
+      }
+    });
 
     const bayananBounds = window.GeoSafeMapping && typeof window.GeoSafeMapping.getBayananBounds === 'function'
       ? window.GeoSafeMapping.getBayananBounds()
@@ -869,8 +935,10 @@
       bounds.extend(bayananBounds);
     }
 
-    if (bounds.isValid()) {
+    // Preserve user zoom & center on subsequent status/filter updates; only fitBounds on initial load or explicit reset
+    if ((options.fitBounds === true || !state.hasFittedInitialMapBounds) && bounds.isValid()) {
       state.mapInstance.fitBounds(bounds, { padding: [24, 24] });
+      state.hasFittedInitialMapBounds = true;
     }
   }
 
@@ -922,11 +990,12 @@
 
   let overviewFetchSeq = 0;
 
-  async function loadDashboardOverview() {
+  async function loadDashboardOverview(options = {}) {
     const reqSeq = ++overviewFetchSeq;
+    const isSilent = options.silent !== undefined ? Boolean(options.silent) : Boolean(state.hasLoadedOverviewOnce);
     const loadingOverlay = document.getElementById('admin-map-loading');
     const errorOverlay = document.getElementById('admin-map-error');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+    if (!isSilent && loadingOverlay) loadingOverlay.classList.remove('hidden');
     if (errorOverlay) errorOverlay.classList.add('hidden');
 
     try {
@@ -985,8 +1054,9 @@
         mobileNavBadge.classList.toggle('hidden', pendingCount === 0);
       }
 
+      state.hasLoadedOverviewOnce = true;
       initIncidentMap();
-      renderMapMarkers();
+      renderMapMarkers({ fitBounds: Boolean(options.fitBounds) });
       loadLiveResponderLocations();
       renderActivityFeed(state.overview.recentActivities);
     } catch (err) {
@@ -5707,7 +5777,7 @@
           }
 
           if (state.currentSection === 'dashboard') {
-            loadDashboardOverview();
+            loadDashboardOverview({ silent: true, fitBounds: false });
           } else if (state.currentSection === 'reports') {
             loadReportsList();
           } else if (state.currentSection === 'responders') {

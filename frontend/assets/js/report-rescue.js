@@ -30,22 +30,31 @@ async function loadDynamicReportAndRescueCategories() {
   const apiBase = window.geoSafeStore?.config?.API_BASE_URL || '/api';
   const repSelect = document.getElementById('rep-type');
   const resSelect = document.getElementById('res-type');
+  const resErrEl = document.getElementById('res-category-error');
 
   if (repSelect) {
     try {
-      const resp = await fetch(`${apiBase}/portal/incident-categories`, { credentials: 'include' });
+      const resp = await fetch(`${apiBase}/incident-categories?_=${Date.now()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(data.categories)) {
         const currentVal = repSelect.value;
-        repSelect.innerHTML = '<option value="" disabled selected>Select category...</option>';
-        data.categories.forEach((cat) => {
-          const opt = document.createElement('option');
-          opt.value = cat.name;
-          opt.textContent = cat.name;
-          repSelect.appendChild(opt);
-        });
-        if (currentVal && data.categories.some((c) => c.name === currentVal)) {
-          repSelect.value = currentVal;
+        if (data.categories.length === 0) {
+          repSelect.innerHTML = '<option value="" disabled selected>No active incident categories available</option>';
+          repSelect.value = '';
+        } else {
+          repSelect.innerHTML = '<option value="" disabled selected>Select category...</option>';
+          data.categories.forEach((cat) => {
+            const opt = document.createElement('option');
+            opt.value = cat.name;
+            opt.textContent = cat.name;
+            repSelect.appendChild(opt);
+          });
+          if (currentVal && data.categories.some((c) => c.name === currentVal)) {
+            repSelect.value = currentVal;
+          }
         }
       }
     } catch (err) {
@@ -54,8 +63,12 @@ async function loadDynamicReportAndRescueCategories() {
   }
 
   if (resSelect) {
+    if (resErrEl) resErrEl.classList.add('hidden');
+    if (!resSelect.options.length || resSelect.options[0]?.textContent === 'Unable to load rescue categories') {
+      resSelect.innerHTML = '<option value="" disabled selected>Loading rescue categories...</option>';
+    }
     try {
-      const resp = await fetch(`${apiBase}/portal/rescue-categories?_=${Date.now()}`, {
+      const resp = await fetch(`${apiBase}/rescue-categories?_=${Date.now()}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -86,13 +99,16 @@ async function loadDynamicReportAndRescueCategories() {
         }
       } else {
         resSelect.innerHTML = '<option value="" disabled selected>Unable to load rescue categories</option>';
+        if (resErrEl) resErrEl.classList.remove('hidden');
       }
     } catch (err) {
       console.warn('[Report/Rescue] Could not load dynamic rescue categories:', err.message);
       resSelect.innerHTML = '<option value="" disabled selected>Unable to load rescue categories</option>';
+      if (resErrEl) resErrEl.classList.remove('hidden');
     }
   }
 }
+window.loadDynamicReportAndRescueCategories = loadDynamicReportAndRescueCategories;
 
 document.addEventListener('DOMContentLoaded', () => {
   // Initialize common shell navigation

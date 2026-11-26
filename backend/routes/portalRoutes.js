@@ -624,9 +624,27 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     photos,
   } = req.body || {};
 
-  const emergencyLabel = String(emergencyType || '').trim().slice(0, 100);
+  let emergencyLabel = String(emergencyType || '').trim().slice(0, 120);
   if (!emergencyLabel) {
     return res.status(400).json({ error: 'Emergency condition is required.' });
+  }
+
+  try {
+    const [catRows] = await pool.query(
+      `SELECT id, name, display_label, is_active
+       FROM rescue_categories
+       WHERE LOWER(name) = LOWER(?) OR LOWER(display_label) = LOWER(?)
+       ORDER BY is_active DESC, id ASC
+       LIMIT 1`,
+      [emergencyLabel, emergencyLabel]
+    );
+    if (!catRows.length || !catRows[0].is_active) {
+      return res.status(400).json({ error: 'Selected rescue category is invalid or currently inactive.' });
+    }
+    emergencyLabel = String(catRows[0].name || emergencyLabel).slice(0, 100);
+  } catch (catErr) {
+    console.error('[Portal API] Rescue category validation failed:', catErr.message);
+    return res.status(503).json({ error: 'Unable to validate rescue category.' });
   }
 
   const parsePositiveWhole = (val) => {
@@ -998,6 +1016,7 @@ router.get('/incident-categories', async (req, res) => {
 
 router.get('/rescue-categories', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const [rows] = await pool.query(
       `SELECT id, name, display_label, description, sort_order
        FROM rescue_categories

@@ -624,7 +624,8 @@ class GeoSafeStore {
       'password-assistance-updated',
       'messages:incoming-notification',
       'responder:location-updated',
-      'responder:location-offline'
+      'responder:location-offline',
+      'maintenance:categories-updated'
     ]);
     const currentUser = (typeof this.getUser === 'function' ? this.getUser() : null) || (this.state && this.state.currentUser) || null;
     const roleLower = String((currentUser && (currentUser.role || currentUser.role_name)) || '').toLowerCase();
@@ -839,7 +840,8 @@ class GeoSafeStore {
         'responder:location-updated',
         'responder:location-offline',
         'password-assistance-submitted',
-        'password-assistance-updated'
+        'password-assistance-updated',
+        'maintenance:categories-updated'
       ];
 
       if (!socket._geosafeRealtimeBound) {

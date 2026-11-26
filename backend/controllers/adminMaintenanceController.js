@@ -1,4 +1,5 @@
 const pool = require('../models/db');
+const { emitMaintenanceCategoriesUpdated } = require('../services/socketService');
 
 async function logMaintenanceAudit(conn, { userId, action, entityType, entityId, oldValues, newValues, req }) {
   try {
@@ -205,6 +206,7 @@ async function createRescueCategory(req, res) {
       req,
     });
     await conn.commit();
+    emitMaintenanceCategoriesUpdated({ kind: 'rescue', action: 'created', categoryId: created.id });
     return res.status(201).json({ message: `Rescue category "${cleanName}" created.`, category: created });
   } catch (err) {
     await conn.rollback().catch(() => {});
@@ -269,6 +271,13 @@ async function updateRescueCategory(req, res) {
       req,
     });
     await conn.commit();
+    emitMaintenanceCategoriesUpdated({
+      kind: 'rescue',
+      action: isActive !== undefined && Boolean(isActive) !== Boolean(existing.is_active)
+        ? (nextActive ? 'activated' : 'deactivated')
+        : 'updated',
+      categoryId: id,
+    });
     return res.json({ message: `Rescue category "${nextName}" updated.`, category: updated });
   } catch (err) {
     await conn.rollback().catch(() => {});

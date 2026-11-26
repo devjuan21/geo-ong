@@ -55,23 +55,41 @@ async function loadDynamicReportAndRescueCategories() {
 
   if (resSelect) {
     try {
-      const resp = await fetch(`${apiBase}/portal/rescue-categories`, { credentials: 'include' });
+      const resp = await fetch(`${apiBase}/portal/rescue-categories?_=${Date.now()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(data.categories)) {
         const currentVal = resSelect.value;
-        resSelect.innerHTML = '<option value="" disabled selected>Select condition...</option>';
-        data.categories.forEach((cat) => {
-          const opt = document.createElement('option');
-          opt.value = cat.name;
-          opt.textContent = cat.display_label || cat.name;
-          resSelect.appendChild(opt);
-        });
-        if (currentVal && data.categories.some((c) => c.name === currentVal)) {
-          resSelect.value = currentVal;
+        if (data.categories.length === 0) {
+          resSelect.innerHTML = '<option value="" disabled selected>No active rescue categories available</option>';
+          resSelect.value = '';
+          if (typeof window.handleRescueConditionChange === 'function') window.handleRescueConditionChange();
+        } else {
+          resSelect.innerHTML = '<option value="" disabled selected>Select condition...</option>';
+          data.categories.forEach((cat) => {
+            const opt = document.createElement('option');
+            opt.value = cat.name;
+            opt.textContent = cat.display_label || cat.name;
+            opt.dataset.categoryId = String(cat.id || '');
+            resSelect.appendChild(opt);
+          });
+          if (currentVal && data.categories.some((c) => c.name === currentVal)) {
+            resSelect.value = currentVal;
+          } else {
+            resSelect.value = '';
+            if (currentVal && typeof window.handleRescueConditionChange === 'function') {
+              window.handleRescueConditionChange();
+            }
+          }
         }
+      } else {
+        resSelect.innerHTML = '<option value="" disabled selected>Unable to load rescue categories</option>';
       }
     } catch (err) {
       console.warn('[Report/Rescue] Could not load dynamic rescue categories:', err.message);
+      resSelect.innerHTML = '<option value="" disabled selected>Unable to load rescue categories</option>';
     }
   }
 }
@@ -99,7 +117,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load authenticated resident's genuine submitted reports & rescue requests
   loadSubmittedReports();
-  window.addEventListener('geosafe:realtime-update', loadSubmittedReports);
+  window.addEventListener('geosafe:realtime-update', (ev) => {
+    loadSubmittedReports();
+    const evName = ev && ev.detail && ev.detail.event;
+    if (evName === 'maintenance:categories-updated' || evName === 'reconnect-sync') {
+      loadDynamicReportAndRescueCategories();
+    }
+  });
+  window.addEventListener('focus', loadDynamicReportAndRescueCategories);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      loadDynamicReportAndRescueCategories();
+    }
+  });
   startReportRescueLiveGps();
 
   // Live validation for mandatory Incident Report fields & camera photo evidence
@@ -170,6 +200,7 @@ window.switchActionTab = function (tab) {
   const sectionRescue = document.getElementById('section-rescue');
 
   if (tab === 'rescue') {
+    loadDynamicReportAndRescueCategories();
     if (btnReport) btnReport.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white/70 border border-slate-200 text-left transition-all hover:border-[#F5B900] flex items-center justify-between gap-3 focus:outline-none';
     if (btnRescue) btnRescue.className = 'w-full p-3.5 sm:p-4 rounded-lg bg-white border-2 border-[#D93636] shadow-subtle ring-2 ring-[#FFC2C2] text-left transition-all flex items-center justify-between gap-3 focus:outline-none';
 
@@ -783,9 +814,30 @@ const RESCUE_CONDITION_CONFIG = {
   }
 };
 
+function getRescueConditionConfig(type) {
+  if (!type) return null;
+  if (RESCUE_CONDITION_CONFIG[type]) return RESCUE_CONDITION_CONFIG[type];
+  const low = String(type).toLowerCase();
+  if (low.includes('medical')) {
+    return RESCUE_CONDITION_CONFIG['Critical Medical Evacuation'];
+  }
+  if (low.includes('vulnerability') || low.includes('bedridden') || low.includes('senior') || low.includes('infant')) {
+    return RESCUE_CONDITION_CONFIG['Special Vulnerability Emergency'];
+  }
+  return {
+    mode: 'entrapment',
+    countField: 'peopleTrapped',
+    countLabel: 'Number of People Needing Rescue',
+    confirmLabel: 'People Needing Rescue:',
+    unitLabel: 'person(s)',
+    locationLabel: 'Rescue Location',
+    showVulnerable: false,
+  };
+}
+
 window.handleRescueConditionChange = function () {
   const type = document.getElementById('res-type')?.value || '';
-  const cfg = RESCUE_CONDITION_CONFIG[type] || null;
+  const cfg = getRescueConditionConfig(type);
 
   const countWrapper = document.getElementById('res-count-wrapper');
   const countLabel = document.getElementById('res-count-label');
@@ -841,7 +893,7 @@ function parseRescueCountSelection(rawValue) {
 
 window.openRescueConfirmModal = function () {
   const type = document.getElementById('res-type')?.value;
-  const cfg = RESCUE_CONDITION_CONFIG[type];
+  const cfg = getRescueConditionConfig(type);
   const rawCount = document.getElementById('res-count')?.value;
   const desc = document.getElementById('res-desc')?.value.trim();
   const loc = document.getElementById('res-loc')?.value.trim();
@@ -892,7 +944,7 @@ window.closeRescueConfirmModal = function () {
 window.submitRescueFinal = async function () {
   if (isSubmittingRescue) return;
   const type = document.getElementById('res-type')?.value;
-  const cfg = RESCUE_CONDITION_CONFIG[type];
+  const cfg = getRescueConditionConfig(type);
   const parsedSel = parseRescueCountSelection(document.getElementById('res-count')?.value);
 
   if (!cfg || parsedSel === null) {

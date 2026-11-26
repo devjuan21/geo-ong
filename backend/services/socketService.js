@@ -765,6 +765,16 @@ function emitAdminPasswordAssistanceEvent(eventName, payload = {}) {
   });
 }
 
+function emitMaintenanceCategoriesUpdated(payload = {}) {
+  if (!io) return;
+  io.emit('maintenance:categories-updated', {
+    kind: payload.kind || 'rescue',
+    action: payload.action || 'updated',
+    categoryId: payload.categoryId || null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 module.exports = {
   initSocket,
   getIO,
@@ -783,6 +793,7 @@ module.exports = {
   emitIncidentResolvedCommunityNotification,
   emitAdminAnnouncement,
   emitAdminPasswordAssistanceEvent,
+  emitMaintenanceCategoriesUpdated,
   emitConversationMessage,
   emitConversationMessagesRead,
   emitConversationAccessUpdated,

@@ -2372,44 +2372,13 @@
       GeoSafeMapping.attachCompassDiagnosticsPanel(map);
       GeoSafeMapping._notifyCompassDiagnostics();
 
-      if (accuracy !== null) {
-        const prevSmoothed = Number.isFinite(markerState._smoothedAccuracy) ? markerState._smoothedAccuracy : accuracy;
-        const smoothedAccuracy = markerState._smoothedAccuracy === undefined
-          ? accuracy
-          : prevSmoothed + 0.25 * (accuracy - prevSmoothed);
-        markerState._smoothedAccuracy = smoothedAccuracy;
-        const targetRadius = Math.max(1, Math.round(smoothedAccuracy));
-        const ringColor = isStale ? '#D97706' : '#2563EB';
-        const ringFill = isStale ? '#F59E0B' : '#3B82F6';
-        if (!markerState.accuracyCircle || (typeof map.hasLayer === 'function' && !map.hasLayer(markerState.accuracyCircle))) {
-          if (markerState.accuracyCircle) {
-            try { map.removeLayer(markerState.accuracyCircle); } catch (_) { }
-          }
-          markerState.accuracyCircle = L.circle([lat, lng], {
-            radius: targetRadius,
-            color: ringColor,
-            fillColor: ringFill,
-            fillOpacity: 0.1,
-            weight: 1.5,
-            interactive: false
-          }).addTo(map);
-          markerState._lastAppliedRadius = targetRadius;
-        } else {
-          markerState.accuracyCircle.setLatLng([lat, lng]);
-          const prevApplied = Number(markerState._lastAppliedRadius || targetRadius);
-          const minDelta = Math.max(2, prevApplied * 0.08);
-          if (Math.abs(targetRadius - prevApplied) >= minDelta) {
-            markerState.accuracyCircle.setRadius(targetRadius);
-            markerState._lastAppliedRadius = targetRadius;
-          }
-          markerState.accuracyCircle.setStyle({ color: ringColor, fillColor: ringFill });
-        }
-      } else if (markerState.accuracyCircle) {
+      // Accuracy circle/radius zone removed: keep only the marker's centered pulsing ring animation
+      if (markerState.accuracyCircle) {
         try { map.removeLayer(markerState.accuracyCircle); } catch (_) { }
         markerState.accuracyCircle = null;
-        markerState._smoothedAccuracy = undefined;
-        markerState._lastAppliedRadius = undefined;
       }
+      markerState._smoothedAccuracy = undefined;
+      markerState._lastAppliedRadius = undefined;
     },
 
     /**

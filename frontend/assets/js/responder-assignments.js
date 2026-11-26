@@ -27,6 +27,15 @@ let completionCameraStream = null;
 let statusUpdateInFlight = false;
 let progressUpdateInFlight = false;
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatAssignmentDateTime(value) {
   if (!value) return '—';
   const d = new Date(value);
@@ -997,11 +1006,7 @@ function renderResponderArrivedState(destLabel) {
 }
 
 function escapeHtmlNav(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return escapeHtml(str);
 }
 
 function showNavigationError(message, allowRetry = true) {
@@ -2283,11 +2288,7 @@ window.submitProgressUpdate = async function () {
 let loadedRecommendedFacilities = [];
 
 function escapeOutcomeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return escapeHtml(str);
 }
 
 function formatRouteDist(meters) {

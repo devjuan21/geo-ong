@@ -1596,47 +1596,11 @@
       const outcomeSec = document.getElementById('modal-rescue-outcome-section');
       const outcomeBadge = document.getElementById('modal-rescue-outcome-badge');
       const outcomeBody = document.getElementById('modal-rescue-outcome-body');
-      const nearbyHospWrap = document.getElementById('modal-nearby-hospitals-wrap');
       if (outcomeSec && outcomeBody) {
         if (recordType !== 'rescue') {
           outcomeSec.classList.add('hidden');
-          if (nearbyHospWrap) nearbyHospWrap.innerHTML = '';
         } else {
           outcomeSec.classList.remove('hidden');
-          if (nearbyHospWrap) {
-            if (Number.isFinite(Number(data.latitude)) && Number.isFinite(Number(data.longitude))) {
-              nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-slate-500">Calculating route distances...</div>`;
-              apiRequest(`/hospitals/recommendations?lat=${encodeURIComponent(data.latitude)}&lng=${encodeURIComponent(data.longitude)}&category=hospital`, {}, true)
-                .then((recData) => {
-                  const recs = Array.isArray(recData && recData.recommendations) ? recData.recommendations : [];
-                  if (recs.length === 0) {
-                    nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-slate-500">No verified hospitals found.</div>`;
-                    return;
-                  }
-                  nearbyHospWrap.innerHTML = `
-                    <div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals (Reference for Coordination)</div>
-                    ${recs.slice(0, 4).map((h) => {
-                    const distKm = Number.isFinite(Number(h.routeDistanceMeters)) ? `${(Number(h.routeDistanceMeters) / 1000).toFixed(2)} km` : '—';
-                    const etaMin = Number.isFinite(Number(h.routeDurationSeconds)) ? ` (~${Math.max(1, Math.round(Number(h.routeDurationSeconds) / 60))} min)` : '';
-                    return `
-                        <div class="p-2 rounded bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                          <div>
-                            <strong class="text-[#0f172a]">${escapeHtml(h.name)}</strong>
-                            <span class="block text-[10px] text-slate-500">${escapeHtml(h.address || '')} &bull; Hours: ${escapeHtml(h.operatingHours || 'Unverified')}</span>
-                          </div>
-                          <span class="text-[11px] font-bold text-[#0A58CA] tabular-nums">${distKm}${etaMin}</span>
-                        </div>
-                      `;
-                  }).join('')}
-                  `;
-                })
-                .catch(() => {
-                  nearbyHospWrap.innerHTML = `<div class="text-[10px] font-bold text-[#777777] uppercase">Nearby Verified Hospitals</div><div class="text-[11px] text-[#D93636]">Unable to load nearby hospital route distances.</div>`;
-                });
-            } else {
-              nearbyHospWrap.innerHTML = '';
-            }
-          }
           const out = data.outcome || null;
           const transports = Array.isArray(data.transports) ? data.transports : [];
           const outcomeNames = {

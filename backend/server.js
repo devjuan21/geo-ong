@@ -295,6 +295,19 @@ app.use('/assets/uploads', async (req, res) => {
       return res.send(remote.buffer);
     }
 
+    const dbTable = category === 'rescues' ? 'rescue_attachments' : 'incident_attachments';
+    const [dbFileRows] = await pool.query(
+      `SELECT file_data, file_type
+       FROM ${dbTable}
+       WHERE (file_url = ? OR file_name = ?) AND file_data IS NOT NULL
+       LIMIT 1`,
+      [publicUrl, decodedName]
+    );
+    if (dbFileRows.length > 0 && dbFileRows[0].file_data) {
+      res.setHeader('Content-Type', dbFileRows[0].file_type || 'image/jpeg');
+      return res.send(Buffer.from(dbFileRows[0].file_data));
+    }
+
     return res.status(404).json({ success: false, message: 'Attachment file is unavailable.' });
   } catch (err) {
     console.error('[Uploads] Error serving protected attachment:', err.message);

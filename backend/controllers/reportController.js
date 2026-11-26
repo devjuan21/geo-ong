@@ -192,11 +192,12 @@ async function createReport(req, res) {
 
         const fileUrl = saved.publicUrl;
         const fileSize = buffer.length;
+        const fileData = saved.storageMode === 'supabase' ? null : buffer;
 
         await conn.query(
-          `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type)
-           VALUES (?, ?, ?, ?, ?, ?, 'resident_report')`,
-          [result.insertId, fileUrl, fileName, mimeType, fileSize, req.user.id]
+          `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, file_data)
+           VALUES (?, ?, ?, ?, ?, ?, 'resident_report', ?)`,
+          [result.insertId, fileUrl, fileName, mimeType, fileSize, req.user.id, fileData]
         );
       }
     }

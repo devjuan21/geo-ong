@@ -81,6 +81,7 @@ async function parseAndSaveBase64Photo(rawPhoto, subDir, prefix, evidenceType = 
     publicUrl: saved.publicUrl,
     mimeType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
     byteLength: buffer.length,
+    fileData: saved.storageMode === 'supabase' ? null : buffer,
   };
 }
 
@@ -853,9 +854,9 @@ router.post('/rescue-requests', requireRole('resident', 'admin'), async (req, re
     for (const sp of savedPhotos) {
       await conn.query(
         `INSERT INTO rescue_attachments
-           (rescue_id, file_url, file_name, file_type, file_size, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [result.insertId, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id]
+           (rescue_id, file_url, file_name, file_type, file_size, uploaded_by, file_data)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [result.insertId, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, sp.fileData || null]
       );
     }
 
@@ -2235,9 +2236,9 @@ async function handleResponderAssignmentUpdate(req, res) {
 
       for (const sp of savedPhotos) {
         await conn.query(
-          `INSERT INTO rescue_attachments (rescue_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [rescueRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, resEvidenceType, resAssignId]
+          `INSERT INTO rescue_attachments (rescue_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id, file_data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [rescueRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, resEvidenceType, resAssignId, sp.fileData || null]
         );
       }
 
@@ -2421,9 +2422,9 @@ async function handleResponderAssignmentUpdate(req, res) {
 
     for (const sp of savedPhotos) {
       await conn.query(
-        `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [reportRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, incEvidenceType, incAssignId]
+        `INSERT INTO incident_attachments (incident_id, file_url, file_name, file_type, file_size, uploaded_by, evidence_type, assignment_id, file_data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [reportRow.id, sp.publicUrl, sp.fileName, sp.mimeType, sp.byteLength, req.user.id, incEvidenceType, incAssignId, sp.fileData || null]
       );
     }
 

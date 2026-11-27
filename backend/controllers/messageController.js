@@ -40,7 +40,10 @@ async function writeMessageAuditLog(req, { action, entityId, details }) {
 
 async function listConversations(req, res) {
   try {
-    await syncConversationsForRescueRequests();
+    // Trigger throttled background sync without blocking the response
+    setImmediate(() => {
+      syncConversationsForRescueRequests({ force: false }).catch(() => {});
+    });
 
     const roleId = Number(req.user.role_id);
     const userId = Number(req.user.id);
@@ -65,7 +68,7 @@ async function listConversations(req, res) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const [rows] = await pool.query(
+    const conversationsPromise = pool.query(
       `SELECT c.id,
               c.rescue_id,
               c.assignment_id,
@@ -94,19 +97,8 @@ async function listConversations(req, res) {
               lm.body AS last_message_body,
               lm.sender_user_id AS last_message_sender_id,
               lm.created_at AS last_message_created_at,
-              (
-                SELECT COUNT(*)::int FROM messages m2
-                WHERE m2.conversation_id = c.id
-              ) AS total_messages,
-              (
-                SELECT COUNT(*)::int FROM messages m3
-                WHERE m3.conversation_id = c.id
-                  AND m3.sender_user_id <> ?
-                  AND NOT EXISTS (
-                    SELECT 1 FROM message_read_status mrs
-                    WHERE mrs.message_id = m3.id AND mrs.user_id = ?
-                  )
-              ) AS unread_count
+              COALESCE(msg_stats.total_messages, 0) AS total_messages,
+              COALESCE(msg_stats.unread_count, 0) AS unread_count
        FROM conversations c
        JOIN rescue_requests rr ON rr.id = c.rescue_id
        JOIN users res_u ON res_u.id = c.resident_user_id
@@ -127,10 +119,61 @@ async function listConversations(req, res) {
          ORDER BY created_at DESC, id DESC
          LIMIT 1
        ) lm ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS total_messages,
+                COUNT(*) FILTER (
+                  WHERE m2.sender_user_id <> ?
+                    AND NOT EXISTS (
+                      SELECT 1 FROM message_read_status mrs
+                      WHERE mrs.message_id = m2.id AND mrs.user_id = ?
+                    )
+                )::int AS unread_count
+         FROM messages m2
+         WHERE m2.conversation_id = c.id
+       ) msg_stats ON TRUE
        WHERE ${whereClause}
        ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC`,
       params
     );
+
+    let pendingPromise = Promise.resolve([[]]);
+    if (roleId === ROLE_IDS.RESIDENT) {
+      pendingPromise = pool.query(
+        `SELECT rr.id, rr.reference_number, rr.emergency_type, rr.status, rr.created_at,
+                ra.assignment_status, ra.accepted_at, resp_u.name AS responder_name
+         FROM rescue_requests rr
+         LEFT JOIN LATERAL (
+           SELECT responder_user_id, assignment_status, accepted_at
+           FROM rescue_assignments
+           WHERE rescue_id = rr.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ra ON TRUE
+         LEFT JOIN users resp_u ON resp_u.id = ra.responder_user_id
+         WHERE rr.user_id = ?
+           AND rr.status NOT IN ('Completed', 'Cancelled')`,
+        [userId]
+      );
+    } else if (roleId === ROLE_IDS.RESPONDER) {
+      pendingPromise = pool.query(
+        `SELECT rr.id, rr.reference_number, rr.emergency_type, rr.status, rr.created_at,
+                ra.assignment_status, ra.accepted_at, res_u.name AS resident_name
+         FROM rescue_requests rr
+         JOIN LATERAL (
+           SELECT responder_user_id, assignment_status, accepted_at
+           FROM rescue_assignments
+           WHERE rescue_id = rr.id
+           ORDER BY assigned_at DESC, id DESC
+           LIMIT 1
+         ) ra ON TRUE
+         JOIN users res_u ON res_u.id = rr.user_id
+         WHERE ra.responder_user_id = ?
+           AND rr.status NOT IN ('Completed', 'Cancelled')`,
+        [userId]
+      );
+    }
+
+    const [[rows], [pendRows]] = await Promise.all([conversationsPromise, pendingPromise]);
 
     const conversations = rows
       .filter((r) => {
@@ -179,22 +222,6 @@ async function listConversations(req, res) {
 
     let pendingRequests = [];
     if (roleId === ROLE_IDS.RESIDENT) {
-      const [pendRows] = await pool.query(
-        `SELECT rr.id, rr.reference_number, rr.emergency_type, rr.status, rr.created_at,
-                ra.assignment_status, ra.accepted_at, resp_u.name AS responder_name
-         FROM rescue_requests rr
-         LEFT JOIN LATERAL (
-           SELECT responder_user_id, assignment_status, accepted_at
-           FROM rescue_assignments
-           WHERE rescue_id = rr.id
-           ORDER BY assigned_at DESC, id DESC
-           LIMIT 1
-         ) ra ON TRUE
-         LEFT JOIN users resp_u ON resp_u.id = ra.responder_user_id
-         WHERE rr.user_id = ?
-           AND rr.status NOT IN ('Completed', 'Cancelled')`,
-        [userId]
-      );
       pendingRequests = pendRows
         .filter((pr) => !isAssignmentAccepted(pr.assignment_status, pr.accepted_at))
         .map((pr) => ({
@@ -207,22 +234,6 @@ async function listConversations(req, res) {
           createdAt: pr.created_at,
         }));
     } else if (roleId === ROLE_IDS.RESPONDER) {
-      const [pendRows] = await pool.query(
-        `SELECT rr.id, rr.reference_number, rr.emergency_type, rr.status, rr.created_at,
-                ra.assignment_status, ra.accepted_at, res_u.name AS resident_name
-         FROM rescue_requests rr
-         JOIN LATERAL (
-           SELECT responder_user_id, assignment_status, accepted_at
-           FROM rescue_assignments
-           WHERE rescue_id = rr.id
-           ORDER BY assigned_at DESC, id DESC
-           LIMIT 1
-         ) ra ON TRUE
-         JOIN users res_u ON res_u.id = rr.user_id
-         WHERE ra.responder_user_id = ?
-           AND rr.status NOT IN ('Completed', 'Cancelled')`,
-        [userId]
-      );
       pendingRequests = pendRows
         .filter((pr) => !isAssignmentAccepted(pr.assignment_status, pr.accepted_at))
         .map((pr) => ({
@@ -258,7 +269,14 @@ async function getConversationMessages(req, res) {
     }
 
     const conv = access.conversation;
-    if (Number(req.user.role_id) === ROLE_IDS.ADMINISTRATOR) {
+    const rawLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 40;
+    const beforeId = Number.parseInt(req.query.beforeId, 10);
+    const afterId = Number.parseInt(req.query.afterId, 10);
+    const hasBefore = Number.isInteger(beforeId) && beforeId > 0;
+    const hasAfter = !hasBefore && Number.isInteger(afterId) && afterId > 0;
+
+    if (Number(req.user.role_id) === ROLE_IDS.ADMINISTRATOR && !hasBefore && !hasAfter) {
       await writeMessageAuditLog(req, {
         action: 'VIEW_CONVERSATION_HISTORY',
         entityId: conv.id,
@@ -270,7 +288,20 @@ async function getConversationMessages(req, res) {
       });
     }
 
-    const [msgRows] = await pool.query(
+    const msgParams = [conv.id];
+    let cursorClause = '';
+    if (hasBefore) {
+      cursorClause = 'AND m.id < ?';
+      msgParams.push(beforeId);
+    } else if (hasAfter) {
+      cursorClause = 'AND m.id > ?';
+      msgParams.push(afterId);
+    }
+
+    const orderDir = hasAfter ? 'ASC' : 'DESC';
+    msgParams.push(limit + 1);
+
+    const msgQueryPromise = pool.query(
       `SELECT m.id,
               m.conversation_id,
               m.sender_user_id,
@@ -279,33 +310,43 @@ async function getConversationMessages(req, res) {
               m.created_at,
               u.name AS sender_name,
               u.role_id AS sender_role_id,
-              EXISTS (
-                SELECT 1 FROM message_read_status mrs
-                WHERE mrs.message_id = m.id AND mrs.user_id <> m.sender_user_id
-              ) AS is_read_by_other,
-              (
-                SELECT MAX(mrs2.read_at) FROM message_read_status mrs2
-                WHERE mrs2.message_id = m.id AND mrs2.user_id <> m.sender_user_id
-              ) AS other_read_at
+              (rs.read_count > 0) AS is_read_by_other,
+              rs.other_read_at
        FROM messages m
        JOIN users u ON u.id = m.sender_user_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS read_count,
+                MAX(mrs.read_at) AS other_read_at
+         FROM message_read_status mrs
+         WHERE mrs.message_id = m.id AND mrs.user_id <> m.sender_user_id
+       ) rs ON TRUE
        WHERE m.conversation_id = ?
-       ORDER BY m.created_at ASC, m.id ASC`,
-      [conv.id]
+         ${cursorClause}
+       ORDER BY m.id ${orderDir}
+       LIMIT ?`,
+      msgParams
     );
 
-    const messages = msgRows.map((m) => formatMessageRow(m, conv));
+    const archivePromise =
+      Number(req.user.role_id) !== ROLE_IDS.ADMINISTRATOR && !hasBefore && !hasAfter
+        ? pool.query(
+            'SELECT is_archived, archived_at FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1',
+            [conv.id, req.user.id]
+          )
+        : Promise.resolve([[]]);
+
+    const [[rawRows], [cpRows]] = await Promise.all([msgQueryPromise, archivePromise]);
+
+    const hasMore = rawRows.length > limit;
+    const slicedRows = hasMore ? rawRows.slice(0, limit) : rawRows;
+    const orderedRows = hasAfter ? slicedRows : slicedRows.reverse();
+    const messages = orderedRows.map((m) => formatMessageRow(m, conv));
+
     let selfIsArchived = false;
     let selfArchivedAt = null;
-    if (Number(req.user.role_id) !== ROLE_IDS.ADMINISTRATOR) {
-      const [cpRows] = await pool.query(
-        'SELECT is_archived, archived_at FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1',
-        [conv.id, req.user.id]
-      );
-      if (cpRows[0]) {
-        selfIsArchived = Boolean(cpRows[0].is_archived);
-        selfArchivedAt = cpRows[0].archived_at || null;
-      }
+    if (cpRows && cpRows[0]) {
+      selfIsArchived = Boolean(cpRows[0].is_archived);
+      selfArchivedAt = cpRows[0].archived_at || null;
     }
 
     return res.json({
@@ -339,6 +380,13 @@ async function getConversationMessages(req, res) {
         },
       },
       messages,
+      pagination: {
+        limit,
+        hasMoreOlder: hasAfter ? false : hasMore,
+        hasMoreNewer: hasAfter ? hasMore : false,
+        oldestMessageId: messages.length ? messages[0].id : null,
+        newestMessageId: messages.length ? messages[messages.length - 1].id : null,
+      },
     });
   } catch (err) {
     console.error('[Messages API] getConversationMessages failed:', err.message);

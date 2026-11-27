@@ -226,7 +226,7 @@ class GeoSafeStore {
         timeoutErr.isTimeout = true;
         throw timeoutErr;
       }
-      if (callerAborted || (err && err.name === 'AbortError')) {
+      if (callerAborted || (err && (err.isAborted || err.name === 'AbortError' || (typeof err.message === 'string' && err.message.toLowerCase().includes('signal is aborted'))))) {
         const abortErr = new Error('Request cancelled.');
         abortErr.name = 'AbortError';
         abortErr.isAborted = true;

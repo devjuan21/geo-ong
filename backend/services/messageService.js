@@ -14,134 +14,167 @@ function isAssignmentAccepted(assignmentStatus, acceptedAt) {
   return ACCEPTED_ASSIGNMENT_STATUSES.has(String(assignmentStatus || '').trim());
 }
 
+let _activeSyncPromise = null;
+let _lastSyncAt = 0;
+
 /**
  * Synchronizes `conversations` and `conversation_participants` with the latest
- * `rescue_requests` and `rescue_assignments` records in PostgreSQL.
- * Ensures:
- * - Conversations exist for all rescue requests with an accepted assignment.
- * - Reassigned responders immediately lose access (`is_active = FALSE`).
- * - Unaccepted reassignments remain locked until the new responder accepts.
+ * `rescue_requests` and `rescue_assignments` records in PostgreSQL using set-based SQL.
  */
-async function syncConversationsForRescueRequests() {
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
+async function syncConversationsForRescueRequests({ force = true } = {}) {
+  const now = Date.now();
+  if (!force && now - _lastSyncAt < 60000) {
+    return;
+  }
+  if (_activeSyncPromise) {
+    return _activeSyncPromise;
+  }
 
-    const [rows] = await conn.query(
-      `SELECT rr.id AS rescue_id,
-              rr.user_id AS resident_user_id,
-              rr.status AS rescue_status,
-              ra.id AS assignment_id,
-              ra.responder_user_id,
-              ra.assignment_status,
-              ra.accepted_at
-       FROM rescue_requests rr
-       LEFT JOIN LATERAL (
-         SELECT id, responder_user_id, assignment_status, accepted_at
-         FROM rescue_assignments
-         WHERE rescue_id = rr.id
-         ORDER BY assigned_at DESC, id DESC
-         LIMIT 1
-       ) ra ON TRUE
-       WHERE ra.id IS NOT NULL`
-    );
+  _activeSyncPromise = (async () => {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    const syncedByRescueId = new Map();
-    for (const r of rows) {
-      const accepted = isAssignmentAccepted(r.assignment_status, r.accepted_at);
-      const convStatus =
-        r.rescue_status === 'Completed' || r.assignment_status === 'Completed' || r.rescue_status === 'Cancelled'
-          ? 'Closed'
-          : 'Active';
+      // 1. Upsert conversations for all rescue requests with an accepted latest assignment
+      await conn.query(
+        `WITH latest_ra AS (
+           SELECT DISTINCT ON (ra.rescue_id)
+                  ra.rescue_id,
+                  ra.id AS assignment_id,
+                  ra.responder_user_id,
+                  ra.assignment_status,
+                  ra.accepted_at
+           FROM rescue_assignments ra
+           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
+         ),
+         accepted_src AS (
+           SELECT rr.id AS rescue_id,
+                  rr.user_id AS resident_user_id,
+                  lra.assignment_id,
+                  lra.responder_user_id,
+                  CASE
+                    WHEN rr.status IN ('Completed', 'Cancelled') OR lra.assignment_status = 'Completed' THEN 'Closed'
+                    ELSE 'Active'
+                  END AS conv_status
+           FROM rescue_requests rr
+           JOIN latest_ra lra ON lra.rescue_id = rr.id
+           WHERE rr.user_id IS NOT NULL
+             AND lra.responder_user_id IS NOT NULL
+             AND (lra.accepted_at IS NOT NULL OR lra.assignment_status IN ('Accepted', 'En Route', 'On Scene', 'In Progress', 'Completed'))
+         )
+         INSERT INTO conversations
+           (rescue_id, assignment_id, resident_user_id, responder_user_id, status, updated_at)
+         SELECT rescue_id, assignment_id, resident_user_id, responder_user_id, conv_status, NOW()
+         FROM accepted_src
+         ON CONFLICT (rescue_id) DO UPDATE SET
+           assignment_id = EXCLUDED.assignment_id,
+           resident_user_id = EXCLUDED.resident_user_id,
+           responder_user_id = EXCLUDED.responder_user_id,
+           status = EXCLUDED.status,
+           updated_at = NOW()
+         WHERE conversations.assignment_id IS DISTINCT FROM EXCLUDED.assignment_id
+            OR conversations.resident_user_id IS DISTINCT FROM EXCLUDED.resident_user_id
+            OR conversations.responder_user_id IS DISTINCT FROM EXCLUDED.responder_user_id
+            OR conversations.status IS DISTINCT FROM EXCLUDED.status`
+      );
 
-      if (accepted && r.resident_user_id && r.responder_user_id) {
-        const [upsertRes] = await conn.query(
-          `INSERT INTO conversations
-             (rescue_id, assignment_id, resident_user_id, responder_user_id, status, updated_at)
-           VALUES (?, ?, ?, ?, ?, NOW())
-           ON CONFLICT (rescue_id) DO UPDATE SET
-             assignment_id = EXCLUDED.assignment_id,
-             resident_user_id = EXCLUDED.resident_user_id,
-             responder_user_id = EXCLUDED.responder_user_id,
-             status = EXCLUDED.status,
+      // 2. Ensure active Resident & current Responder participants exist for accepted conversations
+      await conn.query(
+        `INSERT INTO conversation_participants (conversation_id, user_id, role, is_active, joined_at, left_at)
+         SELECT c.id, c.resident_user_id, 'Resident', TRUE, NOW(), NULL
+         FROM conversations c
+         JOIN rescue_assignments ra ON ra.id = c.assignment_id
+         WHERE ra.accepted_at IS NOT NULL OR ra.assignment_status IN ('Accepted', 'En Route', 'On Scene', 'In Progress', 'Completed')
+         ON CONFLICT (conversation_id, user_id) DO UPDATE SET
+           role = 'Resident',
+           is_active = TRUE,
+           left_at = NULL
+         WHERE conversation_participants.is_active IS DISTINCT FROM TRUE`
+      );
+
+      await conn.query(
+        `INSERT INTO conversation_participants (conversation_id, user_id, role, is_active, joined_at, left_at)
+         SELECT c.id, c.responder_user_id, 'Responder', TRUE, NOW(), NULL
+         FROM conversations c
+         JOIN rescue_assignments ra ON ra.id = c.assignment_id
+         WHERE ra.accepted_at IS NOT NULL OR ra.assignment_status IN ('Accepted', 'En Route', 'On Scene', 'In Progress', 'Completed')
+         ON CONFLICT (conversation_id, user_id) DO UPDATE SET
+           role = 'Responder',
+           is_active = TRUE,
+           left_at = NULL
+         WHERE conversation_participants.is_active IS DISTINCT FROM TRUE`
+      );
+
+      // 3. Revoke access for previously assigned responders
+      await conn.query(
+        `UPDATE conversation_participants cp
+         SET is_active = FALSE,
+             left_at = COALESCE(cp.left_at, NOW())
+         FROM conversations c
+         WHERE cp.conversation_id = c.id
+           AND cp.role = 'Responder'
+           AND cp.is_active = TRUE
+           AND cp.user_id <> c.responder_user_id`
+      );
+
+      // 4. For unaccepted reassignments on existing conversations, update assignment and lock responder access
+      await conn.query(
+        `WITH latest_ra AS (
+           SELECT DISTINCT ON (ra.rescue_id)
+                  ra.rescue_id,
+                  ra.id AS assignment_id,
+                  ra.responder_user_id,
+                  ra.assignment_status,
+                  ra.accepted_at
+           FROM rescue_assignments ra
+           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
+         )
+         UPDATE conversations c
+         SET assignment_id = lra.assignment_id,
+             responder_user_id = COALESCE(lra.responder_user_id, c.responder_user_id),
              updated_at = NOW()
-           RETURNING id`,
-          [r.rescue_id, r.assignment_id, r.resident_user_id, r.responder_user_id, convStatus]
-        );
-        const convRows = Array.isArray(upsertRes)
-          ? upsertRes
-          : upsertRes && Array.isArray(upsertRes.rows)
-          ? upsertRes.rows
-          : [];
-        const convId = convRows[0] ? convRows[0].id : upsertRes.insertId;
+         FROM latest_ra lra
+         WHERE c.rescue_id = lra.rescue_id
+           AND lra.accepted_at IS NULL
+           AND lra.assignment_status NOT IN ('Accepted', 'En Route', 'On Scene', 'In Progress', 'Completed')
+           AND c.assignment_id IS DISTINCT FROM lra.assignment_id`
+      );
 
-        if (convId) {
-          // Ensure Resident is active participant
-          await conn.query(
-            `INSERT INTO conversation_participants (conversation_id, user_id, role, is_active, joined_at, left_at)
-             VALUES (?, ?, 'Resident', TRUE, NOW(), NULL)
-             ON CONFLICT (conversation_id, user_id) DO UPDATE SET
-               role = 'Resident',
-               is_active = TRUE,
-               left_at = NULL`,
-            [convId, r.resident_user_id]
-          );
+      await conn.query(
+        `WITH latest_ra AS (
+           SELECT DISTINCT ON (ra.rescue_id)
+                  ra.rescue_id,
+                  ra.assignment_status,
+                  ra.accepted_at
+           FROM rescue_assignments ra
+           ORDER BY ra.rescue_id, ra.assigned_at DESC, ra.id DESC
+         )
+         UPDATE conversation_participants cp
+         SET is_active = FALSE,
+             left_at = COALESCE(cp.left_at, NOW())
+         FROM conversations c
+         JOIN latest_ra lra ON lra.rescue_id = c.rescue_id
+         WHERE cp.conversation_id = c.id
+           AND cp.role = 'Responder'
+           AND cp.is_active = TRUE
+           AND lra.accepted_at IS NULL
+           AND lra.assignment_status NOT IN ('Accepted', 'En Route', 'On Scene', 'In Progress', 'Completed')`
+      );
 
-          // Ensure current accepted Responder is active participant
-          await conn.query(
-            `INSERT INTO conversation_participants (conversation_id, user_id, role, is_active, joined_at, left_at)
-             VALUES (?, ?, 'Responder', TRUE, NOW(), NULL)
-             ON CONFLICT (conversation_id, user_id) DO UPDATE SET
-               role = 'Responder',
-               is_active = TRUE,
-               left_at = NULL`,
-            [convId, r.responder_user_id]
-          );
-
-          // Revoke access for any previously assigned Responder on this conversation
-          await conn.query(
-            `UPDATE conversation_participants
-             SET is_active = FALSE,
-                 left_at = COALESCE(left_at, NOW())
-             WHERE conversation_id = ?
-               AND role = 'Responder'
-               AND user_id <> ?`,
-            [convId, r.responder_user_id]
-          );
-        }
-      } else {
-        // Assignment exists but is NOT accepted yet: if a conversation already existed, revoke responder access until accepted
-        const [existingConv] = await conn.query(
-          'SELECT id FROM conversations WHERE rescue_id = ? LIMIT 1',
-          [r.rescue_id]
-        );
-        if (existingConv[0]) {
-          await conn.query(
-            `UPDATE conversations
-             SET assignment_id = ?,
-                 responder_user_id = COALESCE(?, responder_user_id),
-                 updated_at = NOW()
-             WHERE id = ?`,
-            [r.assignment_id, r.responder_user_id || null, existingConv[0].id]
-          );
-          await conn.query(
-            `UPDATE conversation_participants
-             SET is_active = FALSE,
-                 left_at = COALESCE(left_at, NOW())
-             WHERE conversation_id = ?
-               AND role = 'Responder'`,
-            [existingConv[0].id]
-          );
-        }
-      }
+      await conn.commit();
+      _lastSyncAt = Date.now();
+    } catch (err) {
+      await conn.rollback();
+      console.error('[MessageService] syncConversationsForRescueRequests failed:', err.message);
+    } finally {
+      conn.release();
     }
+  })();
 
-    await conn.commit();
-  } catch (err) {
-    await conn.rollback();
-    console.error('[MessageService] syncConversationsForRescueRequests failed:', err.message);
+  try {
+    await _activeSyncPromise;
   } finally {
-    conn.release();
+    _activeSyncPromise = null;
   }
 }
 
@@ -157,8 +190,6 @@ async function verifyConversationAccess(
   if (!user || !Number.isInteger(convId) || convId <= 0) {
     return { ok: false, status: 400, error: 'Invalid conversation identifier.' };
   }
-
-  await syncConversationsForRescueRequests();
 
   const [rows] = await pool.query(
     `SELECT c.id,

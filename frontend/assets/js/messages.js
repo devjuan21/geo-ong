@@ -13,20 +13,38 @@
     activeConversationId: null,
     activeConversation: null,
     messages: [],
+    hasMoreOlder: false,
+    oldestMessageId: null,
+    newestMessageId: null,
     isLoadingList: false,
     isLoadingThread: false,
+    isLoadingOlder: false,
   };
 
   let listFetchSeq = 0;
   let historyFetchSeq = 0;
   let historyAbortController = null;
+  let olderAbortController = null;
   let listAbortController = null;
+  let inFlightListPromise = null;
+  let realtimeListenerBound = false;
+
+  function isAbortError(err) {
+    if (!err) return false;
+    if (err.isAborted || err.name === 'AbortError') return true;
+    const msg = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+    return msg.includes('signal is aborted') || msg === 'request cancelled.';
+  }
 
   if (typeof window !== 'undefined') {
     const abortActiveMessageFetches = () => {
       if (historyAbortController) {
         try { historyAbortController.abort(new DOMException('Page closed', 'AbortError')); } catch (_) {}
         historyAbortController = null;
+      }
+      if (olderAbortController) {
+        try { olderAbortController.abort(new DOMException('Page closed', 'AbortError')); } catch (_) {}
+        olderAbortController = null;
       }
       if (listAbortController) {
         try { listAbortController.abort(new DOMException('Page closed', 'AbortError')); } catch (_) {}
@@ -84,6 +102,20 @@
     return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>';
   }
 
+  function syncUnreadHeaderBadges() {
+    const totalUnread = (state.conversations || []).reduce((sum, c) => sum + Number(c.unreadCount || 0), 0);
+    const unreadPill = document.getElementById('messages-unread-pill');
+    if (unreadPill) {
+      unreadPill.textContent = `${totalUnread} Unread`;
+      unreadPill.classList.toggle('hidden', totalUnread <= 0);
+    }
+    const badgeSelector = state.role === 'Responder' ? '[data-resp-nav-unread="messages"]' : '[data-nav-unread="messages"]';
+    document.querySelectorAll(badgeSelector).forEach((el) => {
+      el.textContent = totalUnread > 99 ? '99+' : String(totalUnread);
+      el.classList.toggle('hidden', totalUnread <= 0);
+    });
+  }
+
   async function initMessagesPage() {
     const roleAttr = document.body?.getAttribute('data-messages-role') || 'Resident';
     state.role = roleAttr;
@@ -99,9 +131,21 @@
       await window.GeoSafeUI.init('messages', 'Messages');
     }
 
+    if (!realtimeListenerBound) {
+      realtimeListenerBound = true;
+      window.addEventListener('geosafe:realtime-update', (ev) => {
+        handleRealtimeUpdate(ev.detail || {});
+      });
+    }
+
     if (window.geoSafeStore) {
       state.currentUser = window.geoSafeStore.getCurrentUser();
-      await window.geoSafeStore.initRealtimeSocket();
+      // Start socket connection in parallel instead of blocking the conversation list fetch
+      window.geoSafeStore.initRealtimeSocket().then(() => {
+        if (state.activeConversationId) {
+          joinSocketConversation(state.activeConversationId);
+        }
+      }).catch(() => {});
     }
 
     await loadConversationsList();
@@ -137,26 +181,47 @@
     } else if (state.conversations.length > 0 && window.innerWidth >= 1024) {
       await selectConversation(state.conversations[0].id);
     }
-
-    window.addEventListener('geosafe:realtime-update', (ev) => {
-      handleRealtimeUpdate(ev.detail || {});
-    });
   }
 
   async function handleRealtimeUpdate({ event, data }) {
     if (event === 'conversation:new-message' && data) {
       const msgConvId = Number(data.conversationId);
       clearPeerTyping(msgConvId, data.senderUserId);
-      if (state.activeConversationId && msgConvId === Number(state.activeConversationId)) {
-        const isOwnMsg = state.currentUser && Number(data.senderUserId) === Number(state.currentUser.id);
+      const isActive = Boolean(state.activeConversationId && msgConvId === Number(state.activeConversationId));
+      const isOwnMsg = Boolean(state.currentUser && Number(data.senderUserId) === Number(state.currentUser.id));
+
+      if (isActive) {
         const shouldScroll = isNearBottom() || isOwnMsg;
         upsertMessageInThread(data);
         if (shouldScroll) scrollToBottom();
-        if (state.currentUser && Number(data.senderUserId) !== Number(state.currentUser.id)) {
+        if (!isOwnMsg) {
           markActiveConversationRead();
         }
       }
-      await loadConversationsList({ silent: true });
+
+      // Update conversation preview and unread count in-memory without a full list re-fetch
+      const convItem = state.conversations.find((c) => Number(c.id) === msgConvId);
+      if (convItem) {
+        convItem.lastMessagePreview = data.body || convItem.lastMessagePreview;
+        convItem.lastMessageAt = data.createdAt || convItem.lastMessageAt;
+        convItem.lastMessageSenderId = Number(data.senderUserId || 0);
+        if (!isActive && !isOwnMsg) {
+          convItem.unreadCount = Number(convItem.unreadCount || 0) + 1;
+        }
+        if (convItem.isArchived) {
+          convItem.isArchived = false;
+          convItem.archivedAt = null;
+        }
+        state.conversations.sort((a, b) => {
+          const ta = new Date(a.lastMessageAt || a.createdAt || 0).getTime();
+          const tb = new Date(b.lastMessageAt || b.createdAt || 0).getTime();
+          return tb - ta || Number(b.id) - Number(a.id);
+        });
+        renderConversationsList();
+        syncUnreadHeaderBadges();
+      } else {
+        await loadConversationsList({ silent: true });
+      }
       return;
     }
 
@@ -171,7 +236,6 @@
         });
         renderMessagesThread();
       }
-      await loadConversationsList({ silent: true });
       return;
     }
 
@@ -231,9 +295,15 @@
           state.activeConversationId = null;
           state.activeConversation = null;
           state.messages = [];
+          state.hasMoreOlder = false;
           renderActiveThreadState();
           showErrorBanner('Your access to that conversation has been updated.');
-        } else {
+        } else if (event === 'reconnect-sync' && state.newestMessageId) {
+          await loadConversationHistory(state.activeConversationId, {
+            silent: true,
+            afterId: state.newestMessageId,
+          });
+        } else if (event !== 'messages:unread-update') {
           await loadConversationHistory(state.activeConversationId, { silent: true });
         }
       }
@@ -255,60 +325,62 @@
   }
 
   async function loadConversationsList({ silent = false } = {}) {
+    if (inFlightListPromise && silent) {
+      return inFlightListPromise;
+    }
+
     const loadingEl = document.getElementById('messages-conversations-loading');
     const emptyEl = document.getElementById('messages-conversations-empty');
-    const unreadPill = document.getElementById('messages-unread-pill');
     const seq = ++listFetchSeq;
 
     const reqController = new AbortController();
     listAbortController = reqController;
 
-    if (!silent && loadingEl) loadingEl.classList.remove('hidden');
+    if (!silent && loadingEl && state.conversations.length === 0) {
+      loadingEl.classList.remove('hidden');
+    }
     if (!silent && emptyEl) emptyEl.classList.add('hidden');
 
-    try {
-      const data = await window.geoSafeStore.request('/messages/conversations', {
-        method: 'GET',
-        signal: reqController.signal,
-      });
-      if (seq !== listFetchSeq) return;
-      dismissErrorBanner();
+    const run = (async () => {
+      try {
+        const data = await window.geoSafeStore.request('/messages/conversations', {
+          method: 'GET',
+          signal: reqController.signal,
+        });
+        if (seq !== listFetchSeq) return;
+        dismissErrorBanner();
 
-      state.conversations = Array.isArray(data && data.conversations) ? data.conversations : [];
-      state.pendingRequests = Array.isArray(data && data.pendingRequests) ? data.pendingRequests : [];
+        state.conversations = Array.isArray(data && data.conversations) ? data.conversations : [];
+        state.pendingRequests = Array.isArray(data && data.pendingRequests) ? data.pendingRequests : [];
 
-      if (loadingEl) loadingEl.classList.add('hidden');
+        if (loadingEl) loadingEl.classList.add('hidden');
 
-      const totalUnread = state.conversations.reduce((sum, c) => sum + Number(c.unreadCount || 0), 0);
-      if (unreadPill) {
-        unreadPill.textContent = `${totalUnread} Unread`;
-        unreadPill.classList.toggle('hidden', totalUnread <= 0);
+        syncUnreadHeaderBadges();
+        renderPendingRequestsNotice();
+        renderConversationsList();
+
+        if (emptyEl) {
+          emptyEl.classList.toggle('hidden', state.conversations.length > 0);
+        }
+      } catch (err) {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        if (isAbortError(err) || seq !== listFetchSeq) {
+          return;
+        }
+        if (emptyEl) emptyEl.classList.add('hidden');
+        showErrorBanner(err.message || 'Unable to load conversations from server.');
+      } finally {
+        if (listAbortController === reqController) {
+          listAbortController = null;
+        }
+        if (inFlightListPromise === run) {
+          inFlightListPromise = null;
+        }
       }
+    })();
 
-      renderPendingRequestsNotice();
-      renderConversationsList();
-
-      if (emptyEl) {
-        emptyEl.classList.toggle('hidden', state.conversations.length > 0);
-      }
-
-      if (state.role === 'Responder' && window.GeoSafeResponderUI) {
-        window.GeoSafeResponderUI.syncHeaderResponderData();
-      } else if (window.GeoSafeUI) {
-        window.GeoSafeUI.syncHeaderResidentData();
-      }
-    } catch (err) {
-      if (loadingEl) loadingEl.classList.add('hidden');
-      if ((err && (err.isAborted || err.name === 'AbortError')) || seq !== listFetchSeq) {
-        return;
-      }
-      if (emptyEl) emptyEl.classList.add('hidden');
-      showErrorBanner(err.message || 'Unable to load conversations from server.');
-    } finally {
-      if (listAbortController === reqController) {
-        listAbortController = null;
-      }
-    }
+    inFlightListPromise = run;
+    return run;
   }
 
   function renderPendingRequestsNotice() {
@@ -398,6 +470,7 @@
       }
       renderConversationsList();
     } catch (err) {
+      if (isAbortError(err)) return;
       showErrorBanner(err.message || `Unable to ${action} conversation.`);
     }
   }
@@ -584,6 +657,23 @@
     }
 
     state.activeConversationId = convId;
+    state.hasMoreOlder = false;
+    state.oldestMessageId = null;
+    state.newestMessageId = null;
+    state.isLoadingOlder = false;
+
+    // Immediately show thread header from cached conversation list while messages load
+    const cachedConv = state.conversations.find((c) => Number(c.id) === convId);
+    if (cachedConv) {
+      state.activeConversation = {
+        ...cachedConv,
+        canSend: !['Completed', 'Closed'].includes(cachedConv.conversationStatus),
+      };
+      state.messages = [];
+      state.isLoadingThread = true;
+      renderActiveThreadState();
+    }
+
     renderConversationsList();
     renderTypingIndicator();
 
@@ -598,20 +688,42 @@
     }
 
     const loaded = await loadConversationHistory(convId);
-    if (loaded) {
+    if (loaded && Number(state.activeConversationId) === convId) {
       joinSocketConversation(convId);
-      await markActiveConversationRead();
+      markActiveConversationRead();
     }
   }
 
   function backToConversationList() {
     stopTypingSignal();
     exitMobileFullscreenThread();
+    if (historyAbortController) {
+      try { historyAbortController.abort(new DOMException('Closed conversation', 'AbortError')); } catch (_) {}
+      historyAbortController = null;
+    }
+    if (olderAbortController) {
+      try { olderAbortController.abort(new DOMException('Closed conversation', 'AbortError')); } catch (_) {}
+      olderAbortController = null;
+    }
+    if (state.activeConversationId) {
+      leaveSocketConversation(state.activeConversationId);
+    }
+    state.activeConversationId = null;
+    state.activeConversation = null;
+    state.messages = [];
+    state.hasMoreOlder = false;
+    state.oldestMessageId = null;
+    state.newestMessageId = null;
+    state.isLoadingThread = false;
+    state.isLoadingOlder = false;
+
     const params = new URLSearchParams(window.location.search || '');
     if (params.get('from') === 'report-rescue') {
       window.location.href = 'report-rescue.html';
       return;
     }
+    renderActiveThreadState();
+    renderConversationsList();
     const listPanel = document.getElementById('messages-list-panel');
     const threadPanel = document.getElementById('messages-thread-panel');
     if (listPanel && threadPanel) {
@@ -621,47 +733,86 @@
     }
   }
 
-  async function loadConversationHistory(conversationId, { silent = false } = {}) {
+  async function loadConversationHistory(conversationId, { silent = false, afterId = null } = {}) {
+    const convId = Number(conversationId);
+    if (!Number.isInteger(convId) || convId <= 0) return false;
+
+    // Avoid cancelling an active foreground load with a duplicate silent refresh for the same thread
+    if (silent && state.isLoadingThread && Number(state.activeConversationId) === convId) {
+      return false;
+    }
+
     const seq = ++historyFetchSeq;
     if (historyAbortController) {
       try { historyAbortController.abort(new DOMException('Switched conversation', 'AbortError')); } catch (_) {}
     }
+    if (olderAbortController && !afterId) {
+      try { olderAbortController.abort(new DOMException('Switched conversation', 'AbortError')); } catch (_) {}
+      olderAbortController = null;
+    }
+
     const reqController = new AbortController();
     historyAbortController = reqController;
+    if (!silent) {
+      state.isLoadingThread = true;
+    }
 
     try {
+      const qs = afterId
+        ? `?limit=100&afterId=${encodeURIComponent(afterId)}`
+        : '?limit=40';
       const data = await window.geoSafeStore.request(
-        `/messages/conversations/${conversationId}/messages`,
+        `/messages/conversations/${convId}/messages${qs}`,
         { method: 'GET', signal: reqController.signal }
       );
-      if (seq !== historyFetchSeq) return false;
-      dismissErrorBanner();
-      state.activeConversation = data.conversation;
-      const serverMessages = Array.isArray(data.messages) ? data.messages : [];
-
-      // Preserve any local failed/sending optimistic messages not yet on server
-      const serverClientIds = new Set(
-        serverMessages.map((m) => m.clientMessageId).filter(Boolean)
-      );
-      const localPending = state.messages.filter(
-        (m) =>
-          Number(m.conversationId) === Number(conversationId) &&
-          (m._localStatus === 'sending' || m._localStatus === 'failed') &&
-          m.clientMessageId &&
-          !serverClientIds.has(m.clientMessageId)
-      );
-
-      state.messages = [...serverMessages, ...localPending];
-      renderActiveThreadState();
-      if (!silent) scrollToBottom();
-      return true;
-    } catch (err) {
-      if ((err && (err.isAborted || err.name === 'AbortError')) || seq !== historyFetchSeq) {
+      if (seq !== historyFetchSeq || Number(state.activeConversationId) !== convId) {
         return false;
       }
+      dismissErrorBanner();
+      state.isLoadingThread = false;
+      state.activeConversation = data.conversation;
+      const serverMessages = Array.isArray(data.messages) ? data.messages : [];
+      const pagination = data.pagination || {};
+
+      if (afterId) {
+        serverMessages.forEach((m) => upsertMessageInThread(m, { skipRender: true }));
+        if (pagination.newestMessageId) {
+          state.newestMessageId = Math.max(Number(state.newestMessageId || 0), Number(pagination.newestMessageId));
+        }
+        renderActiveThreadState();
+        if (isNearBottom()) scrollToBottom();
+      } else {
+        // Preserve any local failed/sending optimistic messages not yet on server
+        const serverClientIds = new Set(
+          serverMessages.map((m) => m.clientMessageId).filter(Boolean)
+        );
+        const localPending = state.messages.filter(
+          (m) =>
+            Number(m.conversationId) === convId &&
+            (m._localStatus === 'sending' || m._localStatus === 'failed') &&
+            m.clientMessageId &&
+            !serverClientIds.has(m.clientMessageId)
+        );
+
+        state.messages = [...serverMessages, ...localPending];
+        state.hasMoreOlder = Boolean(pagination.hasMoreOlder);
+        state.oldestMessageId = pagination.oldestMessageId || (serverMessages[0] ? serverMessages[0].id : null);
+        state.newestMessageId =
+          pagination.newestMessageId ||
+          (serverMessages.length ? serverMessages[serverMessages.length - 1].id : null);
+        renderActiveThreadState();
+        if (!silent) scrollToBottom();
+      }
+      return true;
+    } catch (err) {
+      if (isAbortError(err) || seq !== historyFetchSeq || Number(state.activeConversationId) !== convId) {
+        return false;
+      }
+      state.isLoadingThread = false;
       state.activeConversationId = null;
       state.activeConversation = null;
       state.messages = [];
+      state.hasMoreOlder = false;
       renderActiveThreadState();
       renderConversationsList();
       showErrorBanner(err.message || 'You are not authorized to access this conversation.');
@@ -669,23 +820,76 @@
     } finally {
       if (historyAbortController === reqController) {
         historyAbortController = null;
+        state.isLoadingThread = false;
+      }
+    }
+  }
+
+  async function loadOlderMessages() {
+    const convId = Number(state.activeConversationId);
+    if (!convId || !state.hasMoreOlder || state.isLoadingOlder || !state.oldestMessageId) {
+      return;
+    }
+    const bodyEl = document.getElementById('messages-thread-body');
+    const prevScrollHeight = bodyEl ? bodyEl.scrollHeight : 0;
+    const prevScrollTop = bodyEl ? bodyEl.scrollTop : 0;
+
+    state.isLoadingOlder = true;
+    renderMessagesThread();
+
+    const reqController = new AbortController();
+    olderAbortController = reqController;
+
+    try {
+      const data = await window.geoSafeStore.request(
+        `/messages/conversations/${convId}/messages?limit=40&beforeId=${encodeURIComponent(state.oldestMessageId)}`,
+        { method: 'GET', signal: reqController.signal }
+      );
+      if (Number(state.activeConversationId) !== convId) return;
+
+      const older = Array.isArray(data && data.messages) ? data.messages : [];
+      const pagination = (data && data.pagination) || {};
+      const existingIds = new Set(state.messages.map((m) => Number(m.id)).filter(Boolean));
+      const uniqueOlder = older.filter((m) => !existingIds.has(Number(m.id)));
+
+      state.messages = [...uniqueOlder, ...state.messages];
+      state.hasMoreOlder = Boolean(pagination.hasMoreOlder);
+      if (pagination.oldestMessageId) {
+        state.oldestMessageId = pagination.oldestMessageId;
+      } else if (uniqueOlder.length) {
+        state.oldestMessageId = uniqueOlder[0].id;
+      }
+      state.isLoadingOlder = false;
+      renderMessagesThread();
+
+      if (bodyEl) {
+        const newScrollHeight = bodyEl.scrollHeight;
+        bodyEl.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+      }
+    } catch (err) {
+      state.isLoadingOlder = false;
+      if (!isAbortError(err)) {
+        renderMessagesThread();
+      }
+    } finally {
+      if (olderAbortController === reqController) {
+        olderAbortController = null;
       }
     }
   }
 
   async function markActiveConversationRead() {
     if (!state.activeConversationId) return;
+    const convId = Number(state.activeConversationId);
     try {
       await window.geoSafeStore.request(
-        `/messages/conversations/${state.activeConversationId}/read`,
+        `/messages/conversations/${convId}/read`,
         { method: 'POST' }
       );
-      const conv = state.conversations.find(
-        (c) => Number(c.id) === Number(state.activeConversationId)
-      );
+      const conv = state.conversations.find((c) => Number(c.id) === convId);
       if (conv) conv.unreadCount = 0;
       renderConversationsList();
-      await loadConversationsList({ silent: true });
+      syncUnreadHeaderBadges();
     } catch (_) {}
   }
 
@@ -750,7 +954,7 @@
     renderMessagesThread();
   }
 
-  function upsertMessageInThread(msg) {
+  function upsertMessageInThread(msg, { skipRender = false } = {}) {
     if (!msg) return;
     const idx = state.messages.findIndex(
       (m) =>
@@ -761,13 +965,34 @@
       state.messages[idx] = { ...msg, _localStatus: 'sent' };
     } else {
       state.messages.push({ ...msg, _localStatus: 'sent' });
+      state.messages.sort((a, b) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        if (ta !== tb) return ta - tb;
+        return Number(a.id || Number.MAX_SAFE_INTEGER) - Number(b.id || Number.MAX_SAFE_INTEGER);
+      });
     }
-    renderMessagesThread();
+    if (msg.id) {
+      state.newestMessageId = Math.max(Number(state.newestMessageId || 0), Number(msg.id));
+    }
+    if (!skipRender) {
+      renderMessagesThread();
+    }
   }
 
   function renderMessagesThread() {
     const bodyEl = document.getElementById('messages-thread-body');
     if (!bodyEl) return;
+
+    if (state.isLoadingThread && !state.messages.length) {
+      bodyEl.innerHTML = `
+        <div class="py-12 text-center">
+          <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-900 mb-2"></div>
+          <p class="text-xs text-slate-500">Loading messages...</p>
+        </div>
+      `;
+      return;
+    }
 
     if (!state.messages.length) {
       bodyEl.innerHTML = `
@@ -782,7 +1007,17 @@
 
     const myId = state.currentUser ? Number(state.currentUser.id) : -1;
 
-    bodyEl.innerHTML = state.messages
+    const loadOlderHtml = state.hasMoreOlder
+      ? `<div class="pb-2 text-center">
+           <button type="button" onclick="window.GeoSafeMessages.loadOlderMessages()"
+             ${state.isLoadingOlder ? 'disabled' : ''}
+             class="px-3 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-[11px] font-semibold text-slate-600 disabled:opacity-60">
+             ${state.isLoadingOlder ? 'Loading older messages...' : 'Load older messages'}
+           </button>
+         </div>`
+      : '';
+
+    bodyEl.innerHTML = loadOlderHtml + state.messages
       .map((m) => {
         const isMine = Number(m.senderUserId) === myId;
         const timeStr = formatManilaTime(m.createdAt);
@@ -987,6 +1222,14 @@
           handleLocalTypingInput();
         });
       }
+      const bodyEl = document.getElementById('messages-thread-body');
+      if (bodyEl) {
+        bodyEl.addEventListener('scroll', () => {
+          if (bodyEl.scrollTop < 60 && state.hasMoreOlder && !state.isLoadingOlder && !state.isLoadingThread) {
+            loadOlderMessages();
+          }
+        });
+      }
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') stopTypingSignal();
       });
@@ -1053,9 +1296,16 @@
       );
       if (res && res.message) {
         upsertMessageInThread(res.message);
-        await loadConversationsList({ silent: true });
+        const convItem = state.conversations.find((c) => Number(c.id) === Number(msgObj.conversationId));
+        if (convItem) {
+          convItem.lastMessagePreview = res.message.body || convItem.lastMessagePreview;
+          convItem.lastMessageAt = res.message.createdAt || convItem.lastMessageAt;
+          convItem.lastMessageSenderId = Number(res.message.senderUserId || 0);
+          renderConversationsList();
+        }
       }
     } catch (err) {
+      if (isAbortError(err)) return;
       msgObj._localStatus = 'failed';
       renderMessagesThread();
       showErrorBanner(err.message || 'Message delivery failed. Check your connection and retry.');
@@ -1087,6 +1337,7 @@
     closeArchiveDrawer,
     toggleArchiveConversation,
     toggleActiveConversationArchive,
+    loadOlderMessages,
     handleSendSubmit,
     handleInputKeydown,
     retryMessage,

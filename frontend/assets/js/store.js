@@ -1530,6 +1530,7 @@ class GeoSafeStore {
 
     return this.request(`/responder/assignments/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
+      timeoutMs: photo ? 60000 : 25000,
       body: JSON.stringify(payload)
     }, () => {
       const nowIso = new Date().toISOString();

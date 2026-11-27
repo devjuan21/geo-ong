@@ -1899,8 +1899,6 @@ async function handleResponderAssignmentUpdate(req, res) {
 
   const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
-
     let targetKind = null; // 'rescue' | 'incident'
     let rescueRow = null;
     let reportRow = null;
@@ -2088,8 +2086,21 @@ async function handleResponderAssignmentUpdate(req, res) {
           ? String(rescueRow.status || '') === 'Completed' || latestAssignmentStatus === 'Completed'
           : String(reportRow.status || '').toLowerCase() === 'resolved' || latestAssignmentStatus === 'Completed';
       if (alreadyCompleted) {
-        await conn.rollback();
-        return res.status(409).json({ error: 'This assignment has already been completed.' });
+        const refNum = targetKind === 'rescue'
+          ? (rescueRow.reference_number || `RES-${rescueRow.id}`)
+          : (reportRow.reference_number || `INC-${reportRow.id}`);
+        return res.json({
+          message: 'Assignment already completed.',
+          alreadyCompleted: true,
+          assignment: {
+            id: refNum,
+            dbId: targetKind === 'rescue' ? rescueRow.id : reportRow.id,
+            referenceNumber: refNum,
+            entityType: targetKind,
+            status: targetKind === 'rescue' ? 'Completed' : 'Resolved',
+            rawStatus: targetKind === 'rescue' ? rescueRow.status : reportRow.status,
+          },
+        });
       }
       if (targetKind !== 'rescue' && (!workNotes || !String(workNotes).trim())) {
         await conn.rollback();
@@ -2154,6 +2165,9 @@ async function handleResponderAssignmentUpdate(req, res) {
       });
     }
     const primaryPhotoUrl = savedPhotos[0] ? savedPhotos[0].publicUrl : null;
+
+    // Open PostgreSQL transaction only after photo validation & storage upload succeed
+    await conn.beginTransaction();
 
     if (targetKind === 'rescue') {
       let nextRescueStatus = 'On Scene';
@@ -2281,18 +2295,6 @@ async function handleResponderAssignmentUpdate(req, res) {
       };
 
       emitStatusUpdate(updatePayload);
-      try {
-        const { syncConversationsForRescueRequests } = require('../services/messageService');
-        const { emitConversationAccessUpdated } = require('../services/socketService');
-        await syncConversationsForRescueRequests();
-        emitConversationAccessUpdated({
-          rescueId: rescueRow.id,
-          residentUserId: rescueRow.user_id,
-          responderUserId: req.user.id,
-          status: nextRescueStatus === 'Completed' ? 'Closed' : 'Active',
-          reason: nextRescueStatus === 'Completed' ? 'Assignment Completed' : null,
-        });
-      } catch (_) {}
       if (nextRescueStatus === 'Completed' && oldStatus !== 'Completed') {
         emitIncidentResolved({
           id: rescueRow.id,
@@ -2303,6 +2305,21 @@ async function handleResponderAssignmentUpdate(req, res) {
           assignedTo: req.user.id,
         });
       }
+
+      setImmediate(() => {
+        try {
+          const { syncConversationsForRescueRequests } = require('../services/messageService');
+          const { emitConversationAccessUpdated } = require('../services/socketService');
+          syncConversationsForRescueRequests().catch(() => {});
+          emitConversationAccessUpdated({
+            rescueId: rescueRow.id,
+            residentUserId: rescueRow.user_id,
+            responderUserId: req.user.id,
+            status: nextRescueStatus === 'Completed' ? 'Closed' : 'Active',
+            reason: nextRescueStatus === 'Completed' ? 'Assignment Completed' : null,
+          });
+        } catch (_) {}
+      });
 
       return res.json({
         message: 'Rescue assignment status updated',

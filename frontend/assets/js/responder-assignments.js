@@ -2052,7 +2052,7 @@ window.executeStatusChange = async function () {
   }
 
   try {
-    await window.geoSafeStore.updateAssignmentStatus(activeAssignmentDetail.id, targetStatus, workNotes, photoToSend);
+    const statusRes = await window.geoSafeStore.updateAssignmentStatus(activeAssignmentDetail.id, targetStatus, workNotes, photoToSend);
     closeStatusConfirmModal();
     completionPhotoBase64 = null;
     activeAssignmentDetail.status = targetStatus;
@@ -2064,8 +2064,9 @@ window.executeStatusChange = async function () {
     }
 
     const typeLabel = activeAssignmentDetail.assignmentType === 'rescue' ? 'Rescue' : 'Incident';
-    const successMsg =
-      targetStatus === 'Accepted'
+    const successMsg = statusRes && statusRes.alreadyCompleted
+      ? `${typeLabel} task was already completed and synced.`
+      : targetStatus === 'Accepted'
         ? `${typeLabel} assignment accepted successfully.`
         : `Assignment status updated to "${targetStatus}".`;
     GeoSafeResponderUI.showToast(successMsg, 'success');

@@ -17,6 +17,26 @@
     isLoadingThread: false,
   };
 
+  let listFetchSeq = 0;
+  let historyFetchSeq = 0;
+  let historyAbortController = null;
+  let listAbortController = null;
+
+  if (typeof window !== 'undefined') {
+    const abortActiveMessageFetches = () => {
+      if (historyAbortController) {
+        try { historyAbortController.abort(new DOMException('Page closed', 'AbortError')); } catch (_) {}
+        historyAbortController = null;
+      }
+      if (listAbortController) {
+        try { listAbortController.abort(new DOMException('Page closed', 'AbortError')); } catch (_) {}
+        listAbortController = null;
+      }
+    };
+    window.addEventListener('pagehide', abortActiveMessageFetches);
+    window.addEventListener('beforeunload', abortActiveMessageFetches);
+  }
+
   function escapeHtml(str) {
     return String(str || '')
       .replace(/&/g, '&amp;')
@@ -237,15 +257,23 @@
   async function loadConversationsList({ silent = false } = {}) {
     const loadingEl = document.getElementById('messages-conversations-loading');
     const emptyEl = document.getElementById('messages-conversations-empty');
-    const listEl = document.getElementById('messages-conversations-list');
-    const countBadge = document.getElementById('messages-active-count-badge');
     const unreadPill = document.getElementById('messages-unread-pill');
+    const seq = ++listFetchSeq;
+
+    const reqController = new AbortController();
+    listAbortController = reqController;
 
     if (!silent && loadingEl) loadingEl.classList.remove('hidden');
     if (!silent && emptyEl) emptyEl.classList.add('hidden');
 
     try {
-      const data = await window.geoSafeStore.request('/messages/conversations', { method: 'GET' });
+      const data = await window.geoSafeStore.request('/messages/conversations', {
+        method: 'GET',
+        signal: reqController.signal,
+      });
+      if (seq !== listFetchSeq) return;
+      dismissErrorBanner();
+
       state.conversations = Array.isArray(data && data.conversations) ? data.conversations : [];
       state.pendingRequests = Array.isArray(data && data.pendingRequests) ? data.pendingRequests : [];
 
@@ -271,7 +299,15 @@
       }
     } catch (err) {
       if (loadingEl) loadingEl.classList.add('hidden');
+      if ((err && (err.isAborted || err.name === 'AbortError')) || seq !== listFetchSeq) {
+        return;
+      }
+      if (emptyEl) emptyEl.classList.add('hidden');
       showErrorBanner(err.message || 'Unable to load conversations from server.');
+    } finally {
+      if (listAbortController === reqController) {
+        listAbortController = null;
+      }
     }
   }
 
@@ -586,11 +622,20 @@
   }
 
   async function loadConversationHistory(conversationId, { silent = false } = {}) {
+    const seq = ++historyFetchSeq;
+    if (historyAbortController) {
+      try { historyAbortController.abort(new DOMException('Switched conversation', 'AbortError')); } catch (_) {}
+    }
+    const reqController = new AbortController();
+    historyAbortController = reqController;
+
     try {
       const data = await window.geoSafeStore.request(
         `/messages/conversations/${conversationId}/messages`,
-        { method: 'GET' }
+        { method: 'GET', signal: reqController.signal }
       );
+      if (seq !== historyFetchSeq) return false;
+      dismissErrorBanner();
       state.activeConversation = data.conversation;
       const serverMessages = Array.isArray(data.messages) ? data.messages : [];
 
@@ -611,6 +656,9 @@
       if (!silent) scrollToBottom();
       return true;
     } catch (err) {
+      if ((err && (err.isAborted || err.name === 'AbortError')) || seq !== historyFetchSeq) {
+        return false;
+      }
       state.activeConversationId = null;
       state.activeConversation = null;
       state.messages = [];
@@ -618,6 +666,10 @@
       renderConversationsList();
       showErrorBanner(err.message || 'You are not authorized to access this conversation.');
       return false;
+    } finally {
+      if (historyAbortController === reqController) {
+        historyAbortController = null;
+      }
     }
   }
 

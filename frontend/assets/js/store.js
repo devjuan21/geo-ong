@@ -16,7 +16,7 @@ class GeoSafeStore {
     this.config = window.GEOSAFE_CONFIG || {
       USE_MOCK_DATA: false,
       API_BASE_URL: '/api',
-      TIMEOUT_MS: 10000
+      TIMEOUT_MS: 25000
     };
     this.csrfToken = null;
     this.sessionPromise = null;
@@ -135,24 +135,61 @@ class GeoSafeStore {
     }
 
     const url = `${this.config.API_BASE_URL}${endpoint}`;
+    const { signal: externalSignal, timeoutMs: customTimeoutMs, ...fetchOptions } = options || {};
+    if (externalSignal && externalSignal.aborted) {
+      const abortErr = new Error('Request cancelled.');
+      abortErr.name = 'AbortError';
+      abortErr.isAborted = true;
+      throw abortErr;
+    }
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.TIMEOUT_MS || 10000);
+    const isLargePayload = typeof fetchOptions.body === 'string' && fetchOptions.body.length > 32768;
+    const effectiveTimeoutMs = Number.isFinite(Number(customTimeoutMs))
+      ? Number(customTimeoutMs)
+      : (isLargePayload ? Math.max(45000, this.config.TIMEOUT_MS || 25000) : (this.config.TIMEOUT_MS || 25000));
+
+    let timedOut = false;
+    let callerAborted = false;
+    const onExternalAbort = () => {
+      callerAborted = true;
+      try {
+        controller.abort(externalSignal.reason || new DOMException('Request cancelled', 'AbortError'));
+      } catch (_) {
+        controller.abort();
+      }
+    };
+    if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      try {
+        controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+      } catch (_) {
+        controller.abort();
+      }
+    }, effectiveTimeoutMs);
     const csrf = this.getCsrfToken();
 
     try {
       const response = await fetch(url, {
-        ...options,
+        ...fetchOptions,
         credentials: 'include',
         cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
-          ...(options.headers || {})
+          ...(fetchOptions.headers || {})
         },
         signal: controller.signal
       });
       clearTimeout(timeoutId);
+      if (externalSignal && typeof externalSignal.removeEventListener === 'function') {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Server request failed.' }));
@@ -179,6 +216,22 @@ class GeoSafeStore {
       return await response.json();
     } catch (err) {
       clearTimeout(timeoutId);
+      if (externalSignal && typeof externalSignal.removeEventListener === 'function') {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
+      if (timedOut) {
+        const timeoutErr = new Error('Request timed out while waiting for the server. Please try again.');
+        timeoutErr.name = 'TimeoutError';
+        timeoutErr.status = 408;
+        timeoutErr.isTimeout = true;
+        throw timeoutErr;
+      }
+      if (callerAborted || (err && err.name === 'AbortError')) {
+        const abortErr = new Error('Request cancelled.');
+        abortErr.name = 'AbortError';
+        abortErr.isAborted = true;
+        throw abortErr;
+      }
       throw err;
     }
   }

@@ -37,8 +37,12 @@
     <div id="messages-error-banner"
       class="hidden p-3 rounded-md bg-[#FFF1F1] border border-[#FFC2C2] flex items-center justify-between gap-3 text-xs text-[#D93636] font-semibold">
       <span id="messages-error-banner-text">Unable to load messages.</span>
-      <button type="button" onclick="window.GeoSafeMessages.dismissErrorBanner()"
-        class="text-[11px] font-bold underline">Dismiss</button>
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <button type="button" onclick="window.GeoSafeMessages.refreshAll()"
+          class="text-[11px] font-bold underline">Retry</button>
+        <button type="button" onclick="window.GeoSafeMessages.dismissErrorBanner()"
+          class="text-[11px] font-bold underline">Dismiss</button>
+      </div>
     </div>
 
     <!-- Pending Rescue Requests Notice (Unaccepted Assignments) -->
@@ -217,10 +221,10 @@
 
   <!-- Scripts -->
   <script src="./assets/js/mock-data.js"></script>
-  <script src="./assets/js/store.js"></script>
+  <script src="./assets/js/store.js?v=20261127a"></script>
   <script src="./assets/js/toast.js"></script>
   <script src="./assets/js/components.js"></script>
-  <script src="./assets/js/messages.js"></script>
+  <script src="./assets/js/messages.js?v=20261127a"></script>
 </body>
 
 </html>
